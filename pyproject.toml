@@ -1,0 +1,33 @@
+[project]
+name = "agent-coder"
+version = "0.1.0"
+description = "CLI coding agent powered by RouterAI"
+requires-python = ">=3.10"
+dependencies = [
+    "openai>=1.50.0",
+    "httpx>=0.27.0",
+    "python-dotenv>=1.0.0",
+    "rich>=13.0.0",
+    "aiogram>=3.13,<4",
+    "markdown>=3.5",
+    "fpdf2>=2.7.9",
+]
+
+[project.scripts]
+agent-coder = "agent_coder.__main__:main"
+agent-coder-bot = "agent_coder.telegram.bot:main"
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["agent_coder*"]
+
+[tool.ruff.lint]
+ignore = [
+    "BLE001",   # blind except — осознанно (approval, error handlers)
+    "S110",     # try-except-pass — осознанно (best-effort, не падать)
+    "S112",     # try-except-continue — осознанно (пропустить битый файл)
+    "ASYNC230", # blocking open() — файлы мелкие, не критично
+]

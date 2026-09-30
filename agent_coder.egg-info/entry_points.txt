@@ -1,0 +1,3 @@
+[console_scripts]
+agent-coder = agent_coder.__main__:main
+agent-coder-bot = agent_coder.telegram.bot:main
