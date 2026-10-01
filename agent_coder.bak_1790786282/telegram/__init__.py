@@ -1,1 +1,0 @@
-"""Telegram-бот для agent-coder."""

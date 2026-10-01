@@ -6,3 +6,15 @@ venv/
 sessions/
 *.log
 .pytest_cache/
+
+# Кэши линтеров/тайпчекера
+.mypy_cache/
+.ruff_cache/
+
+# Бэкапы и артефакты сборки
+.backups/
+agent_coder.bak_*/
+*.egg-info/
+
+# Рантайм-состояние
+telegram_state.json
