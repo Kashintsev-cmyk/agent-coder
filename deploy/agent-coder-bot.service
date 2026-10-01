@@ -1,0 +1,23 @@
+[Unit]
+Description=agent-coder Telegram bot
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=botuser
+Group=botuser
+WorkingDirectory=/home/botuser/bots/agent-coder
+Environment=PATH=/home/botuser/bots/agent-coder/.venv/bin:/usr/local/bin:/usr/bin:/bin
+Environment=PYTHONUNBUFFERED=1
+ExecStart=/home/botuser/bots/agent-coder/.venv/bin/agent-coder-bot
+Restart=always
+RestartSec=5
+# Даём боту время корректно прервать активные задачи по SIGTERM
+KillSignal=SIGTERM
+TimeoutStopSec=30
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -41,6 +41,37 @@ router.callback_query.filter(F.from_user.id == config.TELEGRAM_USER_ID)
 _running: dict[int, asyncio.Task] = {}
 # Ожидания approval: {request_id: asyncio.Future}
 _pending: dict[str, asyncio.Future] = {}
+# Идёт ли корректная остановка (меняет тексты уведомлений)
+_shutting_down = False
+
+
+async def shutdown(bot: Bot) -> None:
+    """Корректная остановка: уведомить и прервать активные задачи.
+
+    Вызывается при получении SIGTERM/SIGINT перед выходом процесса.
+    """
+    global _shutting_down
+    _shutting_down = True
+
+    # Висящие подтверждения сразу отклоняем, чтобы циклы не ждали таймаут
+    for request_id, future in list(_pending.items()):
+        _pending.pop(request_id, None)
+        if not future.done():
+            future.set_result(False)
+
+    active = [(cid, t) for cid, t in _running.items() if not t.done()]
+    if not active:
+        return
+
+    for cid, _ in active:
+        try:
+            await bot.send_message(cid, "🔄 Бот перезагружается, задача прервана.")
+        except Exception as e:
+            logger.warning("shutdown notify failed: %s", e)
+
+    for _, task in active:
+        task.cancel()
+    await asyncio.gather(*(t for _, t in active), return_exceptions=True)
 
 
 # ---------- Утилиты ----------
@@ -440,7 +471,8 @@ async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str) ->
             await _generate_and_send_audit(bot, chat_id, session)
 
     except asyncio.CancelledError:
-        await bot.send_message(chat_id, "⏹ Отменено")
+        if not _shutting_down:
+            await bot.send_message(chat_id, "⏹ Отменено")
         raise
     except Exception as e:
         logger.exception("task failed")

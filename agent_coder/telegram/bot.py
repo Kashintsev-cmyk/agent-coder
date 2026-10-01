@@ -11,7 +11,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.types import BotCommand, ErrorEvent
 
 from agent_coder.config import config
-from agent_coder.telegram.handlers import router
+from agent_coder.telegram import handlers
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +68,7 @@ async def _run() -> None:
         default=DefaultBotProperties(),
     )
     dp = Dispatcher()
-    dp.include_router(router)
+    dp.include_router(handlers.router)
 
     # Глобальный обработчик ошибок — юзер увидит сообщение, а не тишину.
     @dp.errors()
@@ -106,6 +106,12 @@ async def _run() -> None:
     try:
         await dp.start_polling(bot)
     finally:
+        # По SIGTERM/SIGINT aiogram сам останавливает polling и мы попадаем
+        # сюда — успеваем уведомить и прервать активные задачи.
+        try:
+            await handlers.shutdown(bot)
+        except Exception as e:
+            logger.warning("shutdown failed: %s", e)
         await bot.session.close()
 
 
