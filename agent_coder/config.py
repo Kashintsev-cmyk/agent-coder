@@ -52,6 +52,8 @@ class Config:
     TELEGRAM_PROJECTS_DIRS: ClassVar[list[Path]] = [
         Path(p.strip()) for p in _telegram_dirs_raw.split(",") if p.strip()
     ]
+    # Таймаут ожидания подтверждения опасной команды, секунды
+    APPROVAL_TIMEOUT: float = float(os.getenv("APPROVAL_TIMEOUT", "900"))
     
     # Путь сессий
     SESSIONS_DIR: Path = BASE_DIR / "sessions"

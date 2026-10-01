@@ -668,7 +668,7 @@ class _TaskRunner:
                 return False
 
         try:
-            return await asyncio.wait_for(future, timeout=900)
+            return await asyncio.wait_for(future, timeout=config.APPROVAL_TIMEOUT)
         except asyncio.TimeoutError:
             if self.approval_msg_id is not None:
                 try:
