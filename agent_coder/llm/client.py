@@ -78,9 +78,23 @@ class LLMClient:
         if reasoning_effort and reasoning_effort not in ("none", ""):
             kwargs["reasoning_effort"] = reasoning_effort
 
+        logger.info(
+            "LLM → model=%s msgs=%d tools=%d reasoning=%s",
+            model, len(messages),
+            len(tools) if tools else 0,
+            reasoning_effort or "-",
+        )
+
         response = await self._with_retry(
             lambda: self.client.chat.completions.create(**kwargs),
             op_name=f"chat({model})",
+        )
+
+        logger.info(
+            "LLM ← in=%s out=%s cost=%s",
+            getattr(response.usage, "prompt_tokens", "?"),
+            getattr(response.usage, "completion_tokens", "?"),
+            getattr(response.usage, "cost", "?"),
         )
 
         choice = response.choices[0]

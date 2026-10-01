@@ -23,12 +23,24 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     if not full.is_file():
         return f"Не файл: {rel}"
 
+    offset = int(args.get("offset") or 0)
+    limit = args.get("limit")
+    has_slice = bool(offset) or bool(limit)
+
     size = full.stat().st_size
-    if size > MAX_BYTES:
+    # Если пользователь передал offset/limit — это ОК для больших файлов.
+    # Блокируем только «читать всё целиком» для слишком больших файлов.
+    if not has_slice and size > MAX_BYTES:
         return (
             f"Файл слишком большой ({size} байт). "
-            f"Прочитай частями через offset/limit или используй search."
+            f"Укажи offset и limit — например, offset=0 limit=100, "
+            f"или используй search."
         )
+
+    # Слишком большой limit — тоже отклоним, чтобы не читать 200k строк за раз
+    MAX_LINES = 2000
+    if limit is not None and int(limit) > MAX_LINES:
+        return f"limit слишком большой ({limit}). Максимум {MAX_LINES} строк за раз."
 
     try:
         text = full.read_text(encoding="utf-8", errors="replace")
@@ -36,12 +48,18 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         return f"Ошибка чтения: {e}"
 
     lines = text.splitlines()
-    offset = int(args.get("offset") or 0)
-    limit = args.get("limit")
-    if offset or limit:
-        chunk = lines[offset : offset + limit if limit else None]
-        numbered = "\n".join(f"{i + offset + 1:5d}│ {ln}" for i, ln in enumerate(chunk))
-        return f"{rel} (строки {offset + 1}-{offset + len(chunk)}):\n{numbered}"
+
+    if has_slice:
+        chunk = lines[offset : offset + (int(limit) if limit else None)]
+        if not chunk:
+            return f"{rel}: пусто (offset={offset}, limit={limit})"
+        numbered = "\n".join(
+            f"{i + offset + 1:5d}│ {ln}" for i, ln in enumerate(chunk)
+        )
+        return (
+            f"{rel} (строки {offset + 1}-{offset + len(chunk)} "
+            f"из {len(lines)}):\n{numbered}"
+        )
 
     numbered = "\n".join(f"{i + 1:5d}│ {ln}" for i, ln in enumerate(lines))
     return f"{rel} ({len(lines)} строк):\n{numbered}"

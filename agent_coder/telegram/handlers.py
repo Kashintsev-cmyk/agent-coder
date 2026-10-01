@@ -551,35 +551,44 @@ class _TaskRunner:
         await self.flush()
 
     async def flush(self) -> None:
-        text = _join_buffer(self.buffer)
-        if not text:
-            text = "⏺ Работаю..."
+        text = _join_buffer(self.buffer) if self.buffer else "⏺ Работаю..."
         if text == self.last_text:
             return
         self.last_text = text
+
+        parts = _split_for_telegram(text)
         try:
-            await self.bot.edit_message_text(
-                chat_id=self.chat_id,
-                message_id=self.message_id,
-                text=text,
-                parse_mode="HTML",
-            )
-        except TelegramBadRequest as e:
-            err = str(e).lower()
-            if "message is not modified" in err:
-                return
-            # Если HTML сломан — отправляем как plain text (fallback)
-            logger.warning("edit failed (html): %s", e)
-            try:
+            if len(parts) == 1:
                 await self.bot.edit_message_text(
                     chat_id=self.chat_id,
                     message_id=self.message_id,
-                    text=re.sub(r"<[^>]+>", "", text),
+                    text=parts[0],
+                    parse_mode="HTML",
+                )
+            else:
+                await self.bot.edit_message_text(
+                    chat_id=self.chat_id,
+                    message_id=self.message_id,
+                    text=parts[0] + "\n\n<i>(продолжение ниже)</i>",
+                    parse_mode="HTML",
+                )
+                for part in parts[1:]:
+                    await self.bot.send_message(
+                        self.chat_id, part, parse_mode="HTML",
+                    )
+        except TelegramBadRequest as e:
+            if "message is not modified" in str(e).lower():
+                return
+            logger.warning("flush failed (html): %s", e)
+            try:
+                plain = re.sub(r"<[^>]+>", "", text)
+                await self.bot.edit_message_text(
+                    chat_id=self.chat_id,
+                    message_id=self.message_id,
+                    text=plain[:4000],
                 )
             except Exception as e2:
-                logger.warning("edit failed (plain): %s", e2)
-        except Exception as e:
-            logger.warning("edit failed: %s", e)
+                logger.warning("flush failed (plain): %s", e2)
 
 
     async def _request_approval(self, tc) -> bool:
@@ -644,26 +653,33 @@ class _TaskRunner:
             _pending.pop(request_id, None)
 
 
-def _join_buffer(buffer: list[str], limit: int = 3900) -> str:
-    """Склеить буфер, обрезав по целым строкам (не рвать HTML-теги)."""
-    if not buffer:
-        return ""
-    # Быстрый путь — всё влезает
-    full = "\n".join(buffer)
-    if len(full) <= limit:
-        return full
+def _join_buffer(buffer: list[str]) -> str:
+    """Склеить буфер в один текст БЕЗ обрезки.
 
-    # Идём с конца, набираем целые строки
-    out: list[str] = []
-    total = 4  # "…\n" + запас
-    for line in reversed(buffer):
-        # +1 на \n между строками
-        if total + len(line) + 1 > limit:
-            break
-        out.append(line)
-        total += len(line) + 1
-    out.reverse()
-    return "…\n" + "\n".join(out)
+    Обрезка больше не нужна — длинный текст разбивается через
+    _split_for_telegram и отправляется несколькими сообщениями.
+    """
+    return "\n".join(buffer)
+
+
+def _split_for_telegram(text: str, limit: int = 3900) -> list[str]:
+    if len(text) <= limit:
+        return [text]
+    parts: list[str] = []
+    current: list[str] = []
+    current_len = 0
+    for i, line in enumerate(text.split("\n")):
+        line_len = len(line) + (1 if i > 0 else 0)
+        if current_len + line_len > limit and current:
+            parts.append("\n".join(current))
+            current = [line]
+            current_len = len(line)
+        else:
+            current.append(line)
+            current_len += line_len
+    if current:
+        parts.append("\n".join(current))
+    return parts
 
 
 def _html_escape(s: str) -> str:
