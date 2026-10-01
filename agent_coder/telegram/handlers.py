@@ -614,20 +614,21 @@ class _TaskRunner:
         Продолжения переиспользуются (edit) и удаляются при сокращении
         текста, чтобы не копить в чате устаревшие «хвосты».
         """
-        if len(parts) == 1:
+        main_text = parts[0]
+        if len(parts) > 1:
+            main_text += "\n\n<i>(продолжение ниже)</i>"
+        try:
             await self.bot.edit_message_text(
                 chat_id=self.chat_id,
                 message_id=self.message_id,
-                text=parts[0],
+                text=main_text,
                 parse_mode="HTML",
             )
-        else:
-            await self.bot.edit_message_text(
-                chat_id=self.chat_id,
-                message_id=self.message_id,
-                text=parts[0] + "\n\n<i>(продолжение ниже)</i>",
-                parse_mode="HTML",
-            )
+        except TelegramBadRequest as e:
+            # Основное сообщение могло не измениться (растут только
+            # продолжения) — это не повод пропускать их обновление.
+            if "message is not modified" not in str(e).lower():
+                raise
 
         wanted = parts[1:]
         for i, part in enumerate(wanted):
