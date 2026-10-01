@@ -512,6 +512,7 @@ class _TaskRunner:
         self.last_text: str = ""
         self.last_edit: float = 0.0
         self.approval_msg_id: int | None = None
+        self.extra_msg_ids: list[int] = []
 
     def events(self) -> LoopEvents:
         return LoopEvents(
@@ -558,37 +559,69 @@ class _TaskRunner:
 
         parts = _split_for_telegram(text)
         try:
-            if len(parts) == 1:
-                await self.bot.edit_message_text(
-                    chat_id=self.chat_id,
-                    message_id=self.message_id,
-                    text=parts[0],
-                    parse_mode="HTML",
-                )
-            else:
-                await self.bot.edit_message_text(
-                    chat_id=self.chat_id,
-                    message_id=self.message_id,
-                    text=parts[0] + "\n\n<i>(продолжение ниже)</i>",
-                    parse_mode="HTML",
-                )
-                for part in parts[1:]:
-                    await self.bot.send_message(
-                        self.chat_id, part, parse_mode="HTML",
-                    )
+            await self._render_parts(parts)
         except TelegramBadRequest as e:
             if "message is not modified" in str(e).lower():
                 return
             logger.warning("flush failed (html): %s", e)
             try:
-                plain = re.sub(r"<[^>]+>", "", text)
+                plain = re.sub(r"<[^>]+>", "", parts[0])
                 await self.bot.edit_message_text(
                     chat_id=self.chat_id,
                     message_id=self.message_id,
-                    text=plain[:4000],
+                    text=plain,
                 )
             except Exception as e2:
                 logger.warning("flush failed (plain): %s", e2)
+        except Exception as e:
+            logger.warning("flush failed: %s", e)
+
+    async def _render_parts(self, parts: list[str]) -> None:
+        """Вывести части в основное сообщение + управляемые продолжения.
+
+        Продолжения переиспользуются (edit) и удаляются при сокращении
+        текста, чтобы не копить в чате устаревшие «хвосты».
+        """
+        if len(parts) == 1:
+            await self.bot.edit_message_text(
+                chat_id=self.chat_id,
+                message_id=self.message_id,
+                text=parts[0],
+                parse_mode="HTML",
+            )
+        else:
+            await self.bot.edit_message_text(
+                chat_id=self.chat_id,
+                message_id=self.message_id,
+                text=parts[0] + "\n\n<i>(продолжение ниже)</i>",
+                parse_mode="HTML",
+            )
+
+        wanted = parts[1:]
+        for i, part in enumerate(wanted):
+            if i < len(self.extra_msg_ids):
+                try:
+                    await self.bot.edit_message_text(
+                        chat_id=self.chat_id,
+                        message_id=self.extra_msg_ids[i],
+                        text=part,
+                        parse_mode="HTML",
+                    )
+                except TelegramBadRequest as e:
+                    if "message is not modified" not in str(e).lower():
+                        raise
+            else:
+                msg = await self.bot.send_message(
+                    self.chat_id, part, parse_mode="HTML",
+                )
+                self.extra_msg_ids.append(msg.message_id)
+
+        while len(self.extra_msg_ids) > len(wanted):
+            mid = self.extra_msg_ids.pop()
+            try:
+                await self.bot.delete_message(self.chat_id, mid)
+            except Exception as e:
+                logger.warning("delete continuation failed: %s", e)
 
 
     async def _request_approval(self, tc) -> bool:
@@ -663,22 +696,38 @@ def _join_buffer(buffer: list[str]) -> str:
 
 
 def _split_for_telegram(text: str, limit: int = 3900) -> list[str]:
+    """Разбить текст на части ≤ limit символов по границам строк.
+
+    Строку длиннее limit режем по пробелу, чтобы не порвать HTML-теги.
+    """
     if len(text) <= limit:
         return [text]
+
     parts: list[str] = []
     current: list[str] = []
     current_len = 0
-    for i, line in enumerate(text.split("\n")):
-        line_len = len(line) + (1 if i > 0 else 0)
-        if current_len + line_len > limit and current:
+
+    def _flush() -> None:
+        nonlocal current, current_len
+        if current:
             parts.append("\n".join(current))
-            current = [line]
-            current_len = len(line)
-        else:
-            current.append(line)
-            current_len += line_len
-    if current:
-        parts.append("\n".join(current))
+            current = []
+            current_len = 0
+
+    for line in text.split("\n"):
+        while len(line) > limit:
+            _flush()
+            cut = line.rfind(" ", 0, limit)
+            cut = cut if cut > 0 else limit
+            parts.append(line[:cut])
+            line = line[cut:].lstrip()
+        added = len(line) + (1 if current else 0)
+        if current and current_len + added > limit:
+            _flush()
+            added = len(line)
+        current.append(line)
+        current_len += added
+    _flush()
     return parts
 
 

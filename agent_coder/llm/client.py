@@ -62,8 +62,9 @@ class LLMClient:
     ) -> ChatResponse:
         """Один вызов LLM с retry.
 
-        `reasoning_effort` — "off" | "low" | "medium" | "high" | None.
-        "off" или None — параметр не передаётся (модель работает без reasoning).
+        `reasoning_effort` — none | minimal | low | medium | high | xhigh |
+        max | ultra | None. При "none" или None параметр не передаётся
+        (модель работает без reasoning).
         """
         kwargs: dict[str, Any] = {"model": model, "messages": messages}
         if tools:
@@ -90,11 +91,10 @@ class LLMClient:
             op_name=f"chat({model})",
         )
 
+        usage = _extract_usage(response)
         logger.info(
-            "LLM ← in=%s out=%s cost=%s",
-            getattr(response.usage, "prompt_tokens", "?"),
-            getattr(response.usage, "completion_tokens", "?"),
-            getattr(response.usage, "cost", "?"),
+            "LLM ← in=%d out=%d cost=%.4f",
+            usage.input_tokens, usage.output_tokens, usage.cost,
         )
 
         choice = response.choices[0]
@@ -116,7 +116,6 @@ class LLMClient:
             tool_calls=tool_calls,
             reasoning=reasoning,
         )
-        usage = _extract_usage(response)
         return ChatResponse(message=assistant, usage=usage, raw=response)
 
     async def _with_retry(self, factory, op_name: str):
