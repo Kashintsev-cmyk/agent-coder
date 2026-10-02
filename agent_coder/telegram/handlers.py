@@ -112,6 +112,9 @@ async def cmd_start(message: Message) -> None:
     text = (
         "👋 <b>agent-coder</b>\n\n"
         "AI-агент для работы с кодом на сервере.\n\n"
+        "<b>Задача:</b>\n"
+        "  Отправь текст или приложи файл (.txt/.md) — для длинных промтов.\n"
+        "\n"
         "<b>Основное:</b>\n"
         "  /projects — выбрать проект\n"
         "  /sessions — список сессий\n"
@@ -291,12 +294,89 @@ async def cmd_cancel(message: Message) -> None:
 
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_task(message: Message, bot: Bot) -> None:
+    await _start_task(bot, message, message.text or "")
+
+
+# Лимит размера файла-промта (байт). Telegram Bot API и сам отдаёт файлы
+# до 20 МБ, но промт такого размера бессмыслен — ограничиваемся 1 МБ.
+_PROMPT_FILE_MAX_BYTES = 1024 * 1024
+
+_PROMPT_FILE_EXT = {".txt", ".md", ".markdown", ".rst", ".csv", ".json",
+                    ".yaml", ".yml", ".py", ".js", ".ts", ".sh"}
+
+
+@router.message(F.document)
+async def handle_task_document(message: Message, bot: Bot) -> None:
+    """Приём длинного промта файлом (.txt/.md и т.п.).
+
+    Telegram ограничивает текст сообщения 4096 символами, поэтому длинные
+    промты удобнее отправлять документом. Подпись к файлу (caption), если
+    есть, добавляется перед содержимым как инструкция.
+    """
+    doc = message.document
+    if doc is None:
+        return
+
+    name = doc.file_name or "prompt.txt"
+    ext = Path(name).suffix.lower()
+    if ext not in _PROMPT_FILE_EXT and ext != "":
+        await message.answer(
+            f"⚠️ Неизвестный тип файла: <code>{_html_escape(name)}</code>\n"
+            f"Поддерживаются текстовые форматы: "
+            f"<code>{', '.join(sorted(_PROMPT_FILE_EXT))}</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    if doc.file_size and doc.file_size > _PROMPT_FILE_MAX_BYTES:
+        await message.answer(
+            f"⚠️ Файл слишком большой: {doc.file_size // 1024} КБ "
+            f"(макс. {_PROMPT_FILE_MAX_BYTES // 1024} КБ).",
+        )
+        return
+
+    if not (doc.mime_type or "").startswith("text/") and ext == "":
+        await message.answer("⚠️ Пришли промт текстовым файлом (.txt/.md).")
+        return
+
+    try:
+        buf = await bot.download(doc)
+        raw = buf.read() if buf is not None else b""
+        content = raw.decode("utf-8", errors="replace")
+    except Exception as e:
+        logger.exception("prompt file download failed")
+        await message.answer(
+            f"❌ Не удалось скачать файл: <code>{_html_escape(str(e))}</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    content = content.strip()
+    if not content:
+        await message.answer("⚠️ Файл пустой.")
+        return
+
+    caption = (message.caption or "").strip()
+    task_text = f"{caption}\n\n{content}" if caption else content
+
+    await _start_task(bot, message, task_text,
+                      source_note=f"файл <code>{_html_escape(name)}</code>")
+
+
+async def _start_task(
+    bot: Bot, message: Message, task_text: str, source_note: str = "",
+) -> None:
+    """Общая точка запуска задачи (из текста или из файла-промта)."""
     chat_id = message.chat.id
     session = _get_active_session(chat_id)
     if session is None:
         await message.answer(
             "Сначала выбери проект: /projects",
         )
+        return
+
+    if not task_text.strip():
+        await message.answer("⚠️ Пустой запрос.")
         return
 
     running = _running.get(chat_id)
@@ -306,7 +386,13 @@ async def handle_task(message: Message, bot: Bot) -> None:
         )
         return
 
-    task = asyncio.create_task(_run_task(bot, chat_id, session, message.text))
+    if source_note:
+        await message.answer(
+            f"📄 Принят {source_note} · {len(task_text)} символов",
+            parse_mode="HTML",
+        )
+
+    task = asyncio.create_task(_run_task(bot, chat_id, session, task_text))
     _running[chat_id] = task
 
 
