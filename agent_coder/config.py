@@ -84,6 +84,9 @@ class Config:
     # Верхняя граница input-токенов на один запрос (жёсткий потолок).
     # Итоговый порог = min(model.context * 0.6, MAX_HISTORY_TOKENS).
     MAX_HISTORY_TOKENS: int = _env_int("MAX_HISTORY_TOKENS", "128000")
+
+    # Дефолтная температура генерации (0.0–2.0). Для кода — 0.2.
+    TEMPERATURE: float = _env_float("TEMPERATURE", "0.2")
     # Модель для суммаризации старых сообщений. Должна быть в CURATED_MODEL_IDS
     # (или в _FALLBACK_CATALOG). Дешёвая — для вспомогательной задачи.
     SUMMARY_MODEL: str = os.getenv("SUMMARY_MODEL", "z-ai/glm-5.3-flash")
@@ -185,6 +188,11 @@ class Config:
             )
         if not cls.SUMMARY_MODEL:
             errors.append("SUMMARY_MODEL пуст")
+
+        if not (0.0 <= cls.TEMPERATURE <= 2.0):
+            errors.append(
+                f"TEMPERATURE={cls.TEMPERATURE} должен быть в диапазоне 0.0–2.0"
+            )
 
         if errors:
             raise ValueError("\n".join(f"❌ {e}" for e in errors))

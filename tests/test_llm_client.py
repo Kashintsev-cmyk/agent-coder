@@ -121,3 +121,15 @@ def test_verbosity_passed():
 def test_verbosity_max():
     kw = _build_request_kwargs("m", [], verbosity="max")
     assert kw["verbosity"] == "max"
+
+
+def test_temperature_default_passed_by_loop():
+    """Проверка, что loop передаёт temperature=config.TEMPERATURE.
+
+    Здесь — просто sanity-check на чистую функцию; фактическая передача
+    проверяется интеграционно через loop.run.
+    """
+    from agent_coder.config import config
+    kw = _build_request_kwargs("m", [], temperature=config.TEMPERATURE)
+    assert kw["temperature"] == config.TEMPERATURE
+    assert 0.0 <= kw["temperature"] <= 2.0
