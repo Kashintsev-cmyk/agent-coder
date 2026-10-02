@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 
 from agent_coder.config import config
 
@@ -34,6 +35,8 @@ def _load() -> dict:
 
 
 def _save(data: dict) -> None:
-    STATE_PATH.write_text(
+    tmp = STATE_PATH.with_suffix(STATE_PATH.suffix + ".tmp")
+    tmp.write_text(
         json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
     )
+    os.replace(tmp, STATE_PATH)

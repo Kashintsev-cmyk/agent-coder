@@ -92,7 +92,7 @@ class TestApprovalAlwaysNewMessage:
         # Подтверждение не редактирует основное сообщение вывода
         assert all(e["reply_markup"] is None for e in bot.edited) or not bot.edited
 
-    async def test_two_approvals_send_two_messages(self):
+    async def test_two_approvals_keep_single_message(self):
         runner, bot = _make_runner()
 
         for expected in (True, False):
@@ -101,8 +101,10 @@ class TestApprovalAlwaysNewMessage:
             handlers._pending[rid].set_result(expected)
             assert await task is expected
 
-        # Оба раза — новое сообщение, старое не переиспользуется
+        # Оба раза — новое сообщение, но предыдущее подтверждение удаляется,
+        # поэтому в чате одновременно живёт ровно одна запись с кнопками.
         assert len(bot.sent) == 2
+        assert bot.deleted == [bot.sent[0]["message_id"]]
 
 
 class TestApprovalFlushesBeforeSend:

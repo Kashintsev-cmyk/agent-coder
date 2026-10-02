@@ -745,7 +745,7 @@ class _TaskRunner:
 
     async def _request_approval(self, tc) -> bool:
         request_id = uuid.uuid4().hex[:8]
-        future: asyncio.Future[bool] = asyncio.get_event_loop().create_future()
+        future: asyncio.Future[bool] = asyncio.get_running_loop().create_future()
         _pending[request_id] = future
 
         args_text = json.dumps(tc.arguments, ensure_ascii=False, indent=2)
@@ -762,9 +762,17 @@ class _TaskRunner:
         # самым нижним (а не выше свежих «продолжений» лога).
         await self.flush()
 
-        # Всегда отправляем НОВОЕ сообщение, а не редактируем предыдущее:
-        # так кнопки видны под актуальным (последним) сообщением. Старое
-        # подтверждение (уже отвеченное) остаётся в истории чата.
+        # Отправляем НОВОЕ сообщение, а не редактируем предыдущее: так кнопки
+        # видны под актуальным (последним) выводом. Но чтобы в чате не копилась
+        # стопка подтверждений, сначала удаляем предыдущее сообщение-запрос.
+        # Итог: одновременно существует ровно одна запись с кнопками.
+        if self.approval_msg_id is not None:
+            try:
+                await self.bot.delete_message(self.chat_id, self.approval_msg_id)
+            except Exception as e:
+                logger.warning("old approval delete failed: %s", e)
+            self.approval_msg_id = None
+
         try:
             msg = await self.bot.send_message(
                 self.chat_id,
