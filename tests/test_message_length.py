@@ -55,7 +55,7 @@ async def _dispatch_text(monkeypatch, text: str) -> str:
     """Прогнать текст через handle_task и вернуть task_text, дошедший до loop."""
     captured: dict[str, str] = {}
 
-    async def fake_run_task(bot, chat_id, session, task_text):
+    async def fake_run_task(bot, chat_id, session, task_text, images=None):
         captured["task_text"] = task_text
 
     monkeypatch.setattr(handlers, "_run_task", fake_run_task)

@@ -1,11 +1,14 @@
 """Агентный цикл: LLM → tool_call → выполнить → результат → LLM."""
 from __future__ import annotations
 
+import base64
 import inspect
 import json
 import logging
+import mimetypes
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from agent_coder.agent import compression
@@ -60,9 +63,10 @@ class AgentLoop:
         self.events = events
         self.yolo = yolo
 
-    async def run(self, task: str) -> None:
+    async def run(self, task: str, images: list | None = None) -> None:
         self._refresh_system_prompt()
-        self.session.add_message({"role": "user", "content": task})
+        content = _build_user_content(task, images)
+        self.session.add_message({"role": "user", "content": content})
         self.session.save()
 
         max_iter = {
@@ -203,6 +207,31 @@ class AgentLoop:
             self.session.messages.insert(0, {"role": "system", "content": prompt})
         else:
             self.session.messages[0] = {"role": "system", "content": prompt}
+
+
+def _build_user_content(task: str, images: list | None) -> str | list[dict[str, Any]]:
+    """Собрать content для user-сообщения.
+
+    Если images нет — просто текст. Если есть — multimodal блоки:
+    [{"type":"text","text":task}, {"type":"image_url","image_url":{"url":"data:..."}}]
+    """
+    if not images:
+        return task
+    blocks: list[dict[str, Any]] = [{"type": "text", "text": task}]
+    for path in images:
+        try:
+            raw = Path(path).read_bytes()
+        except OSError as e:
+            logger.warning("Не удалось прочитать изображение %s: %s", path, e)
+            continue
+        mime, _ = mimetypes.guess_type(str(path))
+        mime = mime or "image/jpeg"
+        b64 = base64.b64encode(raw).decode("ascii")
+        blocks.append({
+            "type": "image_url",
+            "image_url": {"url": f"data:{mime};base64,{b64}"},
+        })
+    return blocks
 
 
 def _log_history_threshold(session) -> None:

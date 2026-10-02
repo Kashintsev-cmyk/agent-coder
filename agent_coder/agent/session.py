@@ -83,6 +83,18 @@ class Session:
             web_search=web_search,
         )
 
+    def save_media(self, data: bytes, ext: str = "bin") -> Path:
+        """Сохранить бинарные данные в media_dir с уникальным именем.
+
+        Возвращает путь к файлу. Директория создаётся лениво.
+        """
+        import uuid as _uuid
+        self.media_dir.mkdir(parents=True, exist_ok=True)
+        clean_ext = ext.lstrip(".").lower() or "bin"
+        path = self.media_dir / f"{_uuid.uuid4().hex}.{clean_ext}"
+        path.write_bytes(data)
+        return path
+
     @property
     def media_dir(self) -> Path:
         """Директория для медиа-вложений этой сессии.

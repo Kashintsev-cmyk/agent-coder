@@ -318,6 +318,68 @@ async def cmd_cancel(message: Message) -> None:
 
 # ---------- Основной обработчик задачи ----------
 
+_PHOTO_MAX_BYTES = 5 * 1024 * 1024
+
+
+@router.message(F.photo)
+async def handle_task_photo(message: Message, bot: Bot) -> None:
+    """Приём фото: сохраняем, прикладываем к задаче как image_url."""
+    session = _get_active_session(message.chat.id)
+    if session is None:
+        await message.answer("Сначала выбери проект: /projects")
+        return
+
+    # Проверка: модель должна поддерживать vision
+    from agent_coder.model_catalog import catalog
+    m = catalog.get(session.model)
+    if not (m and m.vision):
+        name = m.name if m else session.model
+        await message.answer(
+            f"⚠️ Модель <b>{_html_escape(name)}</b> не принимает изображения.\n"
+            f"Смени модель на vision-способную (бейдж 👁).",
+            parse_mode="HTML",
+        )
+        return
+
+    # Берём максимальное разрешение — последний элемент в message.photo
+    photo = message.photo[-1] if message.photo else None
+    if photo is None:
+        await message.answer("⚠️ Не удалось прочитать фото.")
+        return
+
+    if photo.file_size and photo.file_size > _PHOTO_MAX_BYTES:
+        await message.answer(
+            f"⚠️ Фото слишком большое: {photo.file_size // 1024} КБ "
+            f"(макс. {_PHOTO_MAX_BYTES // 1024} КБ)."
+        )
+        return
+
+    try:
+        buf = await bot.download(photo)
+        data = buf.read() if buf is not None else b""
+    except Exception as e:
+        logger.exception("photo download failed")
+        await message.answer(
+            f"❌ Не удалось скачать фото: <code>{_html_escape(str(e))}</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    if not data:
+        await message.answer("⚠️ Пустое фото.")
+        return
+
+    path = session.save_media(data, ext="jpg")
+    caption = (message.caption or "").strip()
+    task_text = caption or "Посмотри на изображение и учти его в задаче."
+
+    await _start_task(
+        bot, message, task_text,
+        source_note=f"фото <code>{path.name}</code>",
+        images=[path],
+    )
+
+
 @router.message(F.text & ~F.text.startswith("/"))
 async def handle_task(message: Message, bot: Bot) -> None:
     await _start_task(bot, message, message.text or "")
@@ -391,6 +453,7 @@ async def handle_task_document(message: Message, bot: Bot) -> None:
 
 async def _start_task(
     bot: Bot, message: Message, task_text: str, source_note: str = "",
+    images: list[Path] | None = None,
 ) -> None:
     """Общая точка запуска задачи (из текста или из файла-промта)."""
     chat_id = message.chat.id
@@ -401,7 +464,7 @@ async def _start_task(
         )
         return
 
-    if not task_text.strip():
+    if not task_text.strip() and not images:
         await message.answer("⚠️ Пустой запрос.")
         return
 
@@ -418,7 +481,7 @@ async def _start_task(
             parse_mode="HTML",
         )
 
-    task = asyncio.create_task(_run_task(bot, chat_id, session, task_text))
+    task = asyncio.create_task(_run_task(bot, chat_id, session, task_text, images=images))
     _running[chat_id] = task
 
 
@@ -578,7 +641,8 @@ async def cb_deny(query: CallbackQuery) -> None:
 
 # ---------- Запуск задачи ----------
 
-async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str) -> None:
+async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str,
+                    images: list[Path] | None = None) -> None:
     status_msg = await bot.send_message(chat_id, "⏺ Начинаю...")
     runner = _TaskRunner(bot, chat_id, status_msg.message_id)
 
@@ -591,7 +655,7 @@ async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str) ->
             session=session,
             events=runner.events(),
         )
-        await loop.run(task_text)
+        await loop.run(task_text, images=images)
         session.save()
         await runner.flush()
 
