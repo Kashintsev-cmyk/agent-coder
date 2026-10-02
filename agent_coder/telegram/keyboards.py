@@ -78,6 +78,27 @@ def reasoning_keyboard(current: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def verbosity_keyboard(current: str) -> InlineKeyboardMarkup:
+    """Уровни verbosity (длина ответа)."""
+    from agent_coder.models import VERBOSITY_LEVELS
+    labels = {
+        "low":    "🟢 low — коротко",
+        "medium": "🟡 medium — баланс",
+        "high":   "🟠 high — подробно",
+        "xhigh":  "🔴 xhigh — очень подробно",
+        "max":    "🔥 max — максимум",
+    }
+    rows = []
+    for level in VERBOSITY_LEVELS:
+        mark = "✅ " if level == current else "▫️ "
+        rows.append([InlineKeyboardButton(
+            text=mark + labels.get(level, level),
+            callback_data=f"setverbosity:{level}",
+        )])
+    rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="session_back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
 TIER_CYCLE: list[str] = ["default", "flex", "priority"]
 
 
@@ -112,25 +133,34 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=model_text, callback_data="menu_model")],
     ]
 
+    # Компактный ряд быстрых настроек: reasoning | web | tier.
+    # Адаптивно — показываем только применимые к модели кнопки.
+    quick: list[InlineKeyboardButton] = []
     if m and m.reasoning:
-        rows.append([InlineKeyboardButton(
-            text=f"💭 Reasoning: {session.reasoning_effort}",
+        quick.append(InlineKeyboardButton(
+            text=f"💭 {session.reasoning_effort}",
             callback_data="menu_reasoning",
-        )])
-
+        ))
     if m and m.web_search_builtin:
         ws = "вкл" if session.web_search else "выкл"
-        rows.append([InlineKeyboardButton(
-            text=f"🌐 Web search: {ws}",
+        quick.append(InlineKeyboardButton(
+            text=f"🌐 {ws}",
             callback_data="web_toggle",
-        )])
-
+        ))
     from agent_coder.config import config as _cfg
     cur_tier = session.service_tier or _cfg.SERVICE_TIER
-    rows.append([InlineKeyboardButton(
-        text=tier_label(cur_tier),
+    quick.append(InlineKeyboardButton(
+        text=f"⚡ {cur_tier}",
         callback_data="tier_toggle",
-    )])
+    ))
+    rows.append(quick)
+
+    if m and m.verbosity:
+        v = session.verbosity or "medium"
+        rows.append([InlineKeyboardButton(
+            text=f"📏 Verbosity: {v}",
+            callback_data="menu_verbosity",
+        )])
 
     sid = session.id
     rows.append([
