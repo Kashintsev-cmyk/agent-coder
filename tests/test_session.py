@@ -203,3 +203,29 @@ class TestHistoryStats:
         assert s2.last_input_tokens == 0
         assert s2.summary_count == 0
 
+
+
+class TestDeleteMedia:
+    def test_delete_removes_media_dir(self, tmp_path, monkeypatch):
+        from agent_coder.config import config
+        monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
+        s = _mk_session()
+        s.save()
+        # имитируем два медиа-файла
+        p1 = s.save_media(b"a", ext="jpg")
+        p2 = s.save_media(b"b", ext="png")
+        assert p1.exists() and p2.exists()
+        media_dir = p1.parent
+
+        removed = s.delete()
+        assert removed >= 3  # session json + 2 медиа
+        assert not media_dir.exists()
+
+    def test_delete_no_media_ok(self, tmp_path, monkeypatch):
+        from agent_coder.config import config
+        monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
+        s = _mk_session()
+        s.save()
+        # медиа нет — не падаем
+        removed = s.delete()
+        assert removed >= 1

@@ -126,15 +126,29 @@ class LLMClient:
             reasoning_effort or "-",
         )
 
-        response = await self._with_retry(
-            lambda: self.client.chat.completions.create(**kwargs),
-            op_name=f"chat({model})",
-        )
+        try:
+            response = await self._with_retry(
+                lambda: self.client.chat.completions.create(**kwargs),
+                op_name=f"chat({model})",
+            )
+        except Exception:
+            # flex строго возвращает ошибку, если нет мощностей. Пробуем
+            # один раз с default — пользователь не увидит провала.
+            if service_tier == "flex":
+                logger.warning("flex упал — повторяю запрос с service_tier=default")
+                kwargs.pop("service_tier", None)
+                response = await self._with_retry(
+                    lambda: self.client.chat.completions.create(**kwargs),
+                    op_name=f"chat({model})[flex→default]",
+                )
+            else:
+                raise
 
         usage = _extract_usage(response)
         logger.info(
-            "LLM ← in=%d out=%d cost=%.4f",
-            usage.input_tokens, usage.output_tokens, usage.cost,
+            "LLM ← in=%d out=%d cache=%d cost=%.4f",
+            usage.input_tokens, usage.output_tokens,
+            usage.cache_read_tokens, usage.cost,
         )
 
         choice = response.choices[0]

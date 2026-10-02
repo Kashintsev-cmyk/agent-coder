@@ -2,6 +2,8 @@
 from __future__ import annotations
 
 import json
+import logging
+import shutil
 import time
 import uuid
 from dataclasses import asdict, dataclass, field
@@ -12,6 +14,8 @@ from agent_coder.agent.prompts import Mode
 from agent_coder.config import config
 from agent_coder.llm.types import Usage
 from agent_coder.models import DEFAULT_REASONING
+
+logger = logging.getLogger(__name__)
 
 
 def content_to_text(content: Any) -> str:
@@ -269,6 +273,18 @@ class Session:
                         removed += 1
                     except Exception:
                         pass
+
+        # Медиа сессии (sessions/media/<id>/) — удаляем рекурсивно
+        media_root = config.SESSIONS_DIR / "media" / self.id
+        if media_root.exists():
+            try:
+                for f in media_root.rglob("*"):
+                    if f.is_file():
+                        removed += 1
+                shutil.rmtree(media_root)
+            except Exception as e:
+                logger.warning("media cleanup failed for %s: %s", self.id, e)
+
         return removed
 
     def rename(self, new_title: str) -> None:
