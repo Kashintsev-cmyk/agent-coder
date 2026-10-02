@@ -80,6 +80,14 @@ class Config:
     WEB_SEARCH_ENGINE: str = os.getenv("WEB_SEARCH_ENGINE", "native").strip().lower()
     WEB_SEARCH_MAX_RESULTS: int = _env_int("WEB_SEARCH_MAX_RESULTS", "5")
 
+    # Сжатие истории сессии
+    # Верхняя граница input-токенов на один запрос (жёсткий потолок).
+    # Итоговый порог = min(model.context * 0.6, MAX_HISTORY_TOKENS).
+    MAX_HISTORY_TOKENS: int = _env_int("MAX_HISTORY_TOKENS", "128000")
+    # Модель для суммаризации старых сообщений. Должна быть в CURATED_MODEL_IDS
+    # (или в _FALLBACK_CATALOG). Дешёвая — для вспомогательной задачи.
+    SUMMARY_MODEL: str = os.getenv("SUMMARY_MODEL", "z-ai/glm-5.3-flash")
+
     # Service tier (приоритет обработки у провайдера)
     # default — стандарт; flex — ~−50% цены, медленнее; priority — быстрее
     SERVICE_TIER: str = os.getenv("SERVICE_TIER", "default").strip().lower()
@@ -170,6 +178,13 @@ class Config:
                 f"SERVICE_TIER={cls.SERVICE_TIER!r} должен быть "
                 f"\"default\", \"flex\" или \"priority\""
             )
+
+        if cls.MAX_HISTORY_TOKENS < 1000:
+            errors.append(
+                f"MAX_HISTORY_TOKENS={cls.MAX_HISTORY_TOKENS} должен быть >= 1000"
+            )
+        if not cls.SUMMARY_MODEL:
+            errors.append("SUMMARY_MODEL пуст")
 
         if errors:
             raise ValueError("\n".join(f"❌ {e}" for e in errors))

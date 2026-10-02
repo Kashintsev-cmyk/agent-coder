@@ -34,6 +34,9 @@ class Session:
     web_search: bool = False
     service_tier: str = ""  # "" = использовать config.SERVICE_TIER
     verbosity: str = ""  # "" = не передавать параметр
+    # Статистика сжатия истории (B5.1: только собираем)
+    last_input_tokens: int = 0  # usage.input_tokens последнего запроса
+    summary_count: int = 0      # сколько раз сжимали историю
     messages: list[dict[str, Any]] = field(default_factory=list)
     total_usage: Usage = field(default_factory=Usage)
     request_count: int = 0
@@ -156,8 +159,10 @@ class Session:
             data["reasoning_effort"] = DEFAULT_REASONING
         if "web_search" not in data:
             data["web_search"] = False
-        if "web_search" not in data:
-            data["web_search"] = False
+        if "last_input_tokens" not in data:
+            data["last_input_tokens"] = 0
+        if "summary_count" not in data:
+            data["summary_count"] = 0
         return cls(**data)
 
     def save(self) -> Path:

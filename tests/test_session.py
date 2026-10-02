@@ -180,3 +180,26 @@ class TestWebSearch:
         s2 = Session.from_dict(d)
         assert s2.web_search is False
 
+class TestHistoryStats:
+    def test_defaults(self):
+        s = _mk_session()
+        assert s.last_input_tokens == 0
+        assert s.summary_count == 0
+
+    def test_roundtrip(self):
+        s = _mk_session()
+        s.last_input_tokens = 12345
+        s.summary_count = 2
+        s2 = Session.from_dict(s.to_dict())
+        assert s2.last_input_tokens == 12345
+        assert s2.summary_count == 2
+
+    def test_backward_compat(self):
+        s = _mk_session()
+        d = s.to_dict()
+        d.pop("last_input_tokens", None)
+        d.pop("summary_count", None)
+        s2 = Session.from_dict(d)
+        assert s2.last_input_tokens == 0
+        assert s2.summary_count == 0
+
