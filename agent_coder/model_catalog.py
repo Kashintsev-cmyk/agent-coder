@@ -39,7 +39,9 @@ from agent_coder.models import (
 
 logger = logging.getLogger(__name__)
 
-_CACHE_VERSION = 1
+# Версию бампаем при несовместимом изменении полей ModelInfo,
+# чтобы старый кэш не подсовывал дефолты вместо новых полей.
+_CACHE_VERSION = 2
 _CACHE_FILENAME = "models.json"
 
 
@@ -216,6 +218,15 @@ class ModelCatalog:
             logger.warning("Кэш каталога %s имеет неожиданный формат", path)
             return False
 
+        version = payload.get("_version")
+        if version != _CACHE_VERSION:
+            logger.info(
+                "Кэш каталога %s имеет версию %r, ожидается %r — игнорирую "
+                "(подтянем из API или fallback)",
+                path, version, _CACHE_VERSION,
+            )
+            return False
+
         loaded_at = payload.get("_loaded_at")
         if not isinstance(loaded_at, (int, float)):
             logger.warning("В кэше каталога %s нет валидного _loaded_at", path)
@@ -383,6 +394,7 @@ class ModelCatalog:
         tools = "tools" in params
         reasoning = "reasoning" in params or "include_reasoning" in params
         reasoning_effort = "reasoning_effort" in params
+        verbosity = "verbosity" in params
         web_search_builtin = (
             "web_search" in pricing or "web_search_options" in params
         )
@@ -420,6 +432,7 @@ class ModelCatalog:
             vision=vision,
             tools=tools,
             reasoning_effort=reasoning_effort,
+            verbosity=verbosity,
             web_search_builtin=web_search_builtin,
             input_price=input_price,
             output_price=output_price,

@@ -8,7 +8,7 @@ import httpx
 import pytest
 
 from agent_coder.config import config
-from agent_coder.model_catalog import ModelCatalog
+from agent_coder.model_catalog import _CACHE_VERSION, ModelCatalog
 from agent_coder.models import _FALLBACK_CATALOG
 
 # Id, которых гарантированно нет ни в CURATED_MODEL_IDS, ни в fallback.
@@ -298,7 +298,7 @@ async def test_refresh_writes_cache(fake_api_response, isolated_cache_dir):
     cache_file = isolated_cache_dir / "models.json"
     assert cache_file.exists()
     payload = json.loads(cache_file.read_text(encoding="utf-8"))
-    assert payload["_version"] == 1
+    assert payload["_version"] == _CACHE_VERSION
     assert payload["_source"] == "api"
     assert isinstance(payload["_loaded_at"], float)
     assert "models" in payload
@@ -361,7 +361,7 @@ def test_load_from_cache_corrupt_json(isolated_cache_dir):
 def test_load_from_cache_unknown_fields_ignored(isolated_cache_dir):
     isolated_cache_dir.mkdir(parents=True, exist_ok=True)
     payload = {
-        "_version": 1,
+        "_version": _CACHE_VERSION,
         "_loaded_at": time.time(),
         "_source": "api",
         "models": {
@@ -402,3 +402,34 @@ def test_default_is_never_none():
 def test_all_order_matches_config(curated_ids):
     c = _new_catalog()
     assert [m.id for m in c.all()] == curated_ids
+
+def test_cache_version_mismatch_ignored(tmp_path):
+    """Кэш с другой _version игнорируется — берётся fallback/placeholder."""
+    from agent_coder.model_catalog import _CACHE_FILENAME, ModelCatalog
+
+    cache_dir = tmp_path / "cache"
+    cache_dir.mkdir()
+
+    # Пишем «старый» кэш с версией 1 (не текущей)
+    payload = {
+        "_version": 1,
+        "_loaded_at": 9999999999.0,  # в будущем — TTL не помешает
+        "_source": "api",
+        "models": {
+            "dummy/x": {
+                "id": "dummy/x", "name": "X", "context": 1,
+                "reasoning": False, "vision": False, "tools": True,
+                "reasoning_effort": False, "web_search_builtin": False,
+                "input_price": 0.0, "output_price": 0.0, "tag": "",
+            },
+        },
+    }
+    (cache_dir / _CACHE_FILENAME).write_text(
+        json.dumps(payload), encoding="utf-8",
+    )
+
+    c = ModelCatalog()
+    c.init(cache_dir=cache_dir, cache_ttl_hours=24)
+    assert c.load_from_cache() is False
+    assert c.source == "fallback"  # не "cache"
+
