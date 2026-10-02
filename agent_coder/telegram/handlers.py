@@ -758,33 +758,25 @@ class _TaskRunner:
             f"<pre>{_html_escape(args_text)}</pre>"
         )
 
-        # Переиспользуем то же сообщение, если оно уже есть
-        if self.approval_msg_id is not None:
-            try:
-                await self.bot.edit_message_text(
-                    chat_id=self.chat_id,
-                    message_id=self.approval_msg_id,
-                    text=text,
-                    reply_markup=keyboards.approval_keyboard(request_id),
-                    parse_mode="HTML",
-                )
-            except Exception as e:
-                logger.warning("approval edit failed, will send new: %s", e)
-                self.approval_msg_id = None
+        # Сбрасываем накопленный вывод, чтобы сообщение с кнопками оказалось
+        # самым нижним (а не выше свежих «продолжений» лога).
+        await self.flush()
 
-        if self.approval_msg_id is None:
-            try:
-                msg = await self.bot.send_message(
-                    self.chat_id,
-                    text,
-                    reply_markup=keyboards.approval_keyboard(request_id),
-                    parse_mode="HTML",
-                )
-                self.approval_msg_id = msg.message_id
-            except Exception as e:
-                logger.error("approval send failed: %s", e)
-                _pending.pop(request_id, None)
-                return False
+        # Всегда отправляем НОВОЕ сообщение, а не редактируем предыдущее:
+        # так кнопки видны под актуальным (последним) сообщением. Старое
+        # подтверждение (уже отвеченное) остаётся в истории чата.
+        try:
+            msg = await self.bot.send_message(
+                self.chat_id,
+                text,
+                reply_markup=keyboards.approval_keyboard(request_id),
+                parse_mode="HTML",
+            )
+            self.approval_msg_id = msg.message_id
+        except Exception as e:
+            logger.error("approval send failed: %s", e)
+            _pending.pop(request_id, None)
+            return False
 
         try:
             return await asyncio.wait_for(future, timeout=config.APPROVAL_TIMEOUT)
