@@ -9,10 +9,12 @@ from agent_coder.agent.session import Session
 
 
 def projects_keyboard(projects: list[Path]) -> InlineKeyboardMarkup:
+    # callback_data ограничен 64 байтами, поэтому передаём индекс проекта
+    # в детерминированно отсортированном списке _list_projects(), а не путь.
     rows = []
-    for p in projects:
+    for idx, p in enumerate(projects):
         rows.append([
-            InlineKeyboardButton(text=f"📁 {p.name}", callback_data=f"new:{p}")
+            InlineKeyboardButton(text=f"📁 {p.name}", callback_data=f"new:{idx}")
         ])
     rows.append([
         InlineKeyboardButton(text="📚 Все сессии", callback_data="sessions")

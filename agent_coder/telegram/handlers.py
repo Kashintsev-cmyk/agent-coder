@@ -77,16 +77,23 @@ async def shutdown(bot: Bot) -> None:
 # ---------- Утилиты ----------
 
 def _list_projects() -> list[Path]:
+    """Список проектов в стабильном (детерминированном) порядке.
+
+    Порядок — глобальная сортировка по str(Path.resolve()) независимо от
+    порядка обхода корневых папок, чтобы индекс в callback_data совпадал
+    между рендером клавиатуры и обработкой нажатия.
+    """
     projects: list[Path] = []
     for root in config.TELEGRAM_PROJECTS_DIRS:
         if not root.exists():
             continue
         try:
-            for child in sorted(root.iterdir()):
+            for child in root.iterdir():
                 if child.is_dir() and not child.name.startswith("."):
                     projects.append(child)
         except PermissionError:
             continue
+    projects.sort(key=lambda p: str(p.resolve()))
     return projects[:30]
 
 
@@ -407,9 +414,25 @@ def _get_active_session(chat_id: int) -> Session | None:
 
 @router.callback_query(F.data.startswith("new:"))
 async def cb_new(query: CallbackQuery, bot: Bot) -> None:
-    path = query.data.split(":", 1)[1]
+    raw = query.data.split(":", 1)[1]
+    try:
+        idx = int(raw)
+    except ValueError:
+        await query.answer("Некорректная кнопка, обнови список: /projects", show_alert=True)
+        return
+
+    projects = _list_projects()
+    if idx < 0 or idx >= len(projects):
+        await query.answer("Проект больше недоступен, обнови список.", show_alert=True)
+        return
+
+    path = projects[idx]
+    if not path.is_dir():
+        await query.answer("Проект больше недоступен, обнови список.", show_alert=True)
+        return
+
     await query.message.edit_reply_markup(reply_markup=None)
-    await _create_session(query.message.chat.id, query.message, path)
+    await _create_session(query.message.chat.id, query.message, str(path))
     await query.answer()
 
 
