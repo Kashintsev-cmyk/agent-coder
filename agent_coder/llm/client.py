@@ -30,6 +30,7 @@ def _build_request_kwargs(
     temperature: float | None = None,
     reasoning_effort: str | None = None,
     web_search: bool = False,
+    service_tier: str | None = None,
 ) -> dict[str, Any]:
     """Собрать kwargs для chat.completions.create.
 
@@ -50,6 +51,8 @@ def _build_request_kwargs(
             "engine": config.WEB_SEARCH_ENGINE,
             "max_results": config.WEB_SEARCH_MAX_RESULTS,
         }]
+    if service_tier and service_tier not in ("default", ""):
+        kwargs["service_tier"] = service_tier
     return kwargs
 
 
@@ -92,6 +95,7 @@ class LLMClient:
         temperature: float | None = None,
         reasoning_effort: str | None = None,
         web_search: bool = False,
+        service_tier: str | None = None,
     ) -> ChatResponse:
         """Один вызов LLM с retry.
 
@@ -107,6 +111,7 @@ class LLMClient:
             temperature=temperature,
             reasoning_effort=reasoning_effort,
             web_search=web_search,
+            service_tier=service_tier,
         )
 
         logger.info(

@@ -950,6 +950,30 @@ async def cb_setreason(query: CallbackQuery) -> None:
     await query.answer(f"→ {level}")
 
 
+@router.callback_query(F.data == "tier_toggle")
+async def cb_tier_toggle(query: CallbackQuery) -> None:
+    """Циклическое переключение service_tier: default → flex → priority."""
+    session = _get_active_session(query.message.chat.id)
+    if not session:
+        await query.answer("Нет сессии", show_alert=True)
+        return
+    from agent_coder.config import config as _cfg
+    from agent_coder.telegram.keyboards import TIER_CYCLE
+    cur = session.service_tier or _cfg.SERVICE_TIER
+    if cur not in TIER_CYCLE:
+        cur = "default"
+    nxt = TIER_CYCLE[(TIER_CYCLE.index(cur) + 1) % len(TIER_CYCLE)]
+    session.service_tier = nxt
+    session.save()
+    try:
+        await query.message.edit_reply_markup(
+            reply_markup=keyboards.session_menu_keyboard(session)
+        )
+    except Exception:
+        pass
+    await query.answer(f"Service tier: {nxt}")
+
+
 @router.callback_query(F.data == "web_toggle")
 async def cb_web_toggle(query: CallbackQuery) -> None:
     """Переключает per-session флаг web_search.

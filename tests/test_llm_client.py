@@ -67,3 +67,40 @@ def test_all_options_together():
     assert kw["temperature"] == 0.2
     assert kw["reasoning_effort"] == "high"
     assert kw["plugins"][0]["id"] == "web"
+
+
+def test_service_tier_default_skipped():
+    kw = _build_request_kwargs("m", [], service_tier="default")
+    assert "service_tier" not in kw
+
+
+def test_service_tier_empty_skipped():
+    kw = _build_request_kwargs("m", [], service_tier="")
+    assert "service_tier" not in kw
+
+
+def test_service_tier_none_skipped():
+    kw = _build_request_kwargs("m", [])
+    assert "service_tier" not in kw
+
+
+def test_service_tier_flex_passed():
+    kw = _build_request_kwargs("m", [], service_tier="flex")
+    assert kw["service_tier"] == "flex"
+
+
+def test_service_tier_priority_passed():
+    kw = _build_request_kwargs("m", [], service_tier="priority")
+    assert kw["service_tier"] == "priority"
+
+
+def test_all_with_service_tier():
+    kw = _build_request_kwargs(
+        "m", [],
+        reasoning_effort="medium",
+        web_search=True,
+        service_tier="flex",
+    )
+    assert kw["reasoning_effort"] == "medium"
+    assert kw["plugins"][0]["id"] == "web"
+    assert kw["service_tier"] == "flex"

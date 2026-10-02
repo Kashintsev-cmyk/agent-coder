@@ -78,6 +78,18 @@ def reasoning_keyboard(current: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+TIER_CYCLE: list[str] = ["default", "flex", "priority"]
+
+
+def tier_label(value: str) -> str:
+    """Метка для кнопки tier."""
+    return {
+        "default": "⚡ Tier: default",
+        "flex": "⚡ Tier: flex (−50%)",
+        "priority": "⚡ Tier: priority",
+    }.get(value, f"⚡ Tier: {value}")
+
+
 def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
     """Главное меню сессии, адаптивное под возможности выбранной модели.
 
@@ -112,6 +124,13 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
             text=f"🌐 Web search: {ws}",
             callback_data="web_toggle",
         )])
+
+    from agent_coder.config import config as _cfg
+    cur_tier = session.service_tier or _cfg.SERVICE_TIER
+    rows.append([InlineKeyboardButton(
+        text=tier_label(cur_tier),
+        callback_data="tier_toggle",
+    )])
 
     sid = session.id
     rows.append([

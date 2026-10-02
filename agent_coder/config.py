@@ -80,6 +80,10 @@ class Config:
     WEB_SEARCH_ENGINE: str = os.getenv("WEB_SEARCH_ENGINE", "native").strip().lower()
     WEB_SEARCH_MAX_RESULTS: int = _env_int("WEB_SEARCH_MAX_RESULTS", "5")
 
+    # Service tier (приоритет обработки у провайдера)
+    # default — стандарт; flex — ~−50% цены, медленнее; priority — быстрее
+    SERVICE_TIER: str = os.getenv("SERVICE_TIER", "default").strip().lower()
+
     # Retry
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "3"))
     RETRY_BACKOFF: float = float(os.getenv("RETRY_BACKOFF", "2.0"))
@@ -159,6 +163,12 @@ class Config:
         if cls.WEB_SEARCH_MAX_RESULTS < 1:
             errors.append(
                 f"WEB_SEARCH_MAX_RESULTS={cls.WEB_SEARCH_MAX_RESULTS} должен быть >= 1"
+            )
+
+        if cls.SERVICE_TIER not in ("default", "flex", "priority"):
+            errors.append(
+                f"SERVICE_TIER={cls.SERVICE_TIER!r} должен быть "
+                f"\"default\", \"flex\" или \"priority\""
             )
 
         if errors:
