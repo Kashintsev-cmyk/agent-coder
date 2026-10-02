@@ -191,10 +191,12 @@ def _print_history(session: Session) -> None:
 
 
 def _model_picker(session: Session) -> None:
-    from agent_coder.models import CURATED_MODELS, get_model_name
+    from agent_coder.model_catalog import catalog
+    from agent_coder.models import get_model_name
+    models = catalog.all()
     ui.print_info(f"\nТекущая модель: {get_model_name(session.model)} ({session.model})\n")
     ui.print_info("Доступные модели:")
-    for i, m in enumerate(CURATED_MODELS, 1):
+    for i, m in enumerate(models, 1):
         mark = "*" if m.id == session.model else " "
         ui.print_info(
             f"  {mark} {i:2}. {m.name:<25} "
@@ -205,7 +207,7 @@ def _model_picker(session: Session) -> None:
         return
     try:
         idx = int(choice) - 1
-        m = CURATED_MODELS[idx]
+        m = models[idx]
     except (ValueError, IndexError):
         ui.print_error("Неверный номер")
         return

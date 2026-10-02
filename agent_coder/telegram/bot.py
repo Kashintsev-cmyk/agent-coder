@@ -11,6 +11,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.types import BotCommand, ErrorEvent
 
 from agent_coder.config import config
+from agent_coder.model_catalog import catalog
 from agent_coder.telegram import handlers
 
 logger = logging.getLogger(__name__)
@@ -46,6 +47,28 @@ async def _register_commands(bot: Bot) -> None:
         logger.info("Меню команд зарегистрировано: %d команд", len(BOT_COMMANDS))
     except Exception as e:
         logger.error("Не удалось зарегистрировать меню команд: %s", e)
+
+
+async def _catalog_refresh_once() -> None:
+    try:
+        ok = await catalog.refresh()
+        logger.info(
+            "model catalog refresh: ok=%s source=%s",
+            ok, catalog.source,
+        )
+    except Exception:
+        logger.exception("model catalog refresh unexpected error")
+
+
+async def _catalog_refresh_loop() -> None:
+    # Периодический refresh каждые MODELS_CACHE_TTL часов.
+    interval = max(1, config.MODELS_CACHE_TTL) * 3600
+    while True:
+        try:
+            await asyncio.sleep(interval)
+        except asyncio.CancelledError:
+            return
+        await _catalog_refresh_once()
 
 
 async def _run() -> None:
@@ -102,6 +125,11 @@ async def _run() -> None:
 
     await _register_commands(bot)
 
+    refresh_task = asyncio.create_task(_catalog_refresh_once())
+    refresh_loop_task = asyncio.create_task(_catalog_refresh_loop())
+
+    # Non-blocking: не ждём refresh, бот отвечает из fallback/cache.
+
     await bot.delete_webhook(drop_pending_updates=True)
     try:
         await dp.start_polling(bot)
@@ -112,6 +140,13 @@ async def _run() -> None:
             await handlers.shutdown(bot)
         except Exception as e:
             logger.warning("shutdown failed: %s", e)
+        for t in (refresh_loop_task, refresh_task):
+            if not t.done():
+                t.cancel()
+                try:
+                    await t
+                except (asyncio.CancelledError, Exception):
+                    pass
         await bot.session.close()
 
 

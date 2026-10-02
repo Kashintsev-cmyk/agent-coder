@@ -40,9 +40,9 @@ def sessions_keyboard(sessions: list[Session]) -> InlineKeyboardMarkup:
 
 def models_keyboard(current_model: str) -> InlineKeyboardMarkup:
     """Список кураторских моделей для выбора."""
-    from agent_coder.models import CURATED_MODELS
+    from agent_coder.model_catalog import catalog
     rows = []
-    for m in CURATED_MODELS:
+    for m in catalog.all():
         mark = "✅" if m.id == current_model else "▫️"
         text = f"{mark} {m.name} · {m.input_price:.1f}/{m.output_price:.0f}₽ · {m.context // 1000}k"
         rows.append([InlineKeyboardButton(text=text, callback_data=f"setmodel:{m.id}")])
