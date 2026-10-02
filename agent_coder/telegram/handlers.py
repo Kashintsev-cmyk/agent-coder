@@ -592,14 +592,14 @@ async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str) ->
 
 
 async def _generate_and_send_audit(bot: Bot, chat_id: int, session: Session) -> None:
-    """Генерирует .md/.pdf отчёт и отправляет PDF в чат."""
+    """Генерирует .md отчёт и отправляет его в чат."""
     from aiogram.types import FSInputFile
 
     from agent_coder.llm.types import format_cost
     from agent_coder.reports.audit_saver import save_audit_report
 
     try:
-        md_path, pdf_path = save_audit_report(session, also_in_workspace=True)
+        md_path = save_audit_report(session, also_in_workspace=True)
     except Exception as e:
         logger.exception("audit report generation failed")
         await bot.send_message(
@@ -609,7 +609,7 @@ async def _generate_and_send_audit(bot: Bot, chat_id: int, session: Session) -> 
         )
         return
 
-    size_kb = max(1, pdf_path.stat().st_size // 1024)
+    size_kb = max(1, md_path.stat().st_size // 1024)
     u = session.total_usage
 
     # Серая плашка со статистикой
@@ -623,9 +623,8 @@ async def _generate_and_send_audit(bot: Bot, chat_id: int, session: Session) -> 
 
     text = (
         f"✅ <b>Аудит завершён</b>\n\n"
-        f"📄 PDF: {size_kb} KB\n"
-        f"📁 <code>{md_path}</code>\n"
-        f"📁 <code>{pdf_path}</code>\n\n"
+        f"📄 MD: {size_kb} KB\n"
+        f"📁 <code>{md_path}</code>\n\n"
         f"📋 Дублировано в проект: <code>AUDIT_REPORT.md</code>\n\n"
         f"{block}"
     )
@@ -634,12 +633,12 @@ async def _generate_and_send_audit(bot: Bot, chat_id: int, session: Session) -> 
     try:
         await bot.send_document(
             chat_id,
-            FSInputFile(str(pdf_path)),
+            FSInputFile(str(md_path)),
             caption=f"🔒 {session.title[:80]}",
         )
     except Exception as e:
         logger.warning("send_document failed: %s", e)
-        await bot.send_message(chat_id, f"⚠️ PDF не отправился: {e}")
+        await bot.send_message(chat_id, f"⚠️ MD не отправился: {e}")
 
 
 class _TaskRunner:
