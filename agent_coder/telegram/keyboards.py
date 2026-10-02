@@ -133,8 +133,8 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
         [InlineKeyboardButton(text=model_text, callback_data="menu_model")],
     ]
 
-    # Компактный ряд быстрых настроек: reasoning | web | tier.
-    # Адаптивно — показываем только применимые к модели кнопки.
+    # Компактный блок быстрых настроек: reasoning | web | tier | verbosity.
+    # Адаптивно — только применимые к модели; раскладка 1/2/3/2+2.
     quick: list[InlineKeyboardButton] = []
     if m and m.reasoning:
         quick.append(InlineKeyboardButton(
@@ -153,14 +153,19 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
         text=f"⚡ {cur_tier}",
         callback_data="tier_toggle",
     ))
-    rows.append(quick)
-
     if m and m.verbosity:
         v = session.verbosity or "medium"
-        rows.append([InlineKeyboardButton(
-            text=f"📏 Verbosity: {v}",
+        quick.append(InlineKeyboardButton(
+            text=f"📏 {v}",
             callback_data="menu_verbosity",
-        )])
+        ))
+
+    # Раскладка: 1 → 1 в ряд; 2 → 2 в ряд; 3 → 3 в ряд; 4 → 2+2.
+    if len(quick) <= 3:
+        rows.append(quick)
+    else:
+        rows.append(quick[:2])
+        rows.append(quick[2:])
 
     sid = session.id
     rows.append([
