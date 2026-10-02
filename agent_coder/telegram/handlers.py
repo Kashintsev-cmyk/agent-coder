@@ -1033,6 +1033,9 @@ async def cb_server_op(query: CallbackQuery) -> None:
 
 # ---------- Audit menu ----------
 
+AUDIT_TIMEOUT_SEC = 180
+
+
 @router.message(Command("audit"))
 async def cmd_audit(message: Message) -> None:
     session = _get_active_session(message.chat.id)
@@ -1065,7 +1068,7 @@ async def cb_audit_op(query: CallbackQuery) -> None:
         await query.answer("Неизвестная команда", show_alert=True)
         return
 
-    cmd = op.cmd.format(workspace=session.workspace)
+    cmd = op.cmd.replace("{workspace}", session.workspace)
 
     await query.answer(f"Выполняю: {op.label}")
     await query.message.edit_text(
@@ -1081,14 +1084,14 @@ async def cb_audit_op(query: CallbackQuery) -> None:
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
         )
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=180)
+        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=AUDIT_TIMEOUT_SEC)
         stdout = stdout_b.decode("utf-8", errors="replace").strip()
         stderr = stderr_b.decode("utf-8", errors="replace").strip()
     except asyncio.TimeoutError:
         proc.kill()
         await proc.wait()
         await query.message.edit_text(
-            f"🔒 <b>{op.label}</b>\n\n⏱ Таймаут 60 секунд",
+            f"🔒 <b>{op.label}</b>\n\n⏱ Таймаут {AUDIT_TIMEOUT_SEC} секунд",
             reply_markup=keyboards.audit_menu_keyboard(),
             parse_mode="HTML",
         )

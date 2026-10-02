@@ -16,6 +16,8 @@ class AuditOp:
     description: str
 
 
+# {workspace} — единственный допустимый плейсхолдер.
+# Прочие {} и {20,} — литералы shell. НЕ применять str.format() к этим строкам.
 AUDIT_OPS: list[AuditOp] = [
     AuditOp(
         "ruff",
