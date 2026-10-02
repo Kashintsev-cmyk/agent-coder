@@ -374,6 +374,27 @@ def capabilities(model_id: str) -> list[str]:
 
 
 # Полный набор уровней reasoning, который принимает routerai
+def feature_badges(m: ModelInfo | None) -> str:
+    """Строка с эмодзи-бейджами возможностей модели.
+
+    Порядок: 👁 vision, 🌐 web_search_builtin,
+    ⚙/🧠 reasoning (⚙ если reasoning_effort),
+    🔧 tools. Возвращает "" для None.
+    """
+    if m is None:
+        return ""
+    parts: list[str] = []
+    if m.vision:
+        parts.append("👁")
+    if m.web_search_builtin:
+        parts.append("🌐")
+    if m.reasoning:
+        parts.append("⚙" if m.reasoning_effort else "🧠")
+    if m.tools:
+        parts.append("🔧")
+    return "".join(parts)
+
+
 REASONING_LEVELS = [
     "none",
     "minimal",

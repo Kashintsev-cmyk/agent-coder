@@ -10,6 +10,7 @@ from agent_coder.models import (
     ModelInfo,
     _make_placeholder,
     capabilities,
+    feature_badges,
     find_model,
     supports,
 )
@@ -139,3 +140,47 @@ def test_supports_delegates_to_catalog(monkeypatch):
     assert capabilities("test/x") == sorted(
         ["vision", "tools", "reasoning"]
     )
+
+# --- feature_badges ---
+
+def test_feature_badges_none():
+    assert feature_badges(None) == ""
+
+
+def test_feature_badges_full():
+    m = ModelInfo(
+        id="test/full", name="Full", context=1000, reasoning=True,
+        vision=True, tools=True, reasoning_effort=True,
+        web_search_builtin=True,
+    )
+    assert feature_badges(m) == "👁🌐⚙🔧"
+
+
+def test_feature_badges_minimal():
+    m = ModelInfo(
+        id="test/min", name="Min", context=1000, reasoning=False,
+        vision=False, tools=True, web_search_builtin=False,
+    )
+    assert feature_badges(m) == "🔧"
+
+
+def test_feature_badges_reasoning_only():
+    m = ModelInfo(
+        id="test/r", name="R", context=1000, reasoning=True,
+        vision=False, tools=False, reasoning_effort=False,
+        web_search_builtin=False,
+    )
+    assert feature_badges(m) == "🧠"
+
+
+def test_feature_badges_order():
+    m = ModelInfo(
+        id="test/ord", name="Ord", context=1000, reasoning=True,
+        vision=True, tools=True, reasoning_effort=True,
+        web_search_builtin=True,
+    )
+    b = feature_badges(m)
+    assert b.index("👁") < b.index("🌐")
+    assert b.index("🌐") < b.index("⚙")
+    assert b.index("⚙") < b.index("🔧")
+

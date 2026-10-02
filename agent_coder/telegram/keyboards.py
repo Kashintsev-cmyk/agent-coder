@@ -41,10 +41,14 @@ def sessions_keyboard(sessions: list[Session]) -> InlineKeyboardMarkup:
 def models_keyboard(current_model: str) -> InlineKeyboardMarkup:
     """Список кураторских моделей для выбора."""
     from agent_coder.model_catalog import catalog
+    from agent_coder.models import feature_badges
     rows = []
     for m in catalog.all():
         mark = "✅" if m.id == current_model else "▫️"
+        badges = feature_badges(m)
         text = f"{mark} {m.name} · {m.input_price:.1f}/{m.output_price:.0f}₽ · {m.context // 1000}k"
+        if badges:
+            text += f" · {badges}"
         rows.append([InlineKeyboardButton(text=text, callback_data=f"setmodel:{m.id}")])
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="session_back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -74,33 +78,56 @@ def reasoning_keyboard(current: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def session_menu_keyboard(session_id: str, model_id: str, reasoning: str) -> InlineKeyboardMarkup:
-    """Главное меню сессии."""
-    from agent_coder.models import get_model_name
-    model_name = get_model_name(model_id)
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text=f"🧠 Модель: {model_name}",
-            callback_data="menu_model",
-        )],
-        [InlineKeyboardButton(
-            text=f"💭 Reasoning: {reasoning}",
+def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
+    """Главное меню сессии, адаптивное под возможности выбранной модели.
+
+    Всегда: 🧠 Модель, [Plan|Act|Audit], [Стоимость|Новая], [История|Удалить].
+    Условно:
+      💭 Reasoning  — если model.reasoning
+      🌐 Web search — если model.web_search_builtin
+    """
+    from agent_coder.model_catalog import catalog
+    from agent_coder.models import feature_badges
+
+    m = catalog.get(session.model)
+    model_label = m.name if m else session.model
+    badges = feature_badges(m)
+    model_text = f"🧠 Модель: {model_label}"
+    if badges:
+        model_text += f" · {badges}"
+
+    rows: list[list[InlineKeyboardButton]] = [
+        [InlineKeyboardButton(text=model_text, callback_data="menu_model")],
+    ]
+
+    if m and m.reasoning:
+        rows.append([InlineKeyboardButton(
+            text=f"💭 Reasoning: {session.reasoning_effort}",
             callback_data="menu_reasoning",
-        )],
-        [
-            InlineKeyboardButton(text="🟡 Plan",  callback_data=f"mode:plan:{session_id}"),
-            InlineKeyboardButton(text="🟢 Act",   callback_data=f"mode:act:{session_id}"),
-            InlineKeyboardButton(text="🔒 Audit", callback_data=f"mode:audit:{session_id}"),
-        ],
-        [
-            InlineKeyboardButton(text="💰 Стоимость", callback_data=f"cost:{session_id}"),
-            InlineKeyboardButton(text="🔄 Новая",     callback_data="sessions"),
-        ],
-        [
-            InlineKeyboardButton(text="📜 История", callback_data=f"history:{session_id}"),
-            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del:{session_id}"),
-        ],
+        )])
+
+    if m and m.web_search_builtin:
+        ws = "вкл" if session.web_search else "выкл"
+        rows.append([InlineKeyboardButton(
+            text=f"🌐 Web search: {ws}",
+            callback_data="web_toggle",
+        )])
+
+    sid = session.id
+    rows.append([
+        InlineKeyboardButton(text="🟡 Plan",  callback_data=f"mode:plan:{sid}"),
+        InlineKeyboardButton(text="🟢 Act",   callback_data=f"mode:act:{sid}"),
+        InlineKeyboardButton(text="🔒 Audit", callback_data=f"mode:audit:{sid}"),
     ])
+    rows.append([
+        InlineKeyboardButton(text="💰 Стоимость", callback_data=f"cost:{sid}"),
+        InlineKeyboardButton(text="🔄 Новая",     callback_data="sessions"),
+    ])
+    rows.append([
+        InlineKeyboardButton(text="📜 История", callback_data=f"history:{sid}"),
+        InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del:{sid}"),
+    ])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def approval_keyboard(request_id: str) -> InlineKeyboardMarkup:

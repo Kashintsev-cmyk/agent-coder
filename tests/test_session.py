@@ -158,3 +158,25 @@ class TestAddMessage:
         s.add_message({"role": "user", "content": "первая"})
         s.add_message({"role": "user", "content": "вторая"})
         assert s.title == "первая"
+
+class TestWebSearch:
+    def test_default_false(self):
+        s = _mk_session()
+        assert s.web_search is False
+
+    def test_roundtrip(self):
+        s = _mk_session()
+        s.web_search = True
+        d = s.to_dict()
+        assert d["web_search"] is True
+        s2 = Session.from_dict(d)
+        assert s2.web_search is True
+
+    def test_backward_compat(self):
+        # Старая сессия без ключа web_search — не должна падать
+        s = _mk_session()
+        d = s.to_dict()
+        d.pop("web_search", None)
+        s2 = Session.from_dict(d)
+        assert s2.web_search is False
+

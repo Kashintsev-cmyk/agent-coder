@@ -204,7 +204,7 @@ async def _create_session(chat_id: int, message: Message, path_str: str) -> None
         f"✅ Сессия создана: <b>{workspace.name}</b>\n"
         f"   <code>{session.id}</code> · режим: act · модель: {session.model}\n\n"
         f"Отправь задачу текстом.",
-        reply_markup=keyboards.session_menu_keyboard(session.id, session.model, session.reasoning_effort),
+        reply_markup=keyboards.session_menu_keyboard(session),
         parse_mode="HTML",
     )
 
@@ -234,7 +234,7 @@ async def cmd_current(message: Message) -> None:
         return
     await message.answer(
         f"Текущая сессия:\n{_session_summary(session)}",
-        reply_markup=keyboards.session_menu_keyboard(session.id, session.model, session.reasoning_effort),
+        reply_markup=keyboards.session_menu_keyboard(session),
         parse_mode="HTML",
     )
 
@@ -460,7 +460,7 @@ async def cb_open(query: CallbackQuery) -> None:
     tg_state.set_active_session(query.message.chat.id, sid)
     await query.message.edit_text(
         f"✅ Активная сессия:\n{_session_summary(session)}",
-        reply_markup=keyboards.session_menu_keyboard(sid, session.model, session.reasoning_effort),
+        reply_markup=keyboards.session_menu_keyboard(session),
         parse_mode="HTML",
     )
     await query.answer()
@@ -485,7 +485,7 @@ async def cb_mode(query: CallbackQuery) -> None:
         session.save()
     await query.message.edit_text(
         f"Режим: <b>{new_mode.value}</b>\n{_session_summary(session)}",
-        reply_markup=keyboards.session_menu_keyboard(sid, session.model, session.reasoning_effort),
+        reply_markup=keyboards.session_menu_keyboard(session),
         parse_mode="HTML",
     )
     await query.answer(f"Режим: {new_mode.value}")
@@ -884,7 +884,9 @@ async def cb_menu_model(query: CallbackQuery) -> None:
         await query.answer("Нет активной сессии", show_alert=True)
         return
     await query.message.edit_text(
-        f"🧠 <b>Выбор модели</b>\n\nТекущая: <code>{session.model}</code>",
+        "🧠 <b>Выбор модели</b>\n\n"
+        "Бейджи: 👁 vision · 🌐 web search · 🧠 reasoning · ⚙ reasoning levels · 🔧 tools\n\n"
+        f"Текущая: <code>{session.model}</code>",
         reply_markup=keyboards.models_keyboard(session.model),
         parse_mode="HTML",
     )
@@ -906,7 +908,7 @@ async def cb_setmodel(query: CallbackQuery) -> None:
         f"✅ Модель: <b>{get_model_name(model_id)}</b>\n"
         f"<code>{model_id}</code>\n\n"
         f"История сообщений очищена.",
-        reply_markup=keyboards.session_menu_keyboard(session.id, session.model, session.reasoning_effort),
+        reply_markup=keyboards.session_menu_keyboard(session),
         parse_mode="HTML",
     )
     await query.answer(f"→ {get_model_name(model_id)}")
@@ -918,9 +920,9 @@ async def cb_menu_reasoning(query: CallbackQuery) -> None:
     if not session:
         await query.answer("Нет сессии", show_alert=True)
         return
-    from agent_coder.models import find_model
-    m = find_model(session.model)
-    if m and not m.reasoning:
+    from agent_coder.model_catalog import catalog
+    m = catalog.get(session.model)
+    if not m or not m.reasoning:
         await query.answer("Модель не поддерживает reasoning", show_alert=True)
         return
     await query.message.edit_text(
@@ -942,10 +944,37 @@ async def cb_setreason(query: CallbackQuery) -> None:
     session.save()
     await query.message.edit_text(
         f"✅ Reasoning: <b>{level}</b>",
-        reply_markup=keyboards.session_menu_keyboard(session.id, session.model, session.reasoning_effort),
+        reply_markup=keyboards.session_menu_keyboard(session),
         parse_mode="HTML",
     )
     await query.answer(f"→ {level}")
+
+
+@router.callback_query(F.data == "web_toggle")
+async def cb_web_toggle(query: CallbackQuery) -> None:
+    """Переключает per-session флаг web_search.
+
+    Пока только сохраняет флаг — реальное влияние на API RouterAI
+    (передача plugins=[{id:web}]) будет отдельным шагом.
+    """
+    session = _get_active_session(query.message.chat.id)
+    if not session:
+        await query.answer("Нет сессии", show_alert=True)
+        return
+    from agent_coder.model_catalog import catalog
+    m = catalog.get(session.model)
+    if not (m and m.web_search_builtin):
+        await query.answer("Модель не поддерживает встроенный web search", show_alert=True)
+        return
+    session.web_search = not session.web_search
+    session.save()
+    try:
+        await query.message.edit_reply_markup(
+            reply_markup=keyboards.session_menu_keyboard(session)
+        )
+    except Exception:
+        pass
+    await query.answer(f"Web search: {'вкл' if session.web_search else 'выкл'}")
 
 
 @router.callback_query(F.data == "session_back")
@@ -958,7 +987,7 @@ async def cb_session_back(query: CallbackQuery) -> None:
         f"Сессия: <b>{session.title}</b>\n"
         f"<code>{session.id}</code> · {session.mode.value}\n"
         f"Стоимость: {_fmt_cost(session.total_usage.cost)}",
-        reply_markup=keyboards.session_menu_keyboard(session.id, session.model, session.reasoning_effort),
+        reply_markup=keyboards.session_menu_keyboard(session),
         parse_mode="HTML",
     )
     await query.answer()
@@ -971,6 +1000,12 @@ async def cmd_reasoning(message: Message) -> None:
     session = _get_active_session(message.chat.id)
     if not session:
         await message.answer("Нет активной сессии.")
+        return
+    from agent_coder.model_catalog import catalog
+    m = catalog.get(session.model)
+    if not m or not m.reasoning:
+        name = m.name if m else session.model
+        await message.answer(f"Модель {name} не поддерживает reasoning.")
         return
     await message.answer(
         f"💭 <b>Reasoning</b>\n\nТекущий: <b>{session.reasoning_effort}</b>",

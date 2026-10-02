@@ -31,6 +31,7 @@ class Session:
     mode: Mode
     title: str = ""
     reasoning_effort: str = DEFAULT_REASONING
+    web_search: bool = False
     messages: list[dict[str, Any]] = field(default_factory=list)
     total_usage: Usage = field(default_factory=Usage)
     request_count: int = 0
@@ -38,13 +39,15 @@ class Session:
     updated_at: float = field(default_factory=time.time)
 
     @classmethod
-    def new(cls, workspace: str, model: str, mode: Mode, title: str = "") -> Session:
+    def new(cls, workspace: str, model: str, mode: Mode, title: str = "",
+            web_search: bool = False) -> Session:
         return cls(
             id=uuid.uuid4().hex[:8],
             workspace=workspace,
             model=model,
             mode=mode,
             title=title,
+            web_search=web_search,
         )
 
     def add_message(self, message: dict[str, Any]) -> None:
@@ -149,6 +152,10 @@ class Session:
         # Обратная совместимость со старыми сессиями без reasoning
         if "reasoning_effort" not in data:
             data["reasoning_effort"] = DEFAULT_REASONING
+        if "web_search" not in data:
+            data["web_search"] = False
+        if "web_search" not in data:
+            data["web_search"] = False
         return cls(**data)
 
     def save(self) -> Path:
