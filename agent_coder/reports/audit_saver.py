@@ -9,7 +9,7 @@ import logging
 import time
 from pathlib import Path
 
-from agent_coder.agent.session import Session
+from agent_coder.agent.session import Session, content_to_text
 from agent_coder.config import config
 
 logger = logging.getLogger(__name__)
@@ -29,7 +29,7 @@ def extract_audit_report(session: Session) -> str:
         if role == "user":
             break
         if role == "assistant":
-            content = (msg.get("content") or "").strip()
+            content = content_to_text(msg.get("content")).strip()
             if len(content) > 500:
                 return content
 
@@ -41,7 +41,7 @@ def extract_audit_report(session: Session) -> str:
         if role == "user":
             break
         if role == "assistant":
-            content = (msg.get("content") or "").strip()
+            content = content_to_text(msg.get("content")).strip()
             if content:
                 parts.append(content)
     parts.reverse()

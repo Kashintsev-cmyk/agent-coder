@@ -22,7 +22,7 @@ from aiogram.types import (
 
 from agent_coder.agent.loop import AgentLoop, LoopEvents
 from agent_coder.agent.prompts import Mode
-from agent_coder.agent.session import Session
+from agent_coder.agent.session import Session, content_to_text
 from agent_coder.config import config
 from agent_coder.llm.client import LLMClient
 from agent_coder.telegram import keyboards, renderer
@@ -1430,7 +1430,7 @@ async def _send_history_preview(source, session: Session) -> None:
     last_user = None
     for msg in messages:
         role = msg.get("role")
-        content = (msg.get("content") or "").strip()
+        content = content_to_text(msg.get("content")).strip()
         if role == "system":
             continue
         if role == "user":
@@ -1505,7 +1505,7 @@ async def cb_history_md(query: CallbackQuery) -> None:
     ]
     for msg in session.messages:
         role = msg.get("role")
-        content = (msg.get("content") or "").strip()
+        content = content_to_text(msg.get("content")).strip()
         if not content:
             continue
         if role == "user":

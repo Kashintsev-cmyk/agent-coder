@@ -14,10 +14,38 @@ from agent_coder.llm.types import Usage
 from agent_coder.models import DEFAULT_REASONING
 
 
+def content_to_text(content: Any) -> str:
+    """Нормализовать content сообщения в строку.
+
+    Поддерживает форматы OpenAI:
+      - None → ""
+      - str → как есть
+      - list[{"type":"text", "text":...}] → склеивает тексты
+      - list[{"type":"image_url", ...}] → "[изображение]"
+      - смешанный → текст + плейсхолдеры
+    """
+    if content is None:
+        return ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, list):
+        parts: list[str] = []
+        for block in content:
+            if not isinstance(block, dict):
+                continue
+            t = block.get("type")
+            if t == "text":
+                parts.append(block.get("text") or "")
+            elif t == "image_url":
+                parts.append("[изображение]")
+        return "\n".join(p for p in parts if p)
+    return str(content)
+
+
 def _make_default_title(messages: list[dict[str, Any]]) -> str:
     for msg in messages:
         if msg.get("role") == "user":
-            text = (msg.get("content") or "").strip().replace("\n", " ")
+            text = content_to_text(msg.get("content")).strip().replace("\n", " ")
             if text:
                 return text[:60] + ("…" if len(text) > 60 else "")
     return "(без названия)"
@@ -55,6 +83,14 @@ class Session:
             web_search=web_search,
         )
 
+    @property
+    def media_dir(self) -> Path:
+        """Директория для медиа-вложений этой сессии.
+
+        Создаётся лениво (при первом сохранении файла), путь детерминированный.
+        """
+        return config.SESSIONS_DIR / "media" / self.id
+
     def add_message(self, message: dict[str, Any]) -> None:
         self.messages.append(message)
         self.updated_at = time.time()
@@ -69,7 +105,7 @@ class Session:
     def preview(self) -> str:
         for msg in reversed(self.messages):
             if msg.get("role") == "user":
-                text = (msg.get("content") or "").strip().replace("\n", " ")
+                text = content_to_text(msg.get("content")).strip().replace("\n", " ")
                 return text[:70] + ("…" if len(text) > 70 else "")
         return ""
 

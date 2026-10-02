@@ -9,6 +9,7 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from agent_coder.agent.session import content_to_text
 from agent_coder.config import config
 
 logger = logging.getLogger(__name__)
@@ -49,7 +50,7 @@ def format_for_summary(messages: list[dict[str, Any]]) -> str:
     parts: list[str] = []
     for m in messages:
         role = m.get("role")
-        content = (m.get("content") or "").strip()
+        content = content_to_text(m.get("content")).strip()
         if role == "user":
             parts.append(f"ПОЛЬЗОВАТЕЛЬ:\n{content[:3000]}")
         elif role == "assistant":
