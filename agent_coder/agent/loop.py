@@ -8,6 +8,7 @@ from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from typing import Any
 
+from agent_coder.agent import compression
 from agent_coder.agent.prompts import Mode, system_prompt
 from agent_coder.agent.session import Session
 from agent_coder.config import config
@@ -70,12 +71,20 @@ class AgentLoop:
             Mode.AUDIT: config.MAX_ITERATIONS_AUDIT,
         }.get(self.session.mode, config.MAX_ITERATIONS)
 
+        soft = compression.soft_limit(self.session)
         for iteration in range(1, max_iter + 1):
             logger.debug("Итерация %d", iteration)
             fixed = self.session.sanitize_tool_calls()
             if fixed:
                 logger.warning("Восстановлено %d dangling tool_calls", fixed)
                 self.session.save()
+            # B5.2: сжатие истории при превышении порога input-токенов.
+            if (
+                self.session.last_input_tokens > soft
+                and await compression.compress(self.session, self.client)
+            ):
+                self.session.save()
+
             try:
                 response = await self.client.chat(
                     messages=self.session.messages,
