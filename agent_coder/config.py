@@ -75,6 +75,11 @@ class Config:
     # Таймаут запроса /api/v1/models, секунды
     MODELS_API_TIMEOUT: float = _env_float("MODELS_API_TIMEOUT", "5.0")
 
+    # Web search (встроенный в RouterAI, через plugins=[{id:web}])
+    # engine: "native" (встроенный поиск провайдера) | "exa"
+    WEB_SEARCH_ENGINE: str = os.getenv("WEB_SEARCH_ENGINE", "native").strip().lower()
+    WEB_SEARCH_MAX_RESULTS: int = _env_int("WEB_SEARCH_MAX_RESULTS", "5")
+
     # Retry
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "3"))
     RETRY_BACKOFF: float = float(os.getenv("RETRY_BACKOFF", "2.0"))
@@ -144,6 +149,16 @@ class Config:
         if cls.MODELS_API_TIMEOUT <= 0:
             errors.append(
                 f"MODELS_API_TIMEOUT={cls.MODELS_API_TIMEOUT} должен быть > 0 (секунды)"
+            )
+
+        if cls.WEB_SEARCH_ENGINE not in ("native", "exa"):
+            errors.append(
+                f"WEB_SEARCH_ENGINE={cls.WEB_SEARCH_ENGINE!r} должен быть "
+                f"\"native\" или \"exa\""
+            )
+        if cls.WEB_SEARCH_MAX_RESULTS < 1:
+            errors.append(
+                f"WEB_SEARCH_MAX_RESULTS={cls.WEB_SEARCH_MAX_RESULTS} должен быть >= 1"
             )
 
         if errors:

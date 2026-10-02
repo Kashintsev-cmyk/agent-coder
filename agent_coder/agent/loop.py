@@ -82,6 +82,7 @@ class AgentLoop:
                     model=self.session.model,
                     tools=self.registry.openai_schemas(self.session.mode),
                     reasoning_effort=self.session.reasoning_effort,
+                    web_search=self.session.web_search,
                 )
             except Exception as e:
                 await _maybe_await(self.events.on_error, f"LLM ошибка: {e}")

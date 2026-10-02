@@ -21,6 +21,38 @@ from agent_coder.llm.types import AssistantMessage, ChatResponse, ToolCall, Usag
 logger = logging.getLogger(__name__)
 
 
+def _build_request_kwargs(
+    model: str,
+    messages: list[dict[str, Any]],
+    *,
+    tools: list[dict[str, Any]] | None = None,
+    tool_choice: str | None = None,
+    temperature: float | None = None,
+    reasoning_effort: str | None = None,
+    web_search: bool = False,
+) -> dict[str, Any]:
+    """Собрать kwargs для chat.completions.create.
+
+    Вынесено отдельно от chat() — чтобы тестировать без mock httpx/OpenAI.
+    """
+    kwargs: dict[str, Any] = {"model": model, "messages": messages}
+    if tools:
+        kwargs["tools"] = tools
+    if tool_choice:
+        kwargs["tool_choice"] = tool_choice
+    if temperature is not None:
+        kwargs["temperature"] = temperature
+    if reasoning_effort and reasoning_effort not in ("none", ""):
+        kwargs["reasoning_effort"] = reasoning_effort
+    if web_search:
+        kwargs["plugins"] = [{
+            "id": "web",
+            "engine": config.WEB_SEARCH_ENGINE,
+            "max_results": config.WEB_SEARCH_MAX_RESULTS,
+        }]
+    return kwargs
+
+
 class LLMClient:
     """Обёртка над AsyncOpenAI, заточенная под RouterAI."""
 
@@ -59,6 +91,7 @@ class LLMClient:
         tool_choice: str | None = None,
         temperature: float | None = None,
         reasoning_effort: str | None = None,
+        web_search: bool = False,
     ) -> ChatResponse:
         """Один вызов LLM с retry.
 
@@ -66,18 +99,15 @@ class LLMClient:
         max | ultra | None. При "none" или None параметр не передаётся
         (модель работает без reasoning).
         """
-        kwargs: dict[str, Any] = {"model": model, "messages": messages}
-        if tools:
-            kwargs["tools"] = tools
-        if tool_choice:
-            kwargs["tool_choice"] = tool_choice
-        if temperature is not None:
-            kwargs["temperature"] = temperature
-
-        # Reasoning: RouterAI принимает none, minimal, low, medium, high, xhigh, max, ultra.
-        # `none` = не передаём ничего, чтобы модель работала без thinking.
-        if reasoning_effort and reasoning_effort not in ("none", ""):
-            kwargs["reasoning_effort"] = reasoning_effort
+        kwargs = _build_request_kwargs(
+            model,
+            messages,
+            tools=tools,
+            tool_choice=tool_choice,
+            temperature=temperature,
+            reasoning_effort=reasoning_effort,
+            web_search=web_search,
+        )
 
         logger.info(
             "LLM → model=%s msgs=%d tools=%d reasoning=%s",
