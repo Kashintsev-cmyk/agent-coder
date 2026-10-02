@@ -49,7 +49,7 @@ def models_keyboard(current_model: str) -> InlineKeyboardMarkup:
         text = f"{mark} {m.name} · {m.input_price:.1f}/{m.output_price:.0f}₽ · {m.context // 1000}k"
         if badges:
             text += f" · {badges}"
-        rows.append([InlineKeyboardButton(text=text, callback_data=f"setmodel:{m.id}")])
+        rows.append([InlineKeyboardButton(text=text, callback_data=f"info:{m.id}")])
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="session_back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -109,6 +109,21 @@ def tier_label(value: str) -> str:
         "flex": "⚡ Tier: flex (−50%)",
         "priority": "⚡ Tier: priority",
     }.get(value, f"⚡ Tier: {value}")
+
+
+def model_card_keyboard(model_id: str, is_current: bool) -> InlineKeyboardMarkup:
+    """Карточка модели: описание + метрики + выбор/назад."""
+    rows: list[list[InlineKeyboardButton]] = []
+    if not is_current:
+        rows.append([InlineKeyboardButton(
+            text="✅ Выбрать эту модель",
+            callback_data=f"setmodel:{model_id}",
+        )])
+    rows.append([InlineKeyboardButton(
+        text="⬅️ К списку",
+        callback_data="menu_model",
+    )])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:

@@ -433,3 +433,43 @@ def test_cache_version_mismatch_ignored(tmp_path):
     assert c.load_from_cache() is False
     assert c.source == "fallback"  # не "cache"
 
+
+
+def test_parse_one_description(fake_api_response):
+    """description попадает в ModelInfo из ответа API."""
+    from agent_coder.model_catalog import ModelCatalog
+    # используем первую модель из fake_api_response, у неё должно быть description
+    # если его нет — добавляем искусственно
+    item = fake_api_response["data"][0]
+    item["description"] = "Тестовое описание модели"
+
+    c = ModelCatalog()
+    c.init(api_key="x")
+    parsed = c._parse_api_response(fake_api_response)
+
+    # найдём эту модель в результате
+    m = parsed.get(item["id"])
+    assert m is not None
+    assert m.description == "Тестовое описание модели"
+
+
+def test_parse_one_no_description():
+    """Если description отсутствует — ModelInfo.description = ''."""
+    from agent_coder.config import config
+    from agent_coder.model_catalog import ModelCatalog
+
+    mid = config.CURATED_MODEL_IDS[0]
+    fake = {
+        "data": [{
+            "id": mid,
+            "name": "X",
+            "context_length": 1000,
+            "architecture": {"input_modalities": ["text"]},
+            "pricing": {"prompt": 1e-5, "completion": 2e-5},
+            "supported_parameters": [],
+        }]
+    }
+    c = ModelCatalog()
+    c.init(api_key="x")
+    parsed = c._parse_api_response(fake)
+    assert parsed[mid].description == ""

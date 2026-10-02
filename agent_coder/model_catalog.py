@@ -41,7 +41,7 @@ logger = logging.getLogger(__name__)
 
 # Версию бампаем при несовместимом изменении полей ModelInfo,
 # чтобы старый кэш не подсовывал дефолты вместо новых полей.
-_CACHE_VERSION = 2
+_CACHE_VERSION = 3
 _CACHE_FILENAME = "models.json"
 
 
@@ -247,11 +247,14 @@ class ModelCatalog:
             logger.warning("В кэше каталога %s нет секции models", path)
             return False
 
+        # Фильтруем кэш по актуальному config.CURATED_MODEL_IDS —
+        # если env поменяли, старые модели не должны мелькать в UI.
+        allowed = set(config.CURATED_MODEL_IDS)
         try:
             parsed = {
                 mid: _modelinfo_from_dict(data)
                 for mid, data in models_raw.items()
-                if isinstance(data, dict)
+                if isinstance(data, dict) and mid in allowed
             }
         except (TypeError, ValueError) as exc:
             logger.warning("Не удалось разобрать модели из кэша %s: %s", path, exc)
@@ -395,6 +398,7 @@ class ModelCatalog:
         reasoning = "reasoning" in params or "include_reasoning" in params
         reasoning_effort = "reasoning_effort" in params
         verbosity = "verbosity" in params
+        description = raw.get("description") or ""
         web_search_builtin = (
             "web_search" in pricing or "web_search_options" in params
         )
@@ -433,6 +437,7 @@ class ModelCatalog:
             tools=tools,
             reasoning_effort=reasoning_effort,
             verbosity=verbosity,
+            description=description,
             web_search_builtin=web_search_builtin,
             input_price=input_price,
             output_price=output_price,

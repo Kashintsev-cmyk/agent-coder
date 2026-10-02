@@ -61,6 +61,7 @@ class ModelInfo:
     reasoning_effort: bool = False
     web_search_builtin: bool = False
     verbosity: bool = False
+    description: str = ""  # краткое описание от RouterAI (RU)
     input_price: float = 0.0   # ₽ за 1M
     output_price: float = 0.0  # ₽ за 1M
     tag: str = ""

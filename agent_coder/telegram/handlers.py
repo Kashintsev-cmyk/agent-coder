@@ -977,6 +977,49 @@ async def cb_menu_model(query: CallbackQuery) -> None:
     await query.answer()
 
 
+@router.callback_query(F.data.startswith("info:"))
+async def cb_model_info(query: CallbackQuery) -> None:
+    """Карточка модели: описание + метрики + кнопки выбора/назад."""
+    from agent_coder.model_catalog import catalog
+
+    model_id = query.data.split(":", 1)[1]
+    m = catalog.get(model_id)
+    if m is None:
+        await query.answer("Модель не найдена", show_alert=True)
+        return
+
+    session = _get_active_session(query.message.chat.id)
+    is_current = bool(session and session.model == model_id)
+
+    from agent_coder.models import feature_badges
+    badges = feature_badges(m)
+    badges_line = f" · {badges}" if badges else ""
+
+    ctx = m.context
+    ctx_str = f"{ctx:,}".replace(",", " ") if ctx else "—"
+
+    lines = [
+        f"🧠 <b>{_html_escape(m.name)}</b>{badges_line}",
+        "",
+        _html_escape(m.description) if m.description else "<i>(нет описания)</i>",
+        "",
+        f"📊 Контекст: <b>{ctx_str}</b> токенов",
+        f"💰 Вход: <b>{m.input_price:.1f}₽</b> · Выход: <b>{m.output_price:.0f}₽</b> за 1M",
+    ]
+    if m.tag:
+        lines.append(f"🏷 {_html_escape(m.tag)}")
+    if is_current:
+        lines.append("")
+        lines.append("✅ <b>Это текущая модель</b>")
+
+    await query.message.edit_text(
+        "\n".join(lines),
+        reply_markup=keyboards.model_card_keyboard(model_id, is_current),
+        parse_mode="HTML",
+    )
+    await query.answer()
+
+
 @router.callback_query(F.data.startswith("setmodel:"))
 async def cb_setmodel(query: CallbackQuery) -> None:
     model_id = query.data.split(":", 1)[1]
