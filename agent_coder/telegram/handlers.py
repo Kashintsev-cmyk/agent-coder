@@ -257,6 +257,24 @@ async def cmd_cost(message: Message) -> None:
 
 
 @router.message(Command("mode"))
+def _audit_reasoning_warning(session: Session) -> str:
+    """Текст-предупреждение, если audit-режим на модели без reasoning.
+
+    Возвращает "" если модель поддерживает reasoning или неизвестна как
+    reasoning-способная — только явное отсутствие reasoning даёт warning.
+    """
+    from agent_coder.model_catalog import catalog
+    m = catalog.get(session.model)
+    if m is not None and m.reasoning:
+        return ""
+    name = _html_escape(m.name if m else session.model)
+    return (
+        f"\n\n⚠️ <b>Модель {name} не поддерживает reasoning.</b>\n"
+        f"Аудит без thinking будет поверхностным. Для глубокого анализа "
+        f"выбери модель с бейджем ⚙/🧠 (например, Claude Sonnet или DeepSeek Flash)."
+    )
+
+
 async def cmd_mode(message: Message) -> None:
     session = _get_active_session(message.chat.id)
     if session is None:
@@ -279,8 +297,9 @@ async def cmd_mode(message: Message) -> None:
         session.mode = new_mode
         session.messages = []
         session.save()
+    extra = _audit_reasoning_warning(session) if new_mode == Mode.AUDIT else ""
     await message.answer(
-        f"Режим: <b>{new_mode.value}</b>",
+        f"Режим: <b>{new_mode.value}</b>{extra}",
         parse_mode="HTML",
     )
 
@@ -483,8 +502,9 @@ async def cb_mode(query: CallbackQuery) -> None:
         session.mode = new_mode
         session.messages = []
         session.save()
+    extra = _audit_reasoning_warning(session) if new_mode == Mode.AUDIT else ""
     await query.message.edit_text(
-        f"Режим: <b>{new_mode.value}</b>\n{_session_summary(session)}",
+        f"Режим: <b>{new_mode.value}</b>{extra}\n{_session_summary(session)}",
         reply_markup=keyboards.session_menu_keyboard(session),
         parse_mode="HTML",
     )
