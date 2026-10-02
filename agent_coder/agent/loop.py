@@ -84,6 +84,7 @@ class AgentLoop:
                     reasoning_effort=self.session.reasoning_effort,
                     web_search=self.session.web_search,
                     service_tier=self.session.service_tier or config.SERVICE_TIER,
+                    verbosity=self.session.verbosity or None,
                 )
             except Exception as e:
                 await _maybe_await(self.events.on_error, f"LLM ошибка: {e}")

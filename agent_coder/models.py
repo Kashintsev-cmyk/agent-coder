@@ -60,6 +60,7 @@ class ModelInfo:
     tools: bool = True
     reasoning_effort: bool = False
     web_search_builtin: bool = False
+    verbosity: bool = False
     input_price: float = 0.0   # ₽ за 1M
     output_price: float = 0.0  # ₽ за 1M
     tag: str = ""
@@ -340,6 +341,7 @@ CAPABILITIES: tuple[str, ...] = (
     "web_search_builtin",
     "reasoning",
     "reasoning_effort",
+    "verbosity",
 )
 
 
@@ -406,3 +408,7 @@ REASONING_LEVELS = [
     "ultra",
 ]
 DEFAULT_REASONING = "medium"
+
+# Уровни verbosity (длина ответа). RouterAI: low..max.
+VERBOSITY_LEVELS = ["low", "medium", "high", "xhigh", "max"]
+DEFAULT_VERBOSITY = "medium"

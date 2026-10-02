@@ -33,6 +33,7 @@ class Session:
     reasoning_effort: str = DEFAULT_REASONING
     web_search: bool = False
     service_tier: str = ""  # "" = использовать config.SERVICE_TIER
+    verbosity: str = ""  # "" = не передавать параметр
     messages: list[dict[str, Any]] = field(default_factory=list)
     total_usage: Usage = field(default_factory=Usage)
     request_count: int = 0

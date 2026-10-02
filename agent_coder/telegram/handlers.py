@@ -950,6 +950,43 @@ async def cb_setreason(query: CallbackQuery) -> None:
     await query.answer(f"→ {level}")
 
 
+@router.callback_query(F.data == "menu_verbosity")
+async def cb_menu_verbosity(query: CallbackQuery) -> None:
+    session = _get_active_session(query.message.chat.id)
+    if not session:
+        await query.answer("Нет сессии", show_alert=True)
+        return
+    from agent_coder.model_catalog import catalog
+    m = catalog.get(session.model)
+    if not m or not m.verbosity:
+        await query.answer("Модель не поддерживает verbosity", show_alert=True)
+        return
+    cur = session.verbosity or "medium"
+    await query.message.edit_text(
+        f"📏 <b>Verbosity</b>\n\nТекущий: <b>{cur}</b>",
+        reply_markup=keyboards.verbosity_keyboard(cur),
+        parse_mode="HTML",
+    )
+    await query.answer()
+
+
+@router.callback_query(F.data.startswith("setverbosity:"))
+async def cb_setverbosity(query: CallbackQuery) -> None:
+    level = query.data.split(":", 1)[1]
+    session = _get_active_session(query.message.chat.id)
+    if not session:
+        await query.answer("Нет сессии", show_alert=True)
+        return
+    session.verbosity = level
+    session.save()
+    await query.message.edit_text(
+        f"✅ Verbosity: <b>{level}</b>",
+        reply_markup=keyboards.session_menu_keyboard(session),
+        parse_mode="HTML",
+    )
+    await query.answer(f"→ {level}")
+
+
 @router.callback_query(F.data == "tier_toggle")
 async def cb_tier_toggle(query: CallbackQuery) -> None:
     """Циклическое переключение service_tier: default → flex → priority."""

@@ -31,6 +31,7 @@ def _build_request_kwargs(
     reasoning_effort: str | None = None,
     web_search: bool = False,
     service_tier: str | None = None,
+    verbosity: str | None = None,
 ) -> dict[str, Any]:
     """Собрать kwargs для chat.completions.create.
 
@@ -53,6 +54,8 @@ def _build_request_kwargs(
         }]
     if service_tier and service_tier not in ("default", ""):
         kwargs["service_tier"] = service_tier
+    if verbosity:
+        kwargs["verbosity"] = verbosity
     return kwargs
 
 
@@ -96,6 +99,7 @@ class LLMClient:
         reasoning_effort: str | None = None,
         web_search: bool = False,
         service_tier: str | None = None,
+        verbosity: str | None = None,
     ) -> ChatResponse:
         """Один вызов LLM с retry.
 
@@ -112,6 +116,7 @@ class LLMClient:
             reasoning_effort=reasoning_effort,
             web_search=web_search,
             service_tier=service_tier,
+            verbosity=verbosity,
         )
 
         logger.info(

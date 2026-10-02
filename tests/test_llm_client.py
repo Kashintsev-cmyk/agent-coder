@@ -104,3 +104,20 @@ def test_all_with_service_tier():
     assert kw["reasoning_effort"] == "medium"
     assert kw["plugins"][0]["id"] == "web"
     assert kw["service_tier"] == "flex"
+
+
+def test_verbosity_skipped_when_empty():
+    kw = _build_request_kwargs("m", [])
+    assert "verbosity" not in kw
+    kw2 = _build_request_kwargs("m", [], verbosity="")
+    assert "verbosity" not in kw2
+
+
+def test_verbosity_passed():
+    kw = _build_request_kwargs("m", [], verbosity="low")
+    assert kw["verbosity"] == "low"
+
+
+def test_verbosity_max():
+    kw = _build_request_kwargs("m", [], verbosity="max")
+    assert kw["verbosity"] == "max"
