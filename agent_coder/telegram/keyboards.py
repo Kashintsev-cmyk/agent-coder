@@ -113,17 +113,17 @@ def tier_label(value: str) -> str:
 
 def model_card_keyboard(model_id: str, is_current: bool) -> InlineKeyboardMarkup:
     """Карточка модели: описание + метрики + выбор/назад."""
-    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
     if not is_current:
-        rows.append([InlineKeyboardButton(
-            text="✅ Выбрать эту модель",
+        row.append(InlineKeyboardButton(
+            text="✅ Выбрать",
             callback_data=f"setmodel:{model_id}",
-        )])
-    rows.append([InlineKeyboardButton(
+        ))
+    row.append(InlineKeyboardButton(
         text="⬅️ К списку",
         callback_data="menu_model",
-    )])
-    return InlineKeyboardMarkup(inline_keyboard=rows)
+    ))
+    return InlineKeyboardMarkup(inline_keyboard=[row])
 
 
 def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
