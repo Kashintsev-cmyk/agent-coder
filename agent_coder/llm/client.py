@@ -17,8 +17,10 @@ from openai import (
 
 from agent_coder.config import config
 from agent_coder.llm.types import AssistantMessage, ChatResponse, ToolCall, Usage
+from agent_coder.log_safety import SecretFilter
 
 logger = logging.getLogger(__name__)
+logger.addFilter(SecretFilter())
 
 
 def _build_request_kwargs(

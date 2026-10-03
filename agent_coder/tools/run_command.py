@@ -5,6 +5,7 @@ import asyncio
 import re
 from typing import Any
 
+from agent_coder.log_safety import mask_secrets as _mask_secrets
 from agent_coder.tools.registry import Tool, ToolContext
 
 TIMEOUT_SEC = 300
@@ -221,31 +222,6 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
     return any(p.match(cmd) for p in _SAFE_PATTERNS)
 
 
-_SECRET_PATTERNS: list[tuple[str, re.Pattern]] = [
-    # NAME=value (env-стиль)
-    ("ROUTERAI_API_KEY", re.compile(r"(ROUTERAI_API_KEY\s*=\s*)\S+")),
-    ("TELEGRAM_TOKEN",   re.compile(r"(TELEGRAM_TOKEN\s*=\s*)\S+")),
-    # OpenAI-совместимые ключи (группа = префикс, значение маскируется)
-    ("sk-key",           re.compile(r"(sk-)[A-Za-z0-9_\-]{16,}")),
-    # Bearer-токены
-    ("bearer",           re.compile(r"(Bearer\s+)[A-Za-z0-9_.\-]+")),
-]
-
-
-def _mask_secrets(text: str) -> str:
-    """Заменить секреты в тексте на <hidden>. Best-effort фильтр.
-
-    Ловит env-строки (ROUTERAI_API_KEY=...), sk-ключи, Bearer-токены.
-    Не заменяет целиком строку с секретом, только само значение.
-    """
-    if not text:
-        return text
-    for _name, pat in _SECRET_PATTERNS:
-        if pat.groups >= 1:
-            text = pat.sub(lambda m: m.group(1) + "<hidden>", text)
-        else:
-            text = pat.sub("<hidden>", text)
-    return text
 
 
 async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:

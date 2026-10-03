@@ -50,8 +50,8 @@ def _events() -> LoopEvents:
 
 async def run_once(args: argparse.Namespace, session: Session) -> int:
     client = LLMClient()
-    await client.start()
     try:
+        await client.start()
         loop = AgentLoop(
             client=client, registry=build_registry(),
             session=session, events=_events(), yolo=args.yolo,
@@ -61,13 +61,16 @@ async def run_once(args: argparse.Namespace, session: Session) -> int:
         session.save()
         return 0
     finally:
-        await client.close()
+        try:
+            await client.close()
+        except Exception as e:
+            logging.getLogger(__name__).warning("client.close() failed: %s", e)
 
 
 async def run_repl(args: argparse.Namespace, session: Session) -> int:
     client = LLMClient()
-    await client.start()
     try:
+        await client.start()
         registry = build_registry()
         ui.print_banner(
             session_id=session.id, workspace=session.workspace,
@@ -105,7 +108,10 @@ async def run_repl(args: argparse.Namespace, session: Session) -> int:
         ui.print_info(f"Возобновить: agent-coder --resume {session.id}")
         return 0
     finally:
-        await client.close()
+        try:
+            await client.close()
+        except Exception as e:
+            logging.getLogger(__name__).warning("client.close() failed: %s", e)
 
 
 async def _handle_slash(line: str, session: Session) -> bool:
