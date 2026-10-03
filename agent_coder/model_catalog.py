@@ -413,8 +413,21 @@ class ModelCatalog:
             )
             reasoning = True
 
-        input_price = self._price_per_million(pricing.get("prompt"))
-        output_price = self._price_per_million(pricing.get("completion"))
+        units_raw = raw.get("pricing_units") or {}
+        # API может отдать pricing_units как dict ({"prompt": "token", ...})
+        # или как одну строку ("token"). Поддерживаем оба вида.
+        if isinstance(units_raw, str):
+            units = {"prompt": units_raw, "completion": units_raw}
+        elif isinstance(units_raw, dict):
+            units = units_raw
+        else:
+            units = {}
+        input_price = self._price_per_million(
+            pricing.get("prompt"), units.get("prompt"),
+        )
+        output_price = self._price_per_million(
+            pricing.get("completion"), units.get("completion"),
+        )
 
         # tag в API нет — берём из fallback, если есть.
         fallback = _FALLBACK_CATALOG.get(mid)
@@ -425,6 +438,12 @@ class ModelCatalog:
             context_int = int(context) if context is not None else 0
         except (TypeError, ValueError):
             context_int = 0
+
+        # Если API вернул 0 (устаревший fallback или аудио-модель) — берём
+        # context из fallback-каталога, если он там есть. Иначе 0 — caller
+        # (compression.soft_limit) сам подставит MAX_HISTORY_TOKENS.
+        if context_int <= 0 and fallback is not None and fallback.context > 0:
+            context_int = fallback.context
 
         name = raw.get("name") or (fallback.name if fallback else mid)
 
@@ -445,17 +464,34 @@ class ModelCatalog:
         )
 
     @staticmethod
-    def _price_per_million(value: Any) -> float:
-        """Цена из API в руб/ТОКЕН → руб/1M. Отсутствует/0 → 0.0."""
+    def _price_per_million(value: Any, unit: str | None = None) -> float:
+        """Цена из API → руб/1M токенов.
+
+        RouterAI отдаёт `pricing.prompt` в руб за 1 токен и
+        `pricing_units.prompt == "token"`. Если unit явно не "token"
+        (например, "1m" или "request") — не умножаем, только warning.
+        Отсутствующее/неположительное значение → 0.0.
+        """
         if value is None:
             return 0.0
         try:
-            per_token = float(value)
+            amount = float(value)
         except (TypeError, ValueError):
             return 0.0
-        if per_token <= 0:
+        if amount <= 0:
             return 0.0
-        return per_token * 1_000_000
+
+        if unit in (None, "", "token"):
+            return amount * 1_000_000
+
+        if unit == "1m":
+            return amount
+
+        logger.warning(
+            "pricing_units=%r не поддерживается — цена не применена",
+            unit,
+        )
+        return 0.0
 
 
 # Глобальный синглтон каталога. При импорте модуля:

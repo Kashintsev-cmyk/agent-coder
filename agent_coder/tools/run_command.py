@@ -221,6 +221,33 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
     return any(p.match(cmd) for p in _SAFE_PATTERNS)
 
 
+_SECRET_PATTERNS: list[tuple[str, re.Pattern]] = [
+    # NAME=value (env-стиль)
+    ("ROUTERAI_API_KEY", re.compile(r"(ROUTERAI_API_KEY\s*=\s*)\S+")),
+    ("TELEGRAM_TOKEN",   re.compile(r"(TELEGRAM_TOKEN\s*=\s*)\S+")),
+    # OpenAI-совместимые ключи (группа = префикс, значение маскируется)
+    ("sk-key",           re.compile(r"(sk-)[A-Za-z0-9_\-]{16,}")),
+    # Bearer-токены
+    ("bearer",           re.compile(r"(Bearer\s+)[A-Za-z0-9_.\-]+")),
+]
+
+
+def _mask_secrets(text: str) -> str:
+    """Заменить секреты в тексте на <hidden>. Best-effort фильтр.
+
+    Ловит env-строки (ROUTERAI_API_KEY=...), sk-ключи, Bearer-токены.
+    Не заменяет целиком строку с секретом, только само значение.
+    """
+    if not text:
+        return text
+    for _name, pat in _SECRET_PATTERNS:
+        if pat.groups >= 1:
+            text = pat.sub(lambda m: m.group(1) + "<hidden>", text)
+        else:
+            text = pat.sub("<hidden>", text)
+    return text
+
+
 async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     command = args.get("command", "").strip()
     if not command:
@@ -239,8 +266,8 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         await proc.wait()
         return f"Команда прервана по таймауту ({TIMEOUT_SEC}с)"
 
-    stdout = stdout_b.decode("utf-8", errors="replace")
-    stderr = stderr_b.decode("utf-8", errors="replace")
+    stdout = _mask_secrets(stdout_b.decode("utf-8", errors="replace"))
+    stderr = _mask_secrets(stderr_b.decode("utf-8", errors="replace"))
 
     if len(stdout) > MAX_OUTPUT:
         stdout = stdout[:MAX_OUTPUT] + f"\n... (обрезано, всего {len(stdout_b)} байт)"

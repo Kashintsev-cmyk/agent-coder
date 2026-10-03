@@ -473,3 +473,68 @@ def test_parse_one_no_description():
     c.init(api_key="x")
     parsed = c._parse_api_response(fake)
     assert parsed[mid].description == ""
+
+
+def test_price_token_unit_multiplies():
+    """unit='token' → умножаем на 1e6."""
+    from agent_coder.model_catalog import ModelCatalog
+    assert ModelCatalog._price_per_million(2.5e-5, "token") == 25.0
+
+
+def test_price_1m_unit_not_multiplied():
+    """unit='1m' → не умножаем."""
+    from agent_coder.model_catalog import ModelCatalog
+    assert ModelCatalog._price_per_million(25.0, "1m") == 25.0
+
+
+def test_price_unknown_unit_returns_zero():
+    from agent_coder.model_catalog import ModelCatalog
+    assert ModelCatalog._price_per_million(25.0, "banana") == 0.0
+
+
+def test_price_none_unit_defaults_to_token():
+    from agent_coder.model_catalog import ModelCatalog
+    assert ModelCatalog._price_per_million(2.5e-5, None) == 25.0
+
+
+def test_price_zero_or_negative_zero():
+    from agent_coder.model_catalog import ModelCatalog
+    assert ModelCatalog._price_per_million(0, "token") == 0.0
+    assert ModelCatalog._price_per_million(-1, "token") == 0.0
+    assert ModelCatalog._price_per_million(None, "token") == 0.0
+
+
+def test_context_falls_back_when_api_zero():
+    """Если API дал context_length=0, берём context из fallback."""
+    from agent_coder.config import config
+    from agent_coder.model_catalog import ModelCatalog
+    from agent_coder.models import _FALLBACK_CATALOG
+
+    # Возьмём модель, у которой в fallback есть context > 0
+    mid = None
+    for m_id, m in _FALLBACK_CATALOG.items():
+        if m.context > 0:
+            mid = m_id
+            break
+    assert mid is not None, "нет модели с context>0 в fallback"
+
+    fake = {
+        "data": [{
+            "id": mid,
+            "name": "X",
+            "context_length": 0,
+            "architecture": {"input_modalities": ["text"]},
+            "pricing": {"prompt": 1e-5, "completion": 2e-5},
+            "supported_parameters": [],
+        }]
+    }
+    # подменим config.CURATED_MODEL_IDS на [mid] для парсера
+    old_ids = config.CURATED_MODEL_IDS
+    config.CURATED_MODEL_IDS = [mid]
+    try:
+        c = ModelCatalog()
+        c.init(api_key="x")
+        parsed = c._parse_api_response(fake)
+        assert parsed[mid].context == _FALLBACK_CATALOG[mid].context
+    finally:
+        config.CURATED_MODEL_IDS = old_ids
