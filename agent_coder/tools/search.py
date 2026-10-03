@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import shutil
+from pathlib import Path
 from typing import Any
 
 from agent_coder.tools.registry import Tool, ToolContext
@@ -19,6 +20,15 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     if not rg:
         return "Ошибка: ripgrep (rg) не найден на сервере"
 
+    # Валидация path: только внутри workspace
+    raw_path = (args.get("path") or ".").strip() or "."
+    try:
+        base = Path(ctx.workspace).resolve()
+        target = (base / raw_path).resolve()
+        target.relative_to(base)
+    except (ValueError, OSError):
+        return f"Ошибка: путь {raw_path!r} вне workspace"
+
     cmd = [
         rg, "--line-number", "--no-heading", "--color=never",
         "--max-count", str(MAX_MATCHES),
@@ -28,7 +38,8 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     glob = args.get("glob")
     if glob:
         cmd.extend(["--glob", glob])
-    cmd.extend([query, args.get("path") or "."])
+    # `--` перед позиционными — защита от query/path, начинающихся с `-`
+    cmd.extend(["--", query, str(target)])
 
     proc = await asyncio.create_subprocess_exec(
         *cmd,

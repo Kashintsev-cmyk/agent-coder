@@ -16,7 +16,7 @@ MAX_OUTPUT = 30_000
 # она выполняется БЕЗ approval.
 
 # Опасные символы: редиректы, подстановки, точки с запятой, backticks, &&/||.
-_FORBIDDEN = re.compile(r"[;&`$><\n]|&&|\|\|")
+_FORBIDDEN = re.compile(r"[;&`$><\n(){}]|&&|\|\|")
 
 # Секретные пути — всегда требуют approval.
 _FORBIDDEN_PATHS = re.compile(
@@ -25,7 +25,7 @@ _FORBIDDEN_PATHS = re.compile(
     r"\.env(\.|$|\s)|\.credentials|\.netrc|\.pgpass|\.my\.cnf|"
     r"\.aws/|\.gcloud/|\.kube/|\.docker/config\.json|"
     r"\.npmrc|\.pypirc|\.git-credentials|"
-    r"/proc/\d+/environ)",
+    r"/proc/(?:\d+|self|thread-self)/environ)",
     re.IGNORECASE,
 )
 
@@ -55,8 +55,6 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^date(\s+[+\-\d\s:%A-Za-z]+)?$"),
     re.compile(r"^timedatectl(\s+status)?$"),
     re.compile(r"^locale(\s+-\w+)?$"),
-    re.compile(r"^env$"),
-    re.compile(r"^printenv(\s+\w+)?$"),
 
     # --- /proc: глобальные ---
     re.compile(r"^cat\s+/proc/(loadavg|meminfo|cpuinfo|uptime|version|swaps|vmstat|"
@@ -139,9 +137,9 @@ _SAFE_PATTERNS: list[re.Pattern] = [
 
 # Разрешённые команды для pipe: только read-only.
 _ALLOWED_PIPES = re.compile(
-    r"^(ps|cat|free|df|uptime|ss|ip|ls|head|tail|grep|wc|sort|uniq|cut|awk|sed|tr|"
+    r"^(ps|cat|free|df|uptime|ss|ip|ls|head|tail|grep|wc|sort|uniq|cut|tr|"
     r"systemctl|journalctl|docker|lsof|du|smem|pmap|vmstat|iostat|mpstat|"
-    r"which|uname|id|whoami|hostname|date|env|printenv|findmnt|stat|file|"
+    r"which|uname|id|whoami|hostname|date|findmnt|stat|file|"
     r"lsblk|blkid|swapon|pstree|tree|readlink|realpath|locale|"
     r"find|sort|column|nl|rev|xxd|od|hexdump)\s+",
     re.IGNORECASE,
@@ -212,8 +210,8 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
                 return False
             if not _ALLOWED_PIPES.match(part):
                 return False
-            # Внутри части не должно быть ; & ` $ < > (без | — уже разделили)
-            if re.search(r"[;&`$<>]", part):
+            # Внутри части запрещены: ; & ` $ < > ( ) { } (| уже разделили)
+            if re.search(r"[;&`$<>(){}]", part):
                 return False
         return True
 
