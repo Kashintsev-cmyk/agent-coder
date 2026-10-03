@@ -132,7 +132,7 @@ class ModelCatalog:
         for mid in config.CURATED_MODEL_IDS:
             model = self._models.get(mid)
             if model is None:
-                model = self._fallback_for(mid)
+                model = self._fallback_for(mid) or _make_placeholder(mid)
             result.append(model)
         return result
 
@@ -306,8 +306,10 @@ class ModelCatalog:
         с ``timeout=api_timeout``.
         """
         owns_client = client is None
-        if owns_client:
+        if client is None:
             client = httpx.AsyncClient(timeout=self._api_timeout)
+        # mypy не сужает тип после присваивания в if — фиксируем явно.
+        assert client is not None
 
         url = f"{self._api_base_url.rstrip('/')}/models"
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}

@@ -1,302 +1,358 @@
-# ---------- 1. Возможности ----------
-new_capabilities = """\
-- **Три режима** — `plan` (только чтение), `act` (полный доступ), `audit` (строгий аудитор кода)
-- **Точная стоимость** — `usage.cost` от RouterAI напрямую, без оценок по токенам
-- **10 инструментов**: чтение, запись, точечные правки, поиск, терминал, git
-- **Подтверждения** — опасные команды спрашивают разрешения, безопасные read-only
-  выполняются сразу; `--yolo` отключает вопросы
-- **Сессии на диске** — история сообщений, стоимость и настройки сохраняются,
-  можно возобновить (`--resume <id>`) или продолжить последнюю (`--continue`)
-- **Каталог моделей из API RouterAI** — `/models` подтягивается при старте бота
-  и кэшируется на диск (TTL 24 ч). Модели, их цены, контекст и capabilities
-  обновляются автоматически; список для UI управляется через `.env`
-  (`CURATED_MODEL_IDS`)
-- **Адаптивное меню модели** — кнопки (reasoning / web search / tier / verbosity /
-  приём фото) показываются только для тех возможностей, которые модель реально
-  поддерживает; в списке моделей у каждой видны эмодзи-бейджи
-  (👁 vision, 🌐 web_search, 🧠/⚙ reasoning, 🔧 tools)
-- **Карточка модели** — клик по модели открывает описание от RouterAI, контекст
-  и цены
-- **Встроенный web search RouterAI** — включается toggle'ом в меню (🌐), идёт
-  как `plugins=[{id:web}]` в запрос; работает без внешних ключей (движок
-  `native` / `exa`)
-- **Service tier** — переключение `default` / `flex` (−50% цены, медленнее) /
-  `priority` (быстрее, дороже) прямо в меню (⚡); при недоступности flex
-  бот автоматически повторяет запрос с `default`
-- **Verbosity** — управление длиной ответа модели (📏 low..max)
-- **Reasoning** — уровень thinking (medium/high/...), у моделей без градации
-  кнопка скрыта
-- **Сжатие истории** — при приближении к лимиту контекста старые сообщения
-  автоматически резюмируются дешёвой моделью (`SUMMARY_MODEL`), свежие
-  остаются как есть
-- **Приём изображений** — можно отправить фото (или картинку-документом):
-  бот сохраняет её в `sessions/media/<id>/` и передаёт модели как
-  `image_url` (base64). Модели без vision показывают предупреждение
-- **Telegram-бот** — тот же агент в мессенджере, плюс бесплатные (без LLM)
-  меню диагностики сервера и аудита проекта
-- **Audit-отчёты** — в Telegram после задачи в режиме `audit` результат
-  автоматически выгружается в Markdown (`sessions/audits/`) и дублируется
-  в проект как `AUDIT_REPORT.md`
-- **Маскирование секретов** — `ROUTERAI_API_KEY`, `TELEGRAM_TOKEN`, `sk-*`,
-  `Bearer *` заменяются на `<hidden>` в выводе команд и в логах"""
+# agent-coder
 
-text = replace_section(text, "## Возможности", new_capabilities)
+[![CI](https://github.com/Kashintsev-cmyk/agent-coder/actions/workflows/ci.yml/badge.svg)](https://github.com/Kashintsev-cmyk/agent-coder/actions/workflows/ci.yml)
+![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)
+![License](https://img.shields.io/badge/license-MIT-green)
 
-# ---------- 2. Требования ----------
-new_requirements = """\
+Автономный coding-агент для сервера. CLI и Telegram-бот на базе RouterAI:
+читает, правит и запускает код прямо на машине — без SSH-туннелей, без
+remote-helper'ов, с точным учётом стоимости каждой генерации.
+
+## Возможности
+
+**Агент**
+- Три режима: `plan` (только чтение), `act` (полный доступ), `audit` (строгий аудитор)
+- 10 инструментов: чтение/запись/правки файлов, поиск (`ripgrep`), shell с whitelist, git
+- Подтверждения на опасные операции; безопасные read-only команды — без вопросов
+- Точная стоимость от RouterAI (`usage.cost`), без оценок по токенам
+
+**Модели**
+- Каталог из `/api/v1/models` RouterAI, кэшируется на диск (TTL 24 ч)
+- Список моделей задаётся в `.env` (`CURATED_MODEL_IDS`) — без правок кода
+- Адаптивное меню: кнопки (reasoning / web search / tier / verbosity) только для
+  возможностей, которые модель реально поддерживает
+- Карточка модели с описанием, контекстом и ценами
+
+**LLM-фичи**
+- Встроенный web search RouterAI (`plugins=[{id:web}]`)
+- Service tier: `default` / `flex` (−50% цены) / `priority` (быстрее)
+- Verbosity, reasoning, temperature — с per-session настройкой
+- Сжатие истории: старые сообщения резюмируются дешёвой моделью
+- Приём изображений (vision-модели): фото передаётся как `image_url`
+
+**Безопасность**
+- Whitelist read-only команд; pipe без `awk`/`sed`/`env`/`printenv`
+- Маскирование секретов (`ROUTERAI_API_KEY`, `TELEGRAM_TOKEN`, `sk-*`, `Bearer *`)
+  в логах и выводе команд
+- Path traversal защищён в `search`, `read_file`, `write_file`, `list_files`
+- systemd hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `ReadWritePaths`
+
+**Инфраструктура**
+- Сессии на диске + sidecar-индекс метаданных (быстрый `/sessions`)
+- Медиа-retention: файлы старше 30 дней удаляются фоновой задачей
+- Retry с jitter и уважением `Retry-After`
+- GitHub Actions: pytest + ruff на Python 3.10–3.12
+
+## Быстрый старт
+
+### Требования
+
 | Что | Зачем | Обязательно |
-|-----|-------|-------------|
-| Python **≥ 3.10** | указан в `pyproject.toml` (`requires-python`), проверено на 3.10.12 | да |
-| `ROUTERAI_API_KEY` | доступ к моделям через routerai.ru | да |
-| `ripgrep` (`rg`) | инструмент `search` (без него вернёт «rg не найден») | для поиска |
-| `git` | инструменты `git_status/diff/log/commit` | для git-работы |
+|---|---|---|
+| Python **≥ 3.10** | `requires-python` в `pyproject.toml` | да |
+| `ROUTERAI_API_KEY` | доступ к моделям через [routerai.ru](https://routerai.ru) | да |
+| `ripgrep` (`rg`) | инструмент `search` | для поиска |
+| `git` | инструменты `git_*` | для git-работы |
 
-Шрифты DejaVu (для PDF-отчётов) **больше не нужны** — PDF-генерация удалена,
-отчёты аудита только в Markdown."""
+### Установка
 
-text = replace_section(text, "## Требования", new_requirements)
+    git clone git@github.com:Kashintsev-cmyk/agent-coder.git
+    cd agent-coder
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -e .
+    cp .env.example .env
+    # отредактируй .env — вставь ROUTERAI_API_KEY
 
-# ---------- 3. Режимы ----------
-new_modes = """\
+Устанавливаются две команды:
+- `agent-coder` — CLI
+- `agent-coder-bot` — Telegram-бот (нужен `TELEGRAM_TOKEN`)
+
+### Первый запуск (CLI)
+
+    agent-coder --cwd /path/to/project "проанализируй структуру и предложи план рефакторинга"
+
+Без задачи — откроется REPL.
+
+### Первый запуск (Telegram)
+
+    # в .env должен быть TELEGRAM_TOKEN и TELEGRAM_USER_ID
+    agent-coder-bot
+
+Открой бота в Telegram → `/start` → `/projects` → выбери проект → отправь
+задачу текстом.
+
+## Использование
+
+### CLI
+
+    # Одна задача — выполнить и выйти
+    agent-coder --cwd /path/to/project "создай README.md с описанием проекта"
+
+    # REPL (без аргумента-задачи)
+    agent-coder --cwd /path/to/project
+
+    # Plan-режим: только чтение
+    agent-coder --plan "предложи рефакторинг"
+
+    # Без подтверждений (осторожно)
+    agent-coder --yolo "прогони тесты и почини падения"
+
+    # Возобновить сессию / продолжить последнюю в директории
+    agent-coder --resume 7db6a452
+    agent-coder --continue --cwd /path/to/project
+
+    # Выбрать модель и включить debug-логи
+    agent-coder --model anthropic/claude-sonnet-5.5 -v "отрефактори модуль парсера"
+
+### CLI-флаги
+
+| Флаг | По умолчанию | Описание |
+|---|---|---|
+| `task` (позиционный) | — | Задача; без неё запускается REPL |
+| `--cwd DIR` | `DEFAULT_WORKSPACE` (`~/projects`) | Workspace |
+| `--model ID` | `MODEL_MAIN` | Модель RouterAI |
+| `--plan` | выкл. | Plan-режим |
+| `--yolo` | выкл. | Без подтверждений |
+| `--resume ID` | — | Возобновить сессию |
+| `--continue` | выкл. | Продолжить последнюю для workspace |
+| `--max-iterations N` | из `.env` | Лимит итераций (переопределяет `MAX_ITERATIONS_*` для всех режимов) |
+| `--verbose`, `-v` | выкл. | DEBUG-логи |
+| `--version` | — | Версия |
+
+### Slash-команды (REPL)
+
+| Команда | Действие |
+|---|---|
+| `/plan`, `/act`, `/audit` | Сменить режим (история очищается) |
+| `/cost` | Стоимость и число запросов |
+| `/session` | Информация о текущей сессии |
+| `/sessions` | Список сессий (до 20, свежие сверху) |
+| `/switch <id>` | Переключиться на сессию |
+| `/title <текст>` | Заголовок сессии |
+| `/history` | Последние 20 сообщений |
+| `/clear` | Очистить историю (стоимость сохраняется) |
+| `/model` | Выбрать модель (интерактивно) |
+| `/reasoning` | Уровень reasoning |
+| `/help`, `/exit`, `/quit`, `/q` | Справка / выход |
+
+## Режимы
+
 | Режим | Что разрешено | Лимит итераций |
-|-------|---------------|----------------|
-| `plan` | только read-only инструменты + безопасные (`whitelist`) команды | `MAX_ITERATIONS_PLAN` (30) |
+|---|---|---|
+| `plan` | read-only инструменты + whitelist-команды | `MAX_ITERATIONS_PLAN` (30) |
 | `act` | всё: запись, правки, любые команды, git-коммит | `MAX_ITERATIONS_ACT` (50) |
-| `audit` | как `plan`, но с промптом строгого аудитора; в Telegram результат дополнительно выгружается в `.md` | `MAX_ITERATIONS_AUDIT` (100) |
+| `audit` | как `plan`, но с промптом строгого аудитора; в Telegram — Markdown-отчёт | `MAX_ITERATIONS_AUDIT` (100) |
 
-Режим по умолчанию — `act`. В CLI audit включается командой `/audit` в REPL
-(флага `--audit` нет), в Telegram — `/mode audit` или кнопкой в меню сессии.
+По умолчанию — `act`. В `plan`/`audit` попытки изменить файлы отбиваются
+на уровне реестра инструментов.
 
-В `plan` и `audit` любые попытки изменить файлы отбиваются на уровне реестра
-инструментов: агент получает сообщение «инструмент недоступен в этом режиме»."""
+## Инструменты
 
-text = replace_section(text, "## Режимы", new_modes)
+| Инструмент | Назначение | Подтверждение |
+|---|---|---|
+| `read_file` | Чтение файла с нумерацией строк (`offset`/`limit`, до 2000 строк) | нет |
+| `list_files` | Рекурсивный список (glob-шаблон, до 500 записей) | нет |
+| `search` | Поиск через `ripgrep` (до 200 совпадений, таймаут 60 с) | нет |
+| `write_file` | Создать / перезаписать файл | нет |
+| `edit_file` | Точечная замена `old_string` → `new_string` | нет |
+| `run_command` | Shell в workspace. Whitelist read-only + pipe — без вопросов; остальное (`rm`, `kill`, `sudo`, `awk`, `sed`, `env`, `;`) — через approval. Таймаут 300 с | по команде |
+| `git_status` | `git status --porcelain --branch` | нет |
+| `git_diff` | Diff изменений | нет |
+| `git_log` | Последние N коммитов (1–50) | нет |
+| `git_commit` | Коммит того, что в индексе | да |
 
-# ---------- 4. Инструменты (мелкая правка search + run_command) ----------
-old_search = "| `search` | Поиск по проекту через `ripgrep` (до 200 совпадений) | нет |"
-new_search = "| `search` | Поиск по проекту через `ripgrep` (до 200 совпадений, таймаут 60 с; путь валидируется внутри workspace) | нет |"
-if old_search in text:
-    text = text.replace(old_search, new_search, 1)
+`read_file`, `write_file`, `edit_file`, `list_files`, `search` — только внутри
+workspace (path traversal защищён).
 
-old_run = "| `run_command` | Shell-команда в workspace. Whitelist read-only команд и pipe между ними — без вопросов; остальное (`rm`, `kill`, `sudo`, редиректы, `;`) требует подтверждения. Таймаут 300 с, вывод до 30 000 байт на поток | по команде |"
-new_run = "| `run_command` | Shell-команда в workspace. Whitelist read-only команд и pipe между ними — без вопросов; остальное (`rm`, `kill`, `sudo`, редиректы, `;`, `awk`, `sed`, `env`, `printenv`) требует подтверждения. Вывод маскируется от секретов. Таймаут 300 с, вывод до 30 000 байт на поток | по команде |"
-if old_run in text:
-    text = text.replace(old_run, new_run, 1)
+## Модели
 
-# ---------- 5. Модели ----------
-new_models = """\
-Кураторский список моделей, доступных для выбора через `/model` (CLI) и кнопку
-«🧠 Модель» (Telegram). Модели тянутся из `/api/v1/models` RouterAI и кэшируются;
-какие из них показывать — задаётся в `.env` через `CURATED_MODEL_IDS`.
+Список моделей для UI задаётся через `.env` → `CURATED_MODEL_IDS`.
+Метаданные (цены, контекст, capabilities) тянутся из `/api/v1/models` RouterAI
+и кэшируются на диск.
 
-Цены — ₽ за 1M токенов (актуальные значения приходят из API; в таблице —
-ориентир на момент публикации). Бейджи: 👁 vision · 🌐 встроенный web search ·
-🧠 reasoning · ⚙ reasoning с градацией · 🔧 tools · 📏 verbosity.
+Дефолтный набор:
 
-| Модель | ID | Контекст | ₽ in / out | Бейджи |
-|--------|----|----------|-----------|--------|
-| DeepSeek V4.1 Flash *(по умолчанию)* | `deepseek/deepseek-v4.1-flash` | 1 048 576 | ~11 / ~21 | 👁⚙🔧 |
-| GPT-5.6 Luna | `openai/gpt-5.6-luna` | 1 050 000 | ~22 / ~130 | 👁🌐⚙🔧📏 |
-| GLM 5.3 Flash | `z-ai/glm-5.3-flash` | 1 048 576 | ~9 / ~30 | 👁⚙🔧 |
-| Gemini 3.8 Flash | `google/gemini-3.8-flash` | 1 048 576 | ~81 / ~406 | 👁🌐⚙🔧 |
-| Claude Sonnet 5.5 | `anthropic/claude-sonnet-5.5` | 1 000 000 | ~216 / ~1082 | 👁🌐⚙🔧📏 |
-| Grok 4.7 | `x-ai/grok-4.7` | 500 000 | ~216 / ~649 | 👁🌐⚙🔧 |
-| Kimi K2.7 Code | `moonshotai/kimi-k2.7-code` | 262 144 | ~77 / ~325 | 👁🧠🔧 |
+| Модель | ID | ₽ in / out (за 1M) | Бейджи |
+|---|---|---|---|
+| **DeepSeek V4.1 Flash** *(default)* | `deepseek/deepseek-v4.1-flash` | ~11 / ~21 | 👁⚙🔧 |
+| GPT-5.6 Luna | `openai/gpt-5.6-luna` | ~22 / ~130 | 👁🌐⚙🔧📏 |
+| GLM 5.3 Flash | `z-ai/glm-5.3-flash` | ~9 / ~30 | 👁⚙🔧 |
+| Gemini 3.8 Flash | `google/gemini-3.8-flash` | ~81 / ~406 | 👁🌐⚙🔧 |
+| Claude Sonnet 5.5 | `anthropic/claude-sonnet-5.5` | ~216 / ~1082 | 👁🌐⚙🔧📏 |
+| Grok 4.7 | `x-ai/grok-4.7` | ~216 / ~649 | 👁🌐⚙🔧 |
+| Kimi K2.7 Code | `moonshotai/kimi-k2.7-code` | ~77 / ~325 | 👁🧠🔧 |
 
-Итого **7 curated-моделей** в дефолтном `.env`. Список можно менять без правок
-кода — достаточно отредактировать `CURATED_MODEL_IDS` и перезапустить бота.
+**Бейджи:** 👁 vision · 🌐 встроенный web search · 🧠 reasoning · ⚙ reasoning
+с градацией · 🔧 tools · 📏 verbosity.
 
-Смена модели для сессии: `--model <id>` при запуске или `/model` в REPL /
-Telegram (клик по модели → карточка с описанием → «✅ Выбрать»). Смена модели
-очищает историю сессии.
+Цены — ориентир на момент публикации. Актуальные всегда подтягиваются из API.
 
-**Reasoning.** Уровни: `none`, `minimal`, `low`, `medium`, `high`, `xhigh`,
-`max`, `ultra`; по умолчанию `medium`. `none` означает, что параметр вообще
-не передаётся в API. Кнопка «💭» в меню сессии появляется только у моделей
-с поддержкой reasoning.
+## Переменные окружения
 
-**Web search.** Toggle «🌐» в меню сессии — доступен только моделям с
-встроенным поиском на стороне RouterAI. Передаётся как `plugins=[{id:web}]`.
-Движок (`native` / `exa`) и лимит результатов настраиваются через `.env`.
-
-**Service tier.** Кнопка «⚡» циклически переключает `default → flex → priority`.
-`flex` — примерно −50% цены, но медленнее и без гарантий; при недоступности
-мощностей провайдер вернёт ошибку, и бот один раз повторит запрос с `default`.
-
-**Verbosity.** Кнопка «📏» — уровень многословности (`low`..`max`); у моделей
-без поддержки кнопка скрыта.
-
-**Temperature.** Единый дефолт `0.2` для всех запросов (env `TEMPERATURE`).
-Подходит для кода; можно поднять для креативных задач."""
-
-text = replace_section(text, "## Модели", new_models)
-
-# ---------- 6. Env ----------
-new_env = """\
-Читаются из `.env` (см. `.env.example`). Обязательна только `ROUTERAI_API_KEY`.
+Все — в `.env` (см. `.env.example`). Обязательна только `ROUTERAI_API_KEY`.
 
 **RouterAI / LLM**
 
 | Переменная | По умолчанию | Описание |
-|------------|--------------|----------|
-| `ROUTERAI_API_KEY` | — (**обязательна**) | API-ключ routerai.ru |
-| `ROUTERAI_BASE_URL` | `https://routerai.ru/api/v1` | Базовый URL API |
-| `ROUTERAI_TIMEOUT` | `300.0` | Таймаут запроса к LLM, секунды |
-| `MAX_RETRIES` | `3` | Число попыток при ошибках сети/лимитов |
+|---|---|---|
+| `ROUTERAI_API_KEY` | — (**обязательна**) | API-ключ |
+| `ROUTERAI_BASE_URL` | `https://routerai.ru/api/v1` | Базовый URL |
+| `ROUTERAI_TIMEOUT` | `300.0` | Таймаут LLM, с |
+| `MAX_RETRIES` | `3` | Число попыток при ошибках |
 | `RETRY_BACKOFF` | `2.0` | База экспоненциального backoff |
-| `TEMPERATURE` | `0.2` | Температура генерации (0.0–2.0) |
+| `TEMPERATURE` | `0.2` | Температура (0.0–2.0) |
 | `SERVICE_TIER` | `default` | `default` / `flex` / `priority` |
-| `WEB_SEARCH_ENGINE` | `native` | `native` / `exa` — движок web search |
+| `WEB_SEARCH_ENGINE` | `native` | `native` / `exa` |
 | `WEB_SEARCH_MAX_RESULTS` | `5` | Сколько результатов запрашивать |
 
 **Модели**
 
 | Переменная | По умолчанию | Описание |
-|------------|--------------|----------|
-| `MODEL_MAIN` | `deepseek/deepseek-v4.1-flash` | Модель по умолчанию |
-| `MODEL_FAST` | `MODEL_MAIN` | Зарезервировано (в коде пока не используется) |
-| `CURATED_MODEL_IDS` | 7 id через запятую | Список моделей для UI (порядок сохраняется) |
-| `DEFAULT_MODEL_ID` | `deepseek/deepseek-v4.1-flash` | Модель по умолчанию (должна входить в `CURATED_MODEL_IDS`) |
+|---|---|---|
+| `MODEL_MAIN` | `deepseek/deepseek-v4.1-flash` | Модель для новых сессий |
+| `MODEL_FAST` | `MODEL_MAIN` | Зарезервировано |
+| `CURATED_MODEL_IDS` | 7 id через запятую | Список для UI |
+| `DEFAULT_MODEL_ID` | `deepseek/deepseek-v4.1-flash` | Должна входить в `CURATED_MODEL_IDS` |
 
-**Каталог моделей (кэш /models)**
+**Каталог моделей**
 
 | Переменная | По умолчанию | Описание |
-|------------|--------------|----------|
-| `MODELS_CACHE_TTL` | `24` | TTL дискового кэша каталога, часы |
+|---|---|---|
+| `MODELS_CACHE_TTL` | `24` | TTL дискового кэша, ч |
 | `MODELS_CACHE_DIR` | `~/.cache/agent-coder` | Куда писать кэш |
-| `MODELS_API_TIMEOUT` | `5.0` | Таймаут запроса к `/api/v1/models` |
+| `MODELS_API_TIMEOUT` | `5.0` | Таймаут запроса к `/models` |
 
 **Сжатие истории**
 
 | Переменная | По умолчанию | Описание |
-|------------|--------------|----------|
-| `MAX_HISTORY_TOKENS` | `128000` | Верхний порог input-токенов; итог = `min(model.context * 0.6, MAX_HISTORY_TOKENS)` |
-| `SUMMARY_MODEL` | `z-ai/glm-5.3-flash` | Дешёвая модель для суммаризации старых сообщений |
+|---|---|---|
+| `MAX_HISTORY_TOKENS` | `128000` | Порог = `min(model.context * 0.6, MAX_HISTORY_TOKENS)` |
+| `SUMMARY_MODEL` | `z-ai/glm-5.3-flash` | Модель для резюме |
+| `MEDIA_RETENTION_DAYS` | `30` | Retention медиа-вложений, дней |
 
 **Агент и окружение**
 
 | Переменная | По умолчанию | Описание |
-|------------|--------------|----------|
-| `DEFAULT_WORKSPACE` | `~/projects` | Workspace по умолчанию для `--cwd` |
-| `MAX_ITERATIONS` | `50` | Общий лимит итераций (fallback) |
-| `MAX_ITERATIONS_PLAN` | `30` | Лимит итераций в Plan-режиме |
-| `MAX_ITERATIONS_ACT` | `50` | Лимит итераций в Act-режиме |
-| `MAX_ITERATIONS_AUDIT` | `100` | Лимит итераций в Audit-режиме |
-| `LOG_LEVEL` | `INFO` | Зарезервировано (CLI задаёт уровень через `-v`) |
+|---|---|---|
+| `DEFAULT_WORKSPACE` | `~/projects` | Workspace по умолчанию |
+| `MAX_ITERATIONS` | `50` | Fallback-лимит |
+| `MAX_ITERATIONS_PLAN` | `30` | Plan |
+| `MAX_ITERATIONS_ACT` | `50` | Act |
+| `MAX_ITERATIONS_AUDIT` | `100` | Audit |
+| `LOG_LEVEL` | `INFO` | Зарезервировано |
 
 **Telegram**
 
 | Переменная | По умолчанию | Описание |
-|------------|--------------|----------|
-| `TELEGRAM_TOKEN` | — | Токен бота (для `agent-coder-bot`) |
-| `TELEGRAM_USER_ID` | `0` | Единственный разрешённый пользователь бота |
-| `TELEGRAM_PROJECTS_DIRS` | `~/projects,~/bots` | Папки, из которых бот показывает проекты |
-| `APPROVAL_TIMEOUT` | `900` | Таймаут подтверждения опасной команды, секунды |"""
+|---|---|---|
+| `TELEGRAM_TOKEN` | — | Токен бота |
+| `TELEGRAM_USER_ID` | `0` | Единственный разрешённый пользователь |
+| `TELEGRAM_PROJECTS_DIRS` | `~/projects,~/bots` | Папки для `/projects` |
+| `APPROVAL_TIMEOUT` | `900` | Таймаут approval, с |
 
-text = replace_section(text, "## Переменные окружения", new_env)
+## Telegram-бот
 
-# ---------- 7. Telegram ----------
-new_tg = """\
-```bash
-agent-coder-bot
-```
+    agent-coder-bot
 
-Команды: `/start`, `/help`, `/projects`, `/new <путь>`, `/sessions`,
-`/current`, `/history`, `/delete [id]`, `/reasoning`, `/reasoning` (выбор
-уровня), `/model` (список моделей с бейджами), `/mode plan|act|audit`,
-`/cost`, `/balance` (баланс RouterAI), `/server` (диагностика сервера),
-`/audit` (меню проверок проекта), `/cancel`.
+**Команды:** `/start`, `/help`, `/projects`, `/new <путь>`, `/sessions`,
+`/current`, `/history`, `/delete [id]`, `/model`, `/reasoning`,
+`/mode plan|act|audit`, `/cost`, `/balance`, `/server`, `/audit`, `/cancel`.
 
 **Меню сессии** (кнопки):
-- **🧠 Модель** — открывает список моделей с бейджами; клик по модели →
-  карточка с описанием от RouterAI, контекстом, ценами и кнопкой
-  «✅ Выбрать» / «⬅️ К списку».
+- **🧠 Модель** — список моделей с бейджами; клик → карточка с описанием,
+  контекстом, ценами и кнопкой «✅ Выбрать».
 - **💭 Reasoning** — уровень thinking (только у моделей с поддержкой).
-- **🌐 Web search** — toggle встроенного поиска RouterAI (только у моделей
-  с `web_search_builtin`).
+- **🌐 Web search** — toggle встроенного поиска (только у моделей с ним).
 - **⚡ Tier** — циклическое `default → flex → priority`.
-- **📏 Verbosity** — уровень многословности (только у поддерживающих моделей).
+- **📏 Verbosity** — уровень многословности.
 - **Plan / Act / Audit**, **Стоимость**, **Новая**, **История**, **Удалить**.
 
-Адаптивность: кнопки quick-настроек (reasoning / web / tier / verbosity)
-раскладываются в 1, 2, 3 или 2+2 кнопки в ряд — в зависимости от того,
-сколько возможностей реально поддерживает выбранная модель.
+Quick-настройки раскладываются в 1, 2, 3 или 2+2 кнопки в ряд — в зависимости
+от того, сколько возможностей поддерживает выбранная модель.
 
-**Приём задач**
+**Приём задач:**
 - Текст сообщения — обычная задача.
-- `.txt`/`.md` и т.п. — длинный промт файлом (до 1 МБ).
-- **Фото** — прикладывается к задаче как изображение (base64). Модель должна
-  поддерживать vision (бейдж 👁), иначе бот предупредит и не примет фото.
-  Файл сохраняется в `sessions/media/<id>/`.
+- `.txt` / `.md` и т.п. — длинный промт файлом (до 1 МБ).
+- **Фото** — прикладывается как `image_url` (base64). Модель должна
+  поддерживать vision, иначе бот предупредит.
 
-**Прочее**
-- Доступ ограничен одним `TELEGRAM_USER_ID` (фильтр на роутере).
-- Долгие команды выполняются в фоне, прогресс обновляется в одном сообщении;
-  `/cancel` прерывает задачу.
-- Подтверждения приходят инлайн-кнопками «Разрешить / Отклонить» (таймаут —
-  `APPROVAL_TIMEOUT`, по умолчанию 900 с).
-- При остановке (`systemctl restart/stop`) бот корректно завершается: ждёт
-  остановки polling, уведомляет «🔄 Бот перезагружается, задача прервана» и
-  отменяет активные задачи. Юнит для systemd — `deploy/agent-coder-bot.service`.
-- Меню `/server` и `/audit` выполняют заранее отобранные read-only команды
-  напрямую, минуя LLM — это бесплатно (см. `server_ops.py`, `audit_ops.py`).
-- В Audit-режиме после завершения задачи бот присылает **Markdown**-отчёт
-  (PDF-генерация удалена)."""
+**Меню `/server` и `/audit`** выполняют read-only команды напрямую, минуя LLM —
+бесплатно, сгруппированы по категориям.
 
-text = replace_section(text, "## Telegram-бот", new_tg)
+## Где хранятся данные
 
-# ---------- 8. Структура проекта ----------
-new_struct = """\
-```
-agent_coder/
-├── __main__.py          # CLI: argparse, REPL, slash-команды
-├── config.py            # конфиг из .env, пути, лимиты
-├── models.py            # описание модели + fallback-снапшот каталога
-├── model_catalog.py     # ModelCatalog: /api/v1/models + диск-кэш + fallback
-├── log_safety.py        # маскирование секретов в логах и выводе команд
-├── audit_ops.py         # read-only проверки проекта (ruff, bandit, mypy, ...)
-├── server_ops.py        # read-only команды диагностики сервера
-├── agent/
-│   ├── loop.py          # агентный цикл: LLM → tool_call → результат → LLM
-│   ├── session.py       # сессия: история, стоимость, save/load, media
-│   ├── session_index.py # sidecar-индекс метаданных сессий (быстрый /sessions)
-│   ├── compression.py   # сжатие истории через SUMMARY_MODEL
-│   ├── prompts.py       # режимы Plan/Act и выбор системного промпта
-│   └── audit_prompt.py  # системный промпт аудитора
-├── llm/
-│   ├── client.py        # AsyncOpenAI + retry, разбор usage.cost, plugins
-│   └── types.py         # Usage, ToolCall, ChatResponse, format_cost
-├── tools/               # реестр и 10 инструментов
-├── reports/
-│   └── audit_saver.py   # сохранение MD-отчёта аудита
-├── telegram/            # bot, handlers, keyboards, renderer, state
-└── ui/
-    └── terminal.py      # rich-вывод, диалог подтверждения
-```
+Всё в `BASE_DIR` репозитория; `sessions/` — в `.gitignore`.
 
-Данные сессий: `sessions/<id>.json` (история), `sessions/index.json`
-(метаданные — 5 КБ вместо 5 МБ), `sessions/media/<id>/` (картинки),
-`sessions/audits/` (MD-отчёты), `sessions/history/` (экспорт)."""
+| Что | Путь |
+|---|---|
+| Сессии (история, стоимость, настройки) | `sessions/<id>.json` |
+| Индекс метаданных | `sessions/index.json` |
+| Медиа-вложения | `sessions/media/<id>/` |
+| Audit-отчёты (Markdown) | `sessions/audits/` |
+| Экспорт истории | `sessions/history/` |
+| Активная сессия Telegram | `telegram_state.json` |
+| `.env` | корень репозитория |
 
-text = replace_section(text, "## Структура проекта", new_struct)
+ID сессии — 8 hex-символов.
 
-# ---------- 9. Статус и известные ограничения ----------
-new_status = """\
-- Агент общается с LLM только через RouterAI; других провайдеров нет.
-- `--max-iterations N` переопределяет `MAX_ITERATIONS_PLAN/ACT/AUDIT` из `.env`
-  **только если указан явно**. Без флага используются значения из `.env`.
-- `MODEL_FAST` и `LOG_LEVEL` прочитаны из окружения, но в коде пока не
-  используются — зарезервированы.
-- Стоимость хранится как `float`. Для UI (показ, суммирование
-  по сессии) этого достаточно — погрешность < 1 копейки на
-  разумных объёмах (десятки тысяч рублей). Для биллинговых
-  задач переходить на `Decimal` осознанно, с миграцией JSON.
-- Стоимость хранится как `float` (`Usage.cost` приходит от RouterAI числом).
-  Для UI этого достаточно; для бухгалтерии точность не гарантируется.
-- PDF-отчётов нет — только Markdown. Шрифты DejaVu на сервере не требуются.
-- Медиа сессий не удаляется по TTL: файлы живут ровно столько, сколько
-  существует сессия (при `/delete` папка `sessions/media/<id>/` очищается).
-- Пиковая стоимость: `service_tier=priority` дороже `default`; таблица цен в
-  меню показывает базовый тариф (без наценки priority).
-- Фоновые задачи (например, `flex`) могут вернуть ошибку, если у провайдера
-  нет свободных мощностей; бот один раз повторяет запрос с `default`."""
+## Архитектура
+
+    agent_coder/
+    ├── __main__.py          # CLI: argparse, REPL
+    ├── config.py            # конфиг из .env
+    ├── models.py            # ModelInfo + fallback-каталог
+    ├── model_catalog.py     # ModelCatalog: API + кэш + fallback
+    ├── log_safety.py        # маскирование секретов
+    ├── shell_runner.py      # единый subprocess с таймаутом и killpg
+    ├── audit_ops.py         # read-only проверки проекта
+    ├── server_ops.py        # read-only команды диагностики
+    ├── agent/
+    │   ├── loop.py          # агентный цикл
+    │   ├── session.py       # история, стоимость, save/load
+    │   ├── session_index.py # sidecar-индекс
+    │   ├── compression.py   # сжатие истории
+    │   └── prompts.py       # системные промпты
+    ├── llm/
+    │   ├── client.py        # AsyncOpenAI + retry
+    │   └── types.py         # Usage, ToolCall, format_cost
+    ├── tools/               # 10 инструментов
+    ├── telegram/            # bot, handlers, keyboards, renderer
+    └── ui/                  # rich-вывод для CLI
+
+## Разработка
+
+    # установка с dev-зависимостями
+    pip install -e ".[dev]"
+
+    # тесты (276)
+    pytest -q
+
+    # линтер
+    ruff check .
+
+    # mypy (запускается вручную — см. Известные ограничения)
+    mypy agent_coder tests
+
+CI (GitHub Actions) прогоняет `ruff check .` и `pytest -q` на Python
+3.10 / 3.11 / 3.12 при каждом push в `master` и в PR.
+
+## Известные ограничения
+
+- Агент работает только через RouterAI; других провайдеров нет.
+- `--max-iterations N` переопределяет `MAX_ITERATIONS_*` **только если указан
+  явно**. Без флага используются значения из `.env`.
+- `MODEL_FAST` и `LOG_LEVEL` читаются из окружения, но в коде пока
+  не используются — зарезервированы.
+- Стоимость хранится как `float`. Для UI этого достаточно; для биллинга
+  точность не гарантируется (переход на `Decimal` — при появлении такой задачи).
+- PDF-отчётов нет — только Markdown.
+- Медиа удаляются по retention: файлы старше `MEDIA_RETENTION_DAYS` (30)
+  подчищает фоновая задача раз в сутки. При `/delete` — сразу.
+- `mypy` настроен в `pyproject.toml`, но **не входит в CI**: 98 из 105 ошибок —
+  `union-attr` от aiogram в `handlers.py`. Разбирать вместе с разбиением
+  `handlers.py` на модули.
+
+## Лицензия
+
+MIT — см. `LICENSE`.
