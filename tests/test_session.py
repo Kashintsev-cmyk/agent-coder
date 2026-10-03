@@ -120,8 +120,13 @@ class TestSanitizeToolCalls:
         assert answered == {"1", "2"}
 
     def test_partial_answers(self):
-        # Один tool_call отвечен (но как последнее сообщение — tool),
-        # поэтому функция считает состояние корректным
+        """Регрессия: часть tool_calls без ответов — добиваем заглушками.
+
+        Раньше функция возвращала 0 (считала состояние «ок», если последнее
+        сообщение — tool), и API падал с 400 (tool_calls without responses)
+        после аварийного рестарта. Теперь: добавляем по заглушке на каждый
+        неотвеченный id.
+        """
         s = _mk_session()
         s.messages = [
             {"role": "assistant", "tool_calls": [
@@ -129,8 +134,10 @@ class TestSanitizeToolCalls:
             ]},
             {"role": "tool", "tool_call_id": "1", "content": "ok"},
         ]
-        # Последнее сообщение — tool → по логике всё закрыто
-        assert s.sanitize_tool_calls() == 0
+        added = s.sanitize_tool_calls()
+        assert added == 1
+        assert s.messages[-1]["role"] == "tool"
+        assert s.messages[-1]["tool_call_id"] == "2"
 
     def test_assistant_without_tool_calls(self):
         s = _mk_session()
@@ -229,3 +236,30 @@ class TestDeleteMedia:
         # медиа нет — не падаем
         removed = s.delete()
         assert removed >= 1
+
+class TestSanitizePartialAnswers:
+    """Регрессия: после рестарта часть tool_calls без ответов — добиваем."""
+
+    def test_trailing_tool_still_ok(self):
+        s = _mk_session()
+        s.messages = [
+            {"role": "user", "content": "з"},
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"id": "x", "name": "read_file"}],
+            },
+            {"role": "tool", "tool_call_id": "x", "content": "ok"},
+        ]
+        assert s.sanitize_tool_calls() == 0
+
+    def test_session_atomic_save_no_tmp_left(self, tmp_path, monkeypatch):
+        from agent_coder.config import config
+        monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
+        s = _mk_session()
+        s.save()
+        # ни одного .tmp не осталось
+        tmps = list(tmp_path.glob("*.tmp"))
+        assert tmps == []
+        assert (tmp_path / f"{s.id}.json").exists()
+

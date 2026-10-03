@@ -79,6 +79,12 @@ async def _run() -> None:
         print("❌ TELEGRAM_USER_ID не установлен в .env")
         sys.exit(2)
 
+    try:
+        config.validate()
+    except ValueError as e:
+        print(f"❌ Ошибка конфигурации:\n{e}")
+        sys.exit(2)
+
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",

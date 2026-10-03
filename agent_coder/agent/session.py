@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import shutil
 import time
 import uuid
@@ -136,28 +137,27 @@ class Session:
         return f"{delta // 86400}д назад"
 
     def sanitize_tool_calls(self) -> int:
-        """Починить dangling tool_calls: если последний assistant имеет
-        tool_calls без ответов tool — добавить им заглушку.
+        """Починить dangling tool_calls у ПОСЛЕДНЕГО assistant.
 
-        Вызывается перед каждым запросом к LLM. Возвращает число
-        добавленных сообщений (0 если всё ок).
+        Идём к последнему assistant (независимо от того, что после него:
+        tool/user/assistant) — собираем id всех tool-ответов ПОСЛЕ него
+        и добиваем заглушками те, на которые ответа нет.
+
+        Раньше алгоритм прерывался на первом `tool` или `user` с конца,
+        из-за чего после аварийного рестарта часть tool_calls оставалась
+        без ответов → API возвращал 400 ("tool_calls without responses").
+
+        Возвращает число добавленных сообщений (0 если всё ок).
         """
         if not self.messages:
             return 0
 
-        # Идём с конца: находим незакрытые tool_calls
+        # Ищем последний assistant (без ранних выходов)
         last_assistant_idx = None
         for i in range(len(self.messages) - 1, -1, -1):
-            role = self.messages[i].get("role")
-            if role == "assistant":
+            if self.messages[i].get("role") == "assistant":
                 last_assistant_idx = i
                 break
-            if role == "tool":
-                # Последний assistant уже имеет tool-ответ, всё ок
-                return 0
-            if role == "user":
-                # После последнего assistant нет tool — но и user новый
-                return 0
 
         if last_assistant_idx is None:
             return 0
@@ -167,8 +167,8 @@ class Session:
         if not tool_calls:
             return 0
 
-        # Собираем id уже отвеченных
-        answered_ids = set()
+        # Собираем id всех tool-ответов ПОСЛЕ assistant
+        answered_ids: set[str] = set()
         for i in range(last_assistant_idx + 1, len(self.messages)):
             msg = self.messages[i]
             if msg.get("role") == "tool":
@@ -218,12 +218,13 @@ class Session:
         return cls(**data)
 
     def save(self) -> Path:
+        """Атомарная запись: tmp + os.replace (защита от SIGKILL/диска)."""
         config.SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
         path = config.SESSIONS_DIR / f"{self.id}.json"
-        path.write_text(
-            json.dumps(self.to_dict(), ensure_ascii=False, indent=2),
-            encoding="utf-8",
-        )
+        payload = json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
+        tmp = path.with_name(path.name + ".tmp")
+        tmp.write_text(payload, encoding="utf-8")
+        os.replace(tmp, path)
         return path
 
     @classmethod
