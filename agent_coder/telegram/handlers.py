@@ -25,6 +25,7 @@ from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session, content_to_text
 from agent_coder.config import config
 from agent_coder.llm.client import LLMClient
+from agent_coder.shell_runner import run_shell
 from agent_coder.telegram import keyboards, renderer
 from agent_coder.telegram import state as tg_state
 from agent_coder.telegram.renderer import html_escape
@@ -1341,7 +1342,6 @@ async def cmd_server(message: Message) -> None:
 
 @router.callback_query(F.data.startswith("srv:"))
 async def cb_server_op(query: CallbackQuery) -> None:
-    import asyncio
 
     from agent_coder.server_ops import find_op
 
@@ -1360,34 +1360,23 @@ async def cb_server_op(query: CallbackQuery) -> None:
     )
 
     # Выполняем напрямую, минуя LLM
-    try:
-        proc = await asyncio.create_subprocess_shell(
-            op.cmd,
-            cwd=tempfile.gettempdir(),
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=30)
-        stdout = stdout_b.decode("utf-8", errors="replace").strip()
-        stderr = stderr_b.decode("utf-8", errors="replace").strip()
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
+    result = await run_shell(op.cmd, cwd=tempfile.gettempdir(), timeout=30)
+    if result.timed_out:
         await query.message.edit_text(
-            f"🖥 <b>{op.label}</b>\n\n⏱ Таймаут 30 секунд",
+            f"🖥 <b>{op.label}</b>\n\n⏱ {result.error}",
             reply_markup=keyboards.server_menu_keyboard(),
             parse_mode="HTML",
         )
         return
-    except Exception as e:
+    if result.error:
         await query.message.edit_text(
-            f"🖥 <b>{op.label}</b>\n\n❌ Ошибка: <code>{html_escape(str(e))}</code>",
+            f"🖥 <b>{op.label}</b>\n\n❌ Ошибка: <code>{html_escape(result.error)}</code>",
             reply_markup=keyboards.server_menu_keyboard(),
             parse_mode="HTML",
         )
         return
 
-    output = stdout or stderr or "(пусто)"
+    output = result.output
     if len(output) > 3500:
         output = output[:3500] + "\n... (обрезано)"
 
@@ -1421,7 +1410,6 @@ async def cmd_audit(message: Message) -> None:
 
 @router.callback_query(F.data.startswith("aud:"))
 async def cb_audit_op(query: CallbackQuery) -> None:
-    import asyncio
 
     from agent_coder.audit_ops import find_op
 
@@ -1445,34 +1433,23 @@ async def cb_audit_op(query: CallbackQuery) -> None:
         parse_mode="HTML",
     )
 
-    try:
-        proc = await asyncio.create_subprocess_shell(
-            cmd,
-            cwd=session.workspace,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=AUDIT_TIMEOUT_SEC)
-        stdout = stdout_b.decode("utf-8", errors="replace").strip()
-        stderr = stderr_b.decode("utf-8", errors="replace").strip()
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
+    result = await run_shell(cmd, cwd=session.workspace, timeout=AUDIT_TIMEOUT_SEC)
+    if result.timed_out:
         await query.message.edit_text(
-            f"🔒 <b>{op.label}</b>\n\n⏱ Таймаут {AUDIT_TIMEOUT_SEC} секунд",
+            f"🔒 <b>{op.label}</b>\n\n⏱ {result.error}",
             reply_markup=keyboards.audit_menu_keyboard(),
             parse_mode="HTML",
         )
         return
-    except Exception as e:
+    if result.error:
         await query.message.edit_text(
-            f"🔒 <b>{op.label}</b>\n\n❌ Ошибка: <code>{html_escape(str(e))}</code>",
+            f"🔒 <b>{op.label}</b>\n\n❌ Ошибка: <code>{html_escape(result.error)}</code>",
             reply_markup=keyboards.audit_menu_keyboard(),
             parse_mode="HTML",
         )
         return
 
-    output = stdout or stderr or "(пусто)"
+    output = result.output
     if len(output) > 3500:
         output = output[:3500] + "\n... (обрезано)"
 

@@ -1,11 +1,10 @@
 """Инструмент: выполнение команды в терминале с whitelist безопасных команд."""
 from __future__ import annotations
 
-import asyncio
 import re
 from typing import Any
 
-from agent_coder.log_safety import mask_secrets as _mask_secrets
+from agent_coder.shell_runner import run_shell
 from agent_coder.tools.registry import Tool, ToolContext
 
 TIMEOUT_SEC = 300
@@ -229,32 +228,23 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     if not command:
         return "Ошибка: пустая команда"
 
-    proc = await asyncio.create_subprocess_shell(
+    result = await run_shell(
         command,
         cwd=ctx.workspace,
-        stdout=asyncio.subprocess.PIPE,
-        stderr=asyncio.subprocess.PIPE,
+        timeout=TIMEOUT_SEC,
+        max_bytes=MAX_OUTPUT,
+        mask=True,
     )
-    try:
-        stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=TIMEOUT_SEC)
-    except asyncio.TimeoutError:
-        proc.kill()
-        await proc.wait()
+    if result.timed_out:
         return f"Команда прервана по таймауту ({TIMEOUT_SEC}с)"
+    if result.error:
+        return f"Ошибка запуска: {result.error}"
 
-    stdout = _mask_secrets(stdout_b.decode("utf-8", errors="replace"))
-    stderr = _mask_secrets(stderr_b.decode("utf-8", errors="replace"))
-
-    if len(stdout) > MAX_OUTPUT:
-        stdout = stdout[:MAX_OUTPUT] + f"\n... (обрезано, всего {len(stdout_b)} байт)"
-    if len(stderr) > MAX_OUTPUT:
-        stderr = stderr[:MAX_OUTPUT] + f"\n... (обрезано, всего {len(stderr_b)} байт)"
-
-    parts = [f"$ {command}", f"exit code: {proc.returncode}"]
-    if stdout.strip():
-        parts.append(f"--- stdout ---\n{stdout.rstrip()}")
-    if stderr.strip():
-        parts.append(f"--- stderr ---\n{stderr.rstrip()}")
+    parts = [f"$ {command}", f"exit code: {result.returncode}"]
+    if result.stdout.strip():
+        parts.append(f"--- stdout ---\n{result.stdout}")
+    if result.stderr.strip():
+        parts.append(f"--- stderr ---\n{result.stderr}")
     return "\n".join(parts)
 
 
