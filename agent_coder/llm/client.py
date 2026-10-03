@@ -4,6 +4,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import random
 from typing import Any
 
 import httpx
@@ -190,14 +191,33 @@ class LLMClient:
                 if 400 <= status < 500 and status != 429:
                     raise
                 last = e
-            wait = backoff ** i
+
+            # Retry-After (если RouterAI его прислал) — приоритетнее
+            # экспоненциального backoff.
+            retry_after = _parse_retry_after(last)
+            if retry_after is not None:
+                wait = retry_after
+                src = " [Retry-After]"
+            else:
+                base = backoff ** i
+                # Jitter: 0..25% сверху, чтобы клиенты не били в одну точку
+                wait = base + random.uniform(0, base * 0.25)
+                src = ""
+            # Потолок: не ждём больше 60 с, даже если сервер просит
+            wait = min(wait, 60.0)
+
             logger.warning(
-                "%s: попытка %d/%d провалена (%s), ждём %.1fs",
-                op_name, i + 1, attempts, type(last).__name__, wait,
+                "%s: попытка %d/%d провалена (%s), ждём %.2fs%s",
+                op_name, i + 1, attempts, type(last).__name__, wait, src,
             )
             if i < attempts - 1:
                 await asyncio.sleep(wait)
-        assert last is not None
+
+        if last is None:
+            raise RuntimeError(
+                f"{op_name}: retry-цикл завершился без исключения "
+                f"(attempts={attempts}, вероятно, ошибка в логике)"
+            )
         raise last
 
     async def get_balance(self) -> dict[str, Any]:
@@ -212,6 +232,36 @@ class LLMClient:
         )
         resp.raise_for_status()
         return resp.json()
+
+def _parse_retry_after(exc: Exception) -> float | None:
+    """Retry-After из HTTP-ответа (секунды или HTTP-дата). None если нет.
+
+    RouterAI/провайдеры могут присылать Retry-After в 429/503. Уважать его
+    важнее, чем экспоненциальный backoff.
+    """
+    resp = getattr(exc, "response", None)
+    if resp is None:
+        return None
+    headers = getattr(resp, "headers", None) or {}
+    raw = headers.get("Retry-After") or headers.get("retry-after")
+    if not raw:
+        return None
+    try:
+        return max(0.0, float(raw))
+    except (TypeError, ValueError):
+        pass
+    # HTTP-date формат: "Wed, 21 Oct 2015 07:28:00 GMT"
+    try:
+        from datetime import datetime, timezone
+        from email.utils import parsedate_to_datetime
+        dt = parsedate_to_datetime(raw)
+        if dt is None:
+            return None
+        delta = (dt - datetime.now(timezone.utc)).total_seconds()
+        return max(0.0, delta)
+    except Exception:
+        return None
+
 
 def _extract_usage(response: Any) -> Usage:
     raw = getattr(response, "usage", None)
