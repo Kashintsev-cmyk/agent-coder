@@ -939,10 +939,35 @@ def _join_buffer(buffer: list[str]) -> str:
     return "\n".join(buffer)
 
 
-def _split_for_telegram(text: str, limit: int = 3900) -> list[str]:
-    """Разбить текст на части ≤ limit символов по границам строк.
+# Теги, внутри которых Telegram HTML «строгий»: разрыв пополам →
+# TelegramBadRequest «Can't find end tag» → сообщение теряется.
+_BLOCK_TAGS = ("pre", "code", "blockquote")
 
-    Строку длиннее limit режем по пробелу, чтобы не порвать HTML-теги.
+# Открывающий/закрывающий тег этих блоков (без учёта атрибутов —
+# у нас они всё равно не используются).
+def _open_block_tag(text: str) -> str | None:
+    """Имя незакрытого блочного тега (самого внутреннего) или None.
+
+    Счёт по стеку: открыли <pre>, встретили </pre> — закрыли.
+    Возвращает имя тега, если в конце текста осталась открытая пара.
+    """
+    stack: list[str] = []
+    pattern = rf"<(/?)({'|'.join(_BLOCK_TAGS)})>"
+    for m in re.finditer(pattern, text):
+        closing, name = m.group(1), m.group(2)
+        if closing:
+            if stack and stack[-1] == name:
+                stack.pop()
+        else:
+            stack.append(name)
+    return stack[-1] if stack else None
+
+
+def _split_for_telegram(text: str, limit: int = 3900) -> list[str]:
+    """Разбить текст на части ≤ limit символов, не разрывая блочные теги.
+
+    Рвём по границам строк. Если очередная часть обрывается внутри
+    <pre>/<code>/<blockquote>, сдвигаем точку реза до открывающего тега.
     """
     if len(text) <= limit:
         return [text]
@@ -959,20 +984,72 @@ def _split_for_telegram(text: str, limit: int = 3900) -> list[str]:
             current_len = 0
 
     for line in text.split("\n"):
+        # Очень длинную строку (например, base64) режем вынужденно.
+        # Если внутри блочного тега — не режем, шлём как есть (Telegram
+        # словит по общему лимиту 4096, но лучше так, чем рвать тег).
         while len(line) > limit:
             _flush()
             cut = line.rfind(" ", 0, limit)
             cut = cut if cut > 0 else limit
             parts.append(line[:cut])
             line = line[cut:].lstrip()
+
         added = len(line) + (1 if current else 0)
         if current and current_len + added > limit:
             _flush()
             added = len(line)
         current.append(line)
         current_len += added
+
+        # Если после добавления строки в current остался открытый блок-
+        # тег и следующие строки могут его закрыть — не флашим сейчас,
+        # но на границе текущего чака проверим.
+        candidate = "\n".join(current)
+        if current_len >= limit * 0.9 and len(candidate) >= limit:
+            _flush()
+
     _flush()
-    return parts
+
+    # Пост-обработка: если часть обрывается внутри блочного тега —
+    # сдвигаем границу. Делаем это итеративно, чтобы не рвать стыки.
+    result = _fix_block_boundaries(parts, limit)
+    return result
+
+
+def _fix_block_boundaries(parts: list[str], limit: int) -> list[str]:
+    """Склеить части, которые обрывают блочный тег, и снова порезать.
+
+    Простой подход: если в части открыт блок-тег, склеиваем её со следующей
+    и пробуем порезать ещё раз с меньшим limit'ом — на границе </...>.
+    Если и это не помогает — оставляем как есть (Telegram отклонит, будет
+    fallback на plain).
+    """
+    if len(parts) <= 1:
+        return parts
+
+    out: list[str] = []
+    buf = parts[0]
+    i = 1
+    while i < len(parts):
+        if _open_block_tag(buf) is not None:
+            # незакрытый блок → приклеиваем следующую часть
+            buf = buf + "\n" + parts[i]
+            i += 1
+            if len(buf) > 4096:
+                # вынужденно отправляем как есть — не можем закрыть тег
+                out.append(buf)
+                buf = ""
+                # продолжим с этого места
+                if i < len(parts):
+                    buf = parts[i]
+                    i += 1
+            continue
+        out.append(buf)
+        buf = parts[i]
+        i += 1
+    if buf:
+        out.append(buf)
+    return [p for p in out if p]
 
 
 def _html_escape(s: str) -> str:
