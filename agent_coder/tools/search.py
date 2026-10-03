@@ -9,6 +9,7 @@ from typing import Any
 from agent_coder.tools.registry import Tool, ToolContext
 
 MAX_MATCHES = 200
+TIMEOUT_SEC = 60
 
 
 async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
@@ -46,8 +47,17 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         cwd=ctx.workspace,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        start_new_session=True,
     )
-    out, err = await proc.communicate()
+    try:
+        out, err = await asyncio.wait_for(proc.communicate(), timeout=TIMEOUT_SEC)
+    except asyncio.TimeoutError:
+        try:
+            proc.kill()
+            await proc.wait()
+        except Exception:
+            pass
+        return f"search: таймаут {TIMEOUT_SEC}с (ripgrep не завершился)"
     stdout = out.decode("utf-8", errors="replace").strip()
     if not stdout:
         if proc.returncode == 1:

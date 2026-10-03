@@ -1,6 +1,7 @@
 """Инструмент: список файлов."""
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path
 from typing import Any
 
@@ -25,6 +26,17 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         return f"Не директория: {sub}"
 
     pattern = args.get("pattern") or "*"
+    entries = await asyncio.to_thread(
+        _collect_entries, target, base, pattern,
+    )
+
+    if not entries:
+        return f"Пусто: {sub}"
+    return "\n".join(entries)
+
+
+def _collect_entries(target: Path, base: Path, pattern: str) -> list[str]:
+    """Синхронный сбор (в отдельном потоке, чтобы не блокировать loop)."""
     entries: list[str] = []
     for p in sorted(target.rglob(pattern)):
         if any(part in SKIP_DIRS for part in p.relative_to(target).parts):
@@ -35,10 +47,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         if len(entries) >= MAX_ENTRIES:
             entries.append(f"... (обрезано на {MAX_ENTRIES})")
             break
-
-    if not entries:
-        return f"Пусто: {sub}"
-    return "\n".join(entries)
+    return entries
 
 
 list_files_tool = Tool(
