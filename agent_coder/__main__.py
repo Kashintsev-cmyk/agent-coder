@@ -25,7 +25,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--plan", action="store_true", help="Plan-режим")
     p.add_argument("--yolo", action="store_true", help="Без подтверждений")
     p.add_argument("--resume", metavar="ID", help="Возобновить сессию по ID")
-    p.add_argument("--max-iterations", type=int, default=config.MAX_ITERATIONS)
+    p.add_argument(
+        "--max-iterations", type=int, default=None,
+        help="Переопределить лимит итераций (для всех режимов). "
+             "По умолчанию берётся MAX_ITERATIONS_<MODE> из .env",
+    )
     p.add_argument("--verbose", "-v", action="store_true")
     p.add_argument("--version", action="version", version=f"agent-coder {__version__}")
     p.add_argument("--continue", dest="continue_last", action="store_true",
@@ -250,10 +254,15 @@ def main() -> int:
     )
 
     config.validate()
-    # --max-iterations применяется ко всем режимам, если указан явно
-    config.MAX_ITERATIONS_PLAN = args.max_iterations
-    config.MAX_ITERATIONS_ACT = args.max_iterations
-    config.MAX_ITERATIONS_AUDIT = args.max_iterations
+    # --max-iterations применяется ко всем режимам, ТОЛЬКО если указан явно.
+    # Иначе уважаем MAX_ITERATIONS_PLAN/ACT/AUDIT из .env.
+    if args.max_iterations is not None:
+        if args.max_iterations < 1:
+            ui.print_error("--max-iterations должен быть >= 1")
+            return 2
+        config.MAX_ITERATIONS_PLAN = args.max_iterations
+        config.MAX_ITERATIONS_ACT = args.max_iterations
+        config.MAX_ITERATIONS_AUDIT = args.max_iterations
 
     workspace = str(Path(args.cwd).resolve())
     if not Path(workspace).is_dir():
