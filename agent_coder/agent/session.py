@@ -9,12 +9,15 @@ import time
 import uuid
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 from agent_coder.agent.prompts import Mode
 from agent_coder.config import config
 from agent_coder.llm.types import Usage
 from agent_coder.models import DEFAULT_REASONING
+
+if TYPE_CHECKING:
+    from agent_coder.agent.session_index import SessionMeta
 
 logger = logging.getLogger(__name__)
 
@@ -217,6 +220,30 @@ class Session:
             data["summary_count"] = 0
         return cls(**data)
 
+    @classmethod
+    def from_meta(cls, meta: SessionMeta) -> Session:
+        """Собрать лёгкую Session (без messages) из индекса.
+
+        Используется в list_all()/latest() — для UI-списков, где messages
+        не нужны. Для полноценной работы нужен Session.load(id).
+        """
+        try:
+            mode = Mode(meta.mode)
+        except ValueError:
+            mode = Mode.ACT
+        usage = Usage(cost=float(meta.cost))
+        return cls(
+            id=meta.id,
+            workspace=meta.workspace,
+            model=meta.model,
+            mode=mode,
+            title=meta.title,
+            request_count=meta.request_count,
+            created_at=meta.created_at,
+            updated_at=meta.updated_at,
+            total_usage=usage,
+        )
+
     def save(self) -> Path:
         """Атомарная запись: tmp + os.replace (защита от SIGKILL/диска)."""
         config.SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
@@ -225,6 +252,14 @@ class Session:
         tmp = path.with_name(path.name + ".tmp")
         tmp.write_text(payload, encoding="utf-8")
         os.replace(tmp, path)
+
+        # Обновить sidecar-индекс (не критично — ошибку логируем, не падаем)
+        try:
+            from agent_coder.agent.session_index import index as _idx
+            _idx.update(self)
+        except Exception as e:
+            logger.warning("session_index.update failed for %s: %s", self.id, e)
+
         return path
 
     @classmethod
@@ -236,16 +271,37 @@ class Session:
 
     @classmethod
     def list_all(cls) -> list[Session]:
+        """Список сессий для UI — читает sidecar-индекс, а не полные JSON.
+
+        При рассинхроне (число *.json != число записей в индексе) —
+        автоматический rebuild. Полные messages в результат не грузятся;
+        для работы с конкретной сессией — Session.load(id).
+        """
         if not config.SESSIONS_DIR.exists():
             return []
-        out = []
-        for p in config.SESSIONS_DIR.glob("*.json"):
-            try:
-                out.append(cls.from_dict(json.loads(p.read_text(encoding="utf-8"))))
-            except Exception:
-                continue
-        out.sort(key=lambda s: s.updated_at, reverse=True)
-        return out
+
+        from agent_coder.agent.session_index import INDEX_FILENAME
+        from agent_coder.agent.session_index import index as _idx
+
+        # Защита от рассинхрона: пользователь мог вручную удалить/добавить
+        # *.json, а индекс остался старым.
+        disk_ids = {
+            p.stem for p in config.SESSIONS_DIR.glob("*.json")
+            if p.name != INDEX_FILENAME
+        }
+        need_rebuild = False
+        if _idx.count() == 0 or len(disk_ids) != _idx.count():
+            need_rebuild = True
+        else:
+            # Точечная проверка: все id из индекса есть на диске и наоборот
+            idx_ids = {m.id for m in _idx.list()}
+            if idx_ids != disk_ids:
+                need_rebuild = True
+
+        if need_rebuild:
+            _idx.rebuild(config.SESSIONS_DIR)
+
+        return [cls.from_meta(m) for m in _idx.list()]
 
     @classmethod
     def latest(cls, workspace: str | None = None) -> Session | None:
@@ -285,6 +341,13 @@ class Session:
                 shutil.rmtree(media_root)
             except Exception as e:
                 logger.warning("media cleanup failed for %s: %s", self.id, e)
+
+        # Удалить из sidecar-индекса
+        try:
+            from agent_coder.agent.session_index import index as _idx
+            _idx.remove(self.id)
+        except Exception as e:
+            logger.warning("session_index.remove failed for %s: %s", self.id, e)
 
         return removed
 
