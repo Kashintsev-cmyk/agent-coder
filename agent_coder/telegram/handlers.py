@@ -643,12 +643,21 @@ async def cb_deny(query: CallbackQuery) -> None:
 
 async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str,
                     images: list[Path] | None = None) -> None:
-    status_msg = await bot.send_message(chat_id, "⏺ Начинаю...")
-    runner = _TaskRunner(bot, chat_id, status_msg.message_id)
+    """Точка входа задачи.
 
-    client = LLMClient()
-    await client.start()
+    ВАЖНО: даже если не удалось отправить статус-сообщение или поднять
+    LLMClient, _running[chat_id] должен быть очищен — иначе чат навсегда
+    получит «Другая задача уже выполняется» и придётся рестартовать бота.
+    """
+    client: LLMClient | None = None
+    runner: _TaskRunner | None = None
     try:
+        status_msg = await bot.send_message(chat_id, "⏺ Начинаю...")
+        runner = _TaskRunner(bot, chat_id, status_msg.message_id)
+
+        client = LLMClient()
+        await client.start()
+
         loop = AgentLoop(
             client=client,
             registry=build_registry(),
@@ -665,13 +674,23 @@ async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str,
 
     except asyncio.CancelledError:
         if not _shutting_down:
-            await bot.send_message(chat_id, "⏹ Отменено")
+            try:
+                await bot.send_message(chat_id, "⏹ Отменено")
+            except Exception:
+                pass
         raise
     except Exception as e:
         logger.exception("task failed")
-        await bot.send_message(chat_id, f"❌ Ошибка: {e}")
+        try:
+            await bot.send_message(chat_id, f"❌ Ошибка: {e}")
+        except Exception:
+            pass
     finally:
-        await client.close()
+        if client is not None:
+            try:
+                await client.close()
+            except Exception as e:
+                logger.warning("client.close() failed: %s", e)
         _running.pop(chat_id, None)
 
 
