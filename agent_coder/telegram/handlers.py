@@ -756,6 +756,9 @@ class _TaskRunner:
         self.last_edit: float = 0.0
         self.approval_msg_id: int | None = None
         self.extra_msg_ids: list[int] = []
+        # Кэш реально отрисованного: сравнение → skip edit, если не менялось.
+        self._rendered_main: str = ""
+        self._rendered_extras: list[str] = []
 
     def events(self) -> LoopEvents:
         return LoopEvents(
@@ -822,27 +825,43 @@ class _TaskRunner:
     async def _render_parts(self, parts: list[str]) -> None:
         """Вывести части в основное сообщение + управляемые продолжения.
 
+        Оптимизация: сравниваем каждую часть с тем, что уже реально
+        отправлено (_rendered_main / _rendered_extras) и пропускаем edit,
+        если не менялось. На длинной задаче это даёт O(1) сетевых вызовов
+        на flush вместо O(N) частей.
+
         Продолжения переиспользуются (edit) и удаляются при сокращении
         текста, чтобы не копить в чате устаревшие «хвосты».
         """
+        # --- Основное сообщение (main) ---
         main_text = parts[0]
         if len(parts) > 1:
             main_text += "\n\n<i>(продолжение ниже)</i>"
-        try:
-            await self.bot.edit_message_text(
-                chat_id=self.chat_id,
-                message_id=self.message_id,
-                text=main_text,
-                parse_mode="HTML",
-            )
-        except TelegramBadRequest as e:
-            # Основное сообщение могло не измениться (растут только
-            # продолжения) — это не повод пропускать их обновление.
-            if "message is not modified" not in str(e).lower():
-                raise
 
+        if main_text != self._rendered_main:
+            try:
+                await self.bot.edit_message_text(
+                    chat_id=self.chat_id,
+                    message_id=self.message_id,
+                    text=main_text,
+                    parse_mode="HTML",
+                )
+            except TelegramBadRequest as e:
+                if "message is not modified" not in str(e).lower():
+                    raise
+            self._rendered_main = main_text
+
+        # --- Продолжения (extras) ---
         wanted = parts[1:]
         for i, part in enumerate(wanted):
+            already_sent = (
+                i < len(self.extra_msg_ids)
+                and i < len(self._rendered_extras)
+                and self._rendered_extras[i] == part
+            )
+            if already_sent:
+                continue
+
             if i < len(self.extra_msg_ids):
                 try:
                     await self.bot.edit_message_text(
@@ -860,12 +879,21 @@ class _TaskRunner:
                 )
                 self.extra_msg_ids.append(msg.message_id)
 
+            # Синхронизировать кэш
+            while len(self._rendered_extras) <= i:
+                self._rendered_extras.append("")
+            self._rendered_extras[i] = part
+
+        # --- Удалить лишние хвосты, если текст сократился ---
         while len(self.extra_msg_ids) > len(wanted):
             mid = self.extra_msg_ids.pop()
             try:
                 await self.bot.delete_message(self.chat_id, mid)
             except Exception as e:
                 logger.warning("delete continuation failed: %s", e)
+        # синхронизировать кэш extras с текущим числом сообщений
+        if len(self._rendered_extras) > len(self.extra_msg_ids):
+            self._rendered_extras = self._rendered_extras[:len(self.extra_msg_ids)]
 
 
     async def _request_approval(self, tc) -> bool:
