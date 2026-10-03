@@ -26,6 +26,10 @@ class Usage:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    # cost — float (не Decimal). Для UI и сумм до ~1e9 ₽ ошибка
+    # < 1 копейки. Если однажды понадобится точная бухгалтерия
+    # (биллинг, платёжка) — переходить на Decimal осознанно,
+    # с миграцией JSON-сессий.
     cost: float = 0.0
 
     def __add__(self, other: Usage) -> Usage:
