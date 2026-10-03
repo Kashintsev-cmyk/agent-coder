@@ -1340,16 +1340,48 @@ async def cmd_server(message: Message) -> None:
     )
 
 
+@router.callback_query(F.data.startswith("srv_grp:"))
+async def cb_server_group(query: CallbackQuery) -> None:
+    """Открывает подменю группы серверных команд."""
+    group = query.data.split(":", 1)[1]
+    from agent_coder.server_ops import ops_in_group
+    if not ops_in_group(group):
+        await query.answer("Пустая группа", show_alert=True)
+        return
+    try:
+        await query.message.edit_reply_markup(
+            reply_markup=keyboards.server_group_keyboard(group),
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e).lower():
+            raise
+    await query.answer()
+
+
+@router.callback_query(F.data == "srv_back")
+async def cb_server_back(query: CallbackQuery) -> None:
+    """Возврат из подменю группы к списку групп."""
+    try:
+        await query.message.edit_reply_markup(
+            reply_markup=keyboards.server_menu_keyboard(),
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e).lower():
+            raise
+    await query.answer()
+
+
 @router.callback_query(F.data.startswith("srv:"))
 async def cb_server_op(query: CallbackQuery) -> None:
-
-    from agent_coder.server_ops import find_op
+    from agent_coder.server_ops import find_op, op_group
 
     op_id = query.data.split(":", 1)[1]
     op = find_op(op_id)
     if op is None:
         await query.answer("Неизвестная команда", show_alert=True)
         return
+
+    op_kb = keyboards.server_group_keyboard(op_group(op_id))
 
     await query.answer(f"Выполняю: {op.label}")
     await query.message.edit_text(
@@ -1364,14 +1396,14 @@ async def cb_server_op(query: CallbackQuery) -> None:
     if result.timed_out:
         await query.message.edit_text(
             f"🖥 <b>{op.label}</b>\n\n⏱ {result.error}",
-            reply_markup=keyboards.server_menu_keyboard(),
+            reply_markup=op_kb,
             parse_mode="HTML",
         )
         return
     if result.error:
         await query.message.edit_text(
             f"🖥 <b>{op.label}</b>\n\n❌ Ошибка: <code>{html_escape(result.error)}</code>",
-            reply_markup=keyboards.server_menu_keyboard(),
+            reply_markup=op_kb,
             parse_mode="HTML",
         )
         return
@@ -1383,7 +1415,7 @@ async def cb_server_op(query: CallbackQuery) -> None:
     await query.message.edit_text(
         f"🖥 <b>{op.label}</b> — {op.description}\n\n"
         f"<pre>{html_escape(output)}</pre>",
-        reply_markup=keyboards.server_menu_keyboard(),
+        reply_markup=op_kb,
         parse_mode="HTML",
     )
 
