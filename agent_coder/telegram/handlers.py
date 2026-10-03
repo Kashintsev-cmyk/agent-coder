@@ -1440,10 +1440,40 @@ async def cmd_audit(message: Message) -> None:
     )
 
 
+@router.callback_query(F.data.startswith("aud_grp:"))
+async def cb_audit_group(query: CallbackQuery) -> None:
+    """Открывает подменю группы audit-команд."""
+    group = query.data.split(":", 1)[1]
+    from agent_coder.audit_ops import ops_in_group
+    if not ops_in_group(group):
+        await query.answer("Пустая группа", show_alert=True)
+        return
+    try:
+        await query.message.edit_reply_markup(
+            reply_markup=keyboards.audit_group_keyboard(group),
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e).lower():
+            raise
+    await query.answer()
+
+
+@router.callback_query(F.data == "aud_back")
+async def cb_audit_back(query: CallbackQuery) -> None:
+    """Возврат из подменю группы к списку групп."""
+    try:
+        await query.message.edit_reply_markup(
+            reply_markup=keyboards.audit_menu_keyboard(),
+        )
+    except TelegramBadRequest as e:
+        if "message is not modified" not in str(e).lower():
+            raise
+    await query.answer()
+
+
 @router.callback_query(F.data.startswith("aud:"))
 async def cb_audit_op(query: CallbackQuery) -> None:
-
-    from agent_coder.audit_ops import find_op
+    from agent_coder.audit_ops import find_op, op_group
 
     session = _get_active_session(query.message.chat.id)
     if not session:
@@ -1456,6 +1486,7 @@ async def cb_audit_op(query: CallbackQuery) -> None:
         await query.answer("Неизвестная команда", show_alert=True)
         return
 
+    op_kb = keyboards.audit_group_keyboard(op_group(op_id))
     cmd = op.cmd.replace("{workspace}", session.workspace)
 
     await query.answer(f"Выполняю: {op.label}")
@@ -1469,14 +1500,14 @@ async def cb_audit_op(query: CallbackQuery) -> None:
     if result.timed_out:
         await query.message.edit_text(
             f"🔒 <b>{op.label}</b>\n\n⏱ {result.error}",
-            reply_markup=keyboards.audit_menu_keyboard(),
+            reply_markup=op_kb,
             parse_mode="HTML",
         )
         return
     if result.error:
         await query.message.edit_text(
             f"🔒 <b>{op.label}</b>\n\n❌ Ошибка: <code>{html_escape(result.error)}</code>",
-            reply_markup=keyboards.audit_menu_keyboard(),
+            reply_markup=op_kb,
             parse_mode="HTML",
         )
         return
@@ -1488,7 +1519,7 @@ async def cb_audit_op(query: CallbackQuery) -> None:
     await query.message.edit_text(
         f"🔒 <b>{op.label}</b> — {op.description}\n\n"
         f"<pre>{html_escape(output)}</pre>",
-        reply_markup=keyboards.audit_menu_keyboard(),
+        reply_markup=op_kb,
         parse_mode="HTML",
     )
 

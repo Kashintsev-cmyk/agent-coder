@@ -111,6 +111,39 @@ AUDIT_OPS: list[AuditOp] = [
 ]
 
 
+AUDIT_GROUPS: list[tuple[str, str]] = [
+    ("codetypes",   "🎨 Код и типы"),
+    ("security",    "🔒 Безопасность"),
+    ("deps",        "📦 Зависимости"),
+    ("testsmetr",   "🧪 Тесты и метрики"),
+]
+
+_GROUP_BY_ID: dict[str, str] = {
+    "ruff":        "codetypes",
+    "ruff_format": "codetypes",
+    "mypy":        "codetypes",
+    "vulture":     "codetypes",
+    "bandit":      "security",
+    "secrets":     "security",
+    "git_env":     "security",
+    "pip_audit":   "deps",
+    "outdated":    "deps",
+    "tests":       "testsmetr",
+    "tree":        "testsmetr",
+    "loc":         "testsmetr",
+}
+
+
+def op_group(op_id: str) -> str:
+    """Группа op'а. По умолчанию 'codetypes' (не падаем на неизвестном)."""
+    return _GROUP_BY_ID.get(op_id, "codetypes")
+
+
+def ops_in_group(group: str) -> list[AuditOp]:
+    """Оп'ы одной группы в порядке AUDIT_OPS."""
+    return [op for op in AUDIT_OPS if op_group(op.id) == group]
+
+
 def find_op(op_id: str) -> AuditOp | None:
     for op in AUDIT_OPS:
         if op.id == op_id:

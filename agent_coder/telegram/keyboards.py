@@ -231,16 +231,35 @@ def server_group_keyboard(group: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 def audit_menu_keyboard() -> InlineKeyboardMarkup:
-    """Меню аудита проекта."""
-    from agent_coder.audit_ops import AUDIT_OPS
-    rows = []
+    """Верхний уровень аудита: список групп, 2 в ряд."""
+    from agent_coder.audit_ops import AUDIT_GROUPS
+    rows: list[list[InlineKeyboardButton]] = []
     row: list[InlineKeyboardButton] = []
-    for op in AUDIT_OPS:
-        row.append(InlineKeyboardButton(text=op.label, callback_data=f"aud:{op.id}"))
+    for gid, glabel in AUDIT_GROUPS:
+        row.append(InlineKeyboardButton(text=glabel, callback_data=f"aud_grp:{gid}"))
         if len(row) == 2:
             rows.append(row)
             row = []
     if row:
         rows.append(row)
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="session_back")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def audit_group_keyboard(group: str) -> InlineKeyboardMarkup:
+    """Кнопки одной группы audit-оп'ов, 2 в ряд."""
+    from agent_coder.audit_ops import ops_in_group
+    rows: list[list[InlineKeyboardButton]] = []
+    row: list[InlineKeyboardButton] = []
+    for op in ops_in_group(group):
+        row.append(InlineKeyboardButton(text=op.label, callback_data=f"aud:{op.id}"))
+        if len(row) == 2:
+            rows.append(row)
+            row = []
+    if row:
+        rows.append(row)
+    rows.append([
+        InlineKeyboardButton(text="⬅️ К группам", callback_data="aud_back"),
+        InlineKeyboardButton(text="⬅️ В сессию", callback_data="session_back"),
+    ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
