@@ -6,7 +6,7 @@ import os
 
 from agent_coder.config import config
 
-STATE_PATH = config.BASE_DIR / "telegram_state.json"
+STATE_PATH = config.SESSIONS_DIR / "telegram_state.json"
 
 
 def get_active_session(chat_id: int) -> str | None:

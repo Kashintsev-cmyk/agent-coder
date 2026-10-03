@@ -38,7 +38,6 @@ LockPersonality=true
 # - telegram_state.json (active session)
 # - ~/.cache/agent-coder (кэш каталога моделей)
 ReadWritePaths=/home/botuser/bots/agent-coder/sessions
-ReadWritePaths=-/home/botuser/bots/agent-coder/telegram_state.json
 ReadWritePaths=-/home/botuser/.cache/agent-coder
 
 StandardOutput=journal
