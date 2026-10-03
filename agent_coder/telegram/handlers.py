@@ -27,6 +27,7 @@ from agent_coder.config import config
 from agent_coder.llm.client import LLMClient
 from agent_coder.telegram import keyboards, renderer
 from agent_coder.telegram import state as tg_state
+from agent_coder.telegram.renderer import html_escape
 from agent_coder.tools import build_registry
 
 logger = logging.getLogger(__name__)
@@ -266,7 +267,7 @@ def _audit_reasoning_warning(session: Session) -> str:
     m = catalog.get(session.model)
     if m is not None and m.reasoning:
         return ""
-    name = _html_escape(m.name if m else session.model)
+    name = html_escape(m.name if m else session.model)
     return (
         f"\n\n⚠️ <b>Модель {name} не поддерживает reasoning.</b>\n"
         f"Аудит без thinking будет поверхностным. Для глубокого анализа "
@@ -335,7 +336,7 @@ async def handle_task_photo(message: Message, bot: Bot) -> None:
     if not (m and m.vision):
         name = m.name if m else session.model
         await message.answer(
-            f"⚠️ Модель <b>{_html_escape(name)}</b> не принимает изображения.\n"
+            f"⚠️ Модель <b>{html_escape(name)}</b> не принимает изображения.\n"
             f"Смени модель на vision-способную (бейдж 👁).",
             parse_mode="HTML",
         )
@@ -360,7 +361,7 @@ async def handle_task_photo(message: Message, bot: Bot) -> None:
     except Exception as e:
         logger.exception("photo download failed")
         await message.answer(
-            f"❌ Не удалось скачать фото: <code>{_html_escape(str(e))}</code>",
+            f"❌ Не удалось скачать фото: <code>{html_escape(str(e))}</code>",
             parse_mode="HTML",
         )
         return
@@ -409,7 +410,7 @@ async def handle_task_document(message: Message, bot: Bot) -> None:
     ext = Path(name).suffix.lower()
     if ext not in _PROMPT_FILE_EXT and ext != "":
         await message.answer(
-            f"⚠️ Неизвестный тип файла: <code>{_html_escape(name)}</code>\n"
+            f"⚠️ Неизвестный тип файла: <code>{html_escape(name)}</code>\n"
             f"Поддерживаются текстовые форматы: "
             f"<code>{', '.join(sorted(_PROMPT_FILE_EXT))}</code>",
             parse_mode="HTML",
@@ -434,7 +435,7 @@ async def handle_task_document(message: Message, bot: Bot) -> None:
     except Exception as e:
         logger.exception("prompt file download failed")
         await message.answer(
-            f"❌ Не удалось скачать файл: <code>{_html_escape(str(e))}</code>",
+            f"❌ Не удалось скачать файл: <code>{html_escape(str(e))}</code>",
             parse_mode="HTML",
         )
         return
@@ -448,7 +449,7 @@ async def handle_task_document(message: Message, bot: Bot) -> None:
     task_text = f"{caption}\n\n{content}" if caption else content
 
     await _start_task(bot, message, task_text,
-                      source_note=f"файл <code>{_html_escape(name)}</code>")
+                      source_note=f"файл <code>{html_escape(name)}</code>")
 
 
 async def _start_task(
@@ -707,7 +708,7 @@ async def _generate_and_send_audit(bot: Bot, chat_id: int, session: Session) -> 
         logger.exception("audit report generation failed")
         await bot.send_message(
             chat_id,
-            f"⚠️ Не удалось сохранить отчёт: <code>{_html_escape(str(e))}</code>",
+            f"⚠️ Не удалось сохранить отчёт: <code>{html_escape(str(e))}</code>",
             parse_mode="HTML",
         )
         return
@@ -787,7 +788,7 @@ class _TaskRunner:
         await self._schedule_edit()
 
     async def _on_error(self, msg: str) -> None:
-        self.buffer.append(f"✗ <b>{_html_escape(msg)}</b>")
+        self.buffer.append(f"✗ <b>{html_escape(msg)}</b>")
         await self._schedule_edit()
 
     async def _schedule_edit(self) -> None:
@@ -907,8 +908,8 @@ class _TaskRunner:
 
         text = (
             f"⚠️ <b>Подтверждение</b>\n\n"
-            f"<code>{_html_escape(tc.name)}</code>\n"
-            f"<pre>{_html_escape(args_text)}</pre>"
+            f"<code>{html_escape(tc.name)}</code>\n"
+            f"<pre>{html_escape(args_text)}</pre>"
         )
 
         # Сбрасываем накопленный вывод, чтобы сообщение с кнопками оказалось
@@ -1080,8 +1081,6 @@ def _fix_block_boundaries(parts: list[str], limit: int) -> list[str]:
     return [p for p in out if p]
 
 
-def _html_escape(s: str) -> str:
-    return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;")
 
 # ---------- Меню сессии: модель, reasoning ----------
 
@@ -1123,15 +1122,15 @@ async def cb_model_info(query: CallbackQuery) -> None:
     ctx_str = f"{ctx:,}".replace(",", " ") if ctx else "—"
 
     lines = [
-        f"🧠 <b>{_html_escape(m.name)}</b>{badges_line}",
+        f"🧠 <b>{html_escape(m.name)}</b>{badges_line}",
         "",
-        _html_escape(m.description) if m.description else "<i>(нет описания)</i>",
+        html_escape(m.description) if m.description else "<i>(нет описания)</i>",
         "",
         f"📊 Контекст: <b>{ctx_str}</b> токенов",
         f"💰 Вход: <b>{m.input_price:.1f}₽</b> · Выход: <b>{m.output_price:.0f}₽</b> за 1M",
     ]
     if m.tag:
-        lines.append(f"🏷 {_html_escape(m.tag)}")
+        lines.append(f"🏷 {html_escape(m.tag)}")
     if is_current:
         lines.append("")
         lines.append("✅ <b>Это текущая модель</b>")
@@ -1382,7 +1381,7 @@ async def cb_server_op(query: CallbackQuery) -> None:
         return
     except Exception as e:
         await query.message.edit_text(
-            f"🖥 <b>{op.label}</b>\n\n❌ Ошибка: <code>{_html_escape(str(e))}</code>",
+            f"🖥 <b>{op.label}</b>\n\n❌ Ошибка: <code>{html_escape(str(e))}</code>",
             reply_markup=keyboards.server_menu_keyboard(),
             parse_mode="HTML",
         )
@@ -1394,7 +1393,7 @@ async def cb_server_op(query: CallbackQuery) -> None:
 
     await query.message.edit_text(
         f"🖥 <b>{op.label}</b> — {op.description}\n\n"
-        f"<pre>{_html_escape(output)}</pre>",
+        f"<pre>{html_escape(output)}</pre>",
         reply_markup=keyboards.server_menu_keyboard(),
         parse_mode="HTML",
     )
@@ -1467,7 +1466,7 @@ async def cb_audit_op(query: CallbackQuery) -> None:
         return
     except Exception as e:
         await query.message.edit_text(
-            f"🔒 <b>{op.label}</b>\n\n❌ Ошибка: <code>{_html_escape(str(e))}</code>",
+            f"🔒 <b>{op.label}</b>\n\n❌ Ошибка: <code>{html_escape(str(e))}</code>",
             reply_markup=keyboards.audit_menu_keyboard(),
             parse_mode="HTML",
         )
@@ -1479,7 +1478,7 @@ async def cb_audit_op(query: CallbackQuery) -> None:
 
     await query.message.edit_text(
         f"🔒 <b>{op.label}</b> — {op.description}\n\n"
-        f"<pre>{_html_escape(output)}</pre>",
+        f"<pre>{html_escape(output)}</pre>",
         reply_markup=keyboards.audit_menu_keyboard(),
         parse_mode="HTML",
     )
@@ -1497,7 +1496,7 @@ async def cmd_balance(message: Message) -> None:
         data = await client.get_balance()
     except Exception as e:
         await message.answer(
-            f"❌ Не удалось получить баланс: <code>{_html_escape(str(e))}</code>",
+            f"❌ Не удалось получить баланс: <code>{html_escape(str(e))}</code>",
             parse_mode="HTML",
         )
         return
@@ -1525,7 +1524,7 @@ async def cmd_balance(message: Message) -> None:
     if credits is None:
         await message.answer(
             f"⚠️ Не удалось разобрать баланс.\n"
-            f"Ответ API:\n<pre>{_html_escape(str(data)[:500])}</pre>",
+            f"Ответ API:\n<pre>{html_escape(str(data)[:500])}</pre>",
             parse_mode="HTML",
         )
         return
@@ -1566,7 +1565,7 @@ async def cmd_delete(message: Message) -> None:
     session = Session.load(sid)
     if session is None:
         await message.answer(
-            f"Сессия не найдена: <code>{_html_escape(sid)}</code>",
+            f"Сессия не найдена: <code>{html_escape(sid)}</code>",
             parse_mode="HTML",
         )
         return
@@ -1574,7 +1573,7 @@ async def cmd_delete(message: Message) -> None:
     await message.answer(
         f"🗑 <b>Удалить сессию?</b>\n\n"
         f"ID: <code>{session.id}</code>\n"
-        f"Заголовок: <b>{_html_escape(session.title)}</b>\n"
+        f"Заголовок: <b>{html_escape(session.title)}</b>\n"
         f"Запросов: {session.request_count}\n"
         f"Стоимость: {_fmt_cost(session.total_usage.cost)}",
         reply_markup=InlineKeyboardMarkup(inline_keyboard=[[

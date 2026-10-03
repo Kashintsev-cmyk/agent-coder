@@ -102,15 +102,6 @@ def verbosity_keyboard(current: str) -> InlineKeyboardMarkup:
 TIER_CYCLE: list[str] = ["default", "flex", "priority"]
 
 
-def tier_label(value: str) -> str:
-    """Метка для кнопки tier."""
-    return {
-        "default": "⚡ Tier: default",
-        "flex": "⚡ Tier: flex (−50%)",
-        "priority": "⚡ Tier: priority",
-    }.get(value, f"⚡ Tier: {value}")
-
-
 def model_card_keyboard(model_id: str, is_current: bool) -> InlineKeyboardMarkup:
     """Карточка модели: описание + метрики + выбор/назад."""
     row: list[InlineKeyboardButton] = []

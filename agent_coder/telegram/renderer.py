@@ -19,7 +19,7 @@ TOOL_ICONS = {
 }
 
 
-def _esc(s: str) -> str:
+def html_escape(s: str) -> str:
     """Экранируем HTML-спец-символы (но не кавычки)."""
     return html.escape(s, quote=False)
 
@@ -27,7 +27,7 @@ def _esc(s: str) -> str:
 def render_tool_call(tc: ToolCall) -> str:
     icon = TOOL_ICONS.get(tc.name, "🔧")
     args = _short_args(tc.arguments)
-    return f"{icon} <b>{_esc(tc.name)}</b>({_esc(args)})"
+    return f"{icon} <b>{html_escape(tc.name)}</b>({html_escape(args)})"
 
 
 def render_tool_result(tc: ToolCall, result: str) -> str:
@@ -35,7 +35,7 @@ def render_tool_result(tc: ToolCall, result: str) -> str:
     if len(preview) > 80:
         preview = preview[:77] + "…"
     mark = "✗" if preview.startswith("Ошибка") else "✓"
-    return f"   {mark} <i>{_esc(preview)}</i>"
+    return f"   {mark} <i>{html_escape(preview)}</i>"
 
 
 def render_usage(usage: Usage) -> str:
@@ -48,7 +48,7 @@ def render_usage(usage: Usage) -> str:
 
 def render_assistant_text(text: str) -> str:
     """Текст от ассистента — с префиксом, экранированный."""
-    return f"⏺ {_esc(text)}"
+    return f"⏺ {html_escape(text)}"
 
 
 def _short_args(args: dict) -> str:

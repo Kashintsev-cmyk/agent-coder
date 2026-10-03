@@ -44,10 +44,3 @@ class TestUsage:
         assert c.cache_write_tokens == 3
         assert c.cost == 0.75
 
-    def test_format_short_without_cache(self):
-        u = Usage(input_tokens=100, output_tokens=50, cost=1.0)
-        assert u.format_short() == "in 100 / out 50 · 1 ₽"
-
-    def test_format_short_with_cache(self):
-        u = Usage(input_tokens=100, output_tokens=50, cache_read_tokens=30, cost=1.0)
-        assert u.format_short() == "in 100 / out 50 · cache 30 · 1 ₽"

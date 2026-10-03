@@ -110,7 +110,6 @@ class AgentLoop:
 
             # B5.1: собираем статистику для будущего сжатия истории.
             self.session.last_input_tokens = response.usage.input_tokens
-            _log_history_threshold(self.session)
 
             msg = response.message
             if msg.content:
@@ -232,22 +231,4 @@ def _build_user_content(task: str, images: list | None) -> str | list[dict[str, 
             "image_url": {"url": f"data:{mime};base64,{b64}"},
         })
     return blocks
-
-
-def _log_history_threshold(session) -> None:
-    """B5.1: логировать, если input_tokens превысил порог сжатия.
-
-    Сжатие не выполняем — только сигнал в лог. Порог:
-    min(model.context * 0.6, config.MAX_HISTORY_TOKENS).
-    """
-    from agent_coder.model_catalog import catalog
-    m = catalog.get(session.model)
-    soft = config.MAX_HISTORY_TOKENS
-    if m and m.context:
-        soft = min(int(m.context * 0.6), config.MAX_HISTORY_TOKENS)
-    if session.last_input_tokens > soft:
-        logger.warning(
-            "Порог истории превышен: %d > %d (модель %s) — кандидат на сжатие",
-            session.last_input_tokens, soft, session.model,
-        )
 

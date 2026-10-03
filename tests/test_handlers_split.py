@@ -1,7 +1,8 @@
 """Тесты разбивки длинного текста и экранирования в telegram-хендлерах."""
 from __future__ import annotations
 
-from agent_coder.telegram.handlers import _html_escape, _split_for_telegram
+from agent_coder.telegram.handlers import _split_for_telegram
+from agent_coder.telegram.renderer import html_escape
 
 
 class TestSplitForTelegram:
@@ -43,10 +44,10 @@ class TestSplitForTelegram:
 
 class TestHtmlEscape:
     def test_escapes_special_chars(self):
-        assert _html_escape("<b>&") == "&lt;b&gt;&amp;"
+        assert html_escape("<b>&") == "&lt;b&gt;&amp;"
 
     def test_plain_text_unchanged(self):
-        assert _html_escape("hello world") == "hello world"
+        assert html_escape("hello world") == "hello world"
 
     def test_quotes_not_escaped(self):
-        assert _html_escape('"quote"') == '"quote"'
+        assert html_escape('"quote"') == '"quote"'

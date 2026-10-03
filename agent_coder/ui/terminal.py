@@ -79,7 +79,7 @@ async def ask_approval(tc: ToolCall) -> bool:
         title="[yellow]⚠ Требуется подтверждение[/yellow]",
         border_style="yellow",
     ))
-    return Confirm.ask("Разрешить?", default=True)
+    return Confirm.ask("Разрешить?", default=False)
 
 
 def _format_approval(tc: ToolCall) -> str:

@@ -2,7 +2,6 @@
 from __future__ import annotations
 
 import asyncio
-import html
 import logging
 import sys
 
@@ -13,6 +12,7 @@ from aiogram.types import BotCommand, ErrorEvent
 from agent_coder.config import config
 from agent_coder.model_catalog import catalog
 from agent_coder.telegram import handlers
+from agent_coder.telegram.renderer import html_escape
 
 logger = logging.getLogger(__name__)
 
@@ -35,10 +35,6 @@ BOT_COMMANDS = [
     BotCommand(command="cancel",    description="⏹ Отменить задачу"),
     BotCommand(command="help",      description="❓ Справка"),
 ]
-
-
-def _html_escape(s: str) -> str:
-    return html.escape(s, quote=False)
 
 
 async def _register_commands(bot: Bot) -> None:
@@ -114,7 +110,7 @@ async def _run() -> None:
         try:
             if event.update.message:
                 await event.update.message.answer(
-                    f"❌ Ошибка: <code>{_html_escape(str(exc))[:200]}</code>",
+                    f"❌ Ошибка: <code>{html_escape(str(exc))[:200]}</code>",
                     parse_mode="HTML",
                 )
             elif event.update.callback_query:
