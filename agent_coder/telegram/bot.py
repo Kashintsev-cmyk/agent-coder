@@ -9,6 +9,7 @@ from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
 from aiogram.types import BotCommand, ErrorEvent
 
+from agent_coder.agent.media_cleanup import cleanup_old_media
 from agent_coder.config import config
 from agent_coder.model_catalog import catalog
 from agent_coder.telegram import handlers
@@ -54,6 +55,29 @@ async def _catalog_refresh_once() -> None:
         )
     except Exception:
         logger.exception("model catalog refresh unexpected error")
+
+
+async def _media_cleanup_once() -> None:
+    """Best-effort очистка медиа старше MEDIA_RETENTION_DAYS."""
+    try:
+        import asyncio
+        files, dirs = await asyncio.to_thread(cleanup_old_media)
+        if files or dirs:
+            logger.info("media retention: удалено %d файлов, %d папок", files, dirs)
+    except Exception:
+        logger.exception("media cleanup unexpected error")
+
+
+async def _media_cleanup_loop() -> None:
+    """Раз в сутки (плюс один раз при старте)."""
+    import asyncio
+    await _media_cleanup_once()
+    while True:
+        try:
+            await asyncio.sleep(24 * 3600)
+        except asyncio.CancelledError:
+            return
+        await _media_cleanup_once()
 
 
 async def _catalog_refresh_loop() -> None:
@@ -129,6 +153,7 @@ async def _run() -> None:
 
     refresh_task = asyncio.create_task(_catalog_refresh_once())
     refresh_loop_task = asyncio.create_task(_catalog_refresh_loop())
+    media_task = asyncio.create_task(_media_cleanup_loop())
 
     # Non-blocking: не ждём refresh, бот отвечает из fallback/cache.
 
@@ -142,7 +167,7 @@ async def _run() -> None:
             await handlers.shutdown(bot)
         except Exception as e:
             logger.warning("shutdown failed: %s", e)
-        for t in (refresh_loop_task, refresh_task):
+        for t in (media_task, refresh_loop_task, refresh_task):
             if not t.done():
                 t.cancel()
                 try:

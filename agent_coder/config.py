@@ -95,6 +95,10 @@ class Config:
     # (или в _FALLBACK_CATALOG). Дешёвая — для вспомогательной задачи.
     SUMMARY_MODEL: str = os.getenv("SUMMARY_MODEL", "z-ai/glm-5.3-flash")
 
+    # Retention медиа-вложений сессий: файлы старше N дней удаляются
+    # фоновой задачей бота (раз в сутки + один раз при старте).
+    MEDIA_RETENTION_DAYS: int = _env_int("MEDIA_RETENTION_DAYS", "30")
+
     # Service tier (приоритет обработки у провайдера)
     # default — стандарт; flex — ~−50% цены, медленнее; priority — быстрее
     SERVICE_TIER: str = os.getenv("SERVICE_TIER", "default").strip().lower()
@@ -192,6 +196,11 @@ class Config:
             )
         if not cls.SUMMARY_MODEL:
             errors.append("SUMMARY_MODEL пуст")
+
+        if cls.MEDIA_RETENTION_DAYS < 1:
+            errors.append(
+                f"MEDIA_RETENTION_DAYS={cls.MEDIA_RETENTION_DAYS} должен быть >= 1"
+            )
 
         if not (0.0 <= cls.TEMPERATURE <= 2.0):
             errors.append(
