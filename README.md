@@ -355,4 +355,7 @@ CI (GitHub Actions) прогоняет `ruff check .` и `pytest -q` на Python
 
 ## Лицензия
 
-MIT — см. `LICENSE`.
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+
+MIT — можно свободно использовать, модифицировать и распространять.
+См. [`LICENSE`](LICENSE).
