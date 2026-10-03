@@ -60,3 +60,10 @@ class TestRenderAssistantText:
         out = renderer.render_assistant_text("<b>важно</b>")
         assert out.startswith("⏺ ")
         assert "&lt;b&gt;" in out
+
+
+def test_tool_icon_known_and_fallback():
+    from agent_coder.telegram.renderer import tool_icon
+    assert tool_icon("read_file") == "📖"
+    assert tool_icon("run_command") == "⚡"
+    assert tool_icon("totally-made-up") == "🔧"

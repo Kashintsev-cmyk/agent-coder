@@ -19,13 +19,18 @@ TOOL_ICONS = {
 }
 
 
+def tool_icon(name: str) -> str:
+    """Иконка инструмента. Единая точка (fallback 🔧)."""
+    return TOOL_ICONS.get(name, "🔧")
+
+
 def html_escape(s: str) -> str:
     """Экранируем HTML-спец-символы (но не кавычки)."""
     return html.escape(s, quote=False)
 
 
 def render_tool_call(tc: ToolCall) -> str:
-    icon = TOOL_ICONS.get(tc.name, "🔧")
+    icon = tool_icon(tc.name)
     args = _short_args(tc.arguments)
     return f"{icon} <b>{html_escape(tc.name)}</b>({html_escape(args)})"
 

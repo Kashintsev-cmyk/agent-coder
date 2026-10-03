@@ -8,6 +8,7 @@ from rich.text import Text
 
 from agent_coder.agent.session import Session
 from agent_coder.llm.types import ToolCall, Usage, format_cost
+from agent_coder.telegram.renderer import tool_icon
 
 console = Console()
 
@@ -32,7 +33,7 @@ def print_assistant_text(text: str) -> None:
 
 
 def print_tool_call(tc: ToolCall) -> None:
-    icon = _tool_icon(tc.name)
+    icon = tool_icon(tc.name)
     args = _short_args(tc.arguments)
     console.print(f"  [yellow]{icon}[/yellow] [bold]{tc.name}[/bold]({args})")
 
@@ -90,16 +91,6 @@ def _format_approval(tc: ToolCall) -> str:
         lines.append(f"  [dim]{key}:[/dim] {_preview(str(value), 300)}")
     return "\n".join(lines)
 
-
-def _tool_icon(name: str) -> str:
-    return {
-        "read_file": "📖",
-        "write_file": "✏️",
-        "list_files": "📂",
-        "search": "🔍",
-        "run_command": "⚡",
-        "edit_file": "✎",
-    }.get(name, "🔧")
 
 
 def _short_args(args: dict) -> str:
