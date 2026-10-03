@@ -256,7 +256,6 @@ async def cmd_cost(message: Message) -> None:
     )
 
 
-@router.message(Command("mode"))
 def _audit_reasoning_warning(session: Session) -> str:
     """Текст-предупреждение, если audit-режим на модели без reasoning.
 
@@ -275,6 +274,7 @@ def _audit_reasoning_warning(session: Session) -> str:
     )
 
 
+@router.message(Command("mode"))
 async def cmd_mode(message: Message) -> None:
     session = _get_active_session(message.chat.id)
     if session is None:
