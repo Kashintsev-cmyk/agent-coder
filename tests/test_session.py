@@ -263,3 +263,36 @@ class TestSanitizePartialAnswers:
         assert tmps == []
         assert (tmp_path / f"{s.id}.json").exists()
 
+
+
+class TestLoadSafety:
+    """load() не должен бросать исключения наружу."""
+
+    def test_load_broken_json_returns_none(self, tmp_path, monkeypatch):
+        from agent_coder.config import config
+        monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
+        (tmp_path / "broken.json").write_text("{ not json")
+        assert Session.load("broken") is None
+
+    def test_load_wrong_mode_returns_none(self, tmp_path, monkeypatch):
+        import json as _json
+
+        from agent_coder.config import config
+        monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
+        payload = {
+            "id": "x", "workspace": "/tmp", "model": "m",
+            "mode": "NOT_A_MODE", "total_usage": {},
+        }
+        (tmp_path / "x.json").write_text(_json.dumps(payload))
+        assert Session.load("x") is None
+
+    def test_load_missing_total_usage_returns_none(self, tmp_path, monkeypatch):
+        import json as _json
+
+        from agent_coder.config import config
+        monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
+        payload = {
+            "id": "x", "workspace": "/tmp", "model": "m", "mode": "act",
+        }
+        (tmp_path / "x.json").write_text(_json.dumps(payload))
+        assert Session.load("x") is None

@@ -264,10 +264,21 @@ class Session:
 
     @classmethod
     def load(cls, session_id: str) -> Session | None:
+        """Загрузить сессию. None — если файла нет или он битый.
+
+        Раньше JSONDecodeError/OSError/ValueError улетали в хендлер и
+        глобальный error-хендлер бота — юзер видел путь файла и трейс.
+        Теперь ловим и логируем.
+        """
         path = config.SESSIONS_DIR / f"{session_id}.json"
         if not path.exists():
             return None
-        return cls.from_dict(json.loads(path.read_text(encoding="utf-8")))
+        try:
+            data = json.loads(path.read_text(encoding="utf-8"))
+            return cls.from_dict(data)
+        except (json.JSONDecodeError, OSError, ValueError, KeyError, TypeError) as e:
+            logger.error("session load failed for %s: %s", session_id, e)
+            return None
 
     @classmethod
     def list_all(cls) -> list[Session]:

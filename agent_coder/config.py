@@ -5,9 +5,13 @@ from typing import ClassVar
 
 from dotenv import load_dotenv
 
-load_dotenv()
-
+# BASE_DIR — до load_dotenv, чтобы .env искался относительно кода,
+# а не текущей рабочей директории процесса.
 BASE_DIR = Path(__file__).resolve().parent.parent
+
+# override=False: не затирать уже установленные переменные окружения
+# (приоритет у того, что реально экспортировано в shell/systemd).
+load_dotenv(BASE_DIR / ".env", override=False)
 
 
 def _env_int(name: str, default: str) -> int:
