@@ -7,15 +7,40 @@ Wants=network-online.target
 Type=simple
 User=botuser
 Group=botuser
+# botuser в группе docker — нужно для команд docker ps/images/... из /server
+SupplementaryGroups=docker
 WorkingDirectory=/home/botuser/bots/agent-coder
 Environment=PATH=/home/botuser/bots/agent-coder/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
 ExecStart=/home/botuser/bots/agent-coder/.venv/bin/agent-coder-bot
 Restart=always
 RestartSec=5
-# Даём боту время корректно прервать активные задачи по SIGTERM
+
+# Корректная остановка: SIGTERM → дождаться прерывания активных задач
 KillSignal=SIGTERM
 TimeoutStopSec=30
+TimeoutStartSec=30
+
+# Hardening: минимум привилегий
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=read-only
+PrivateTmp=true
+ProtectKernelTunables=true
+ProtectKernelModules=true
+ProtectControlGroups=true
+RestrictRealtime=true
+RestrictSUIDSGID=true
+LockPersonality=true
+
+# Что боту разрешено писать:
+# - sessions/ (история, медиа, отчёты, индекс сессий)
+# - telegram_state.json (active session)
+# - ~/.cache/agent-coder (кэш каталога моделей)
+ReadWritePaths=/home/botuser/bots/agent-coder/sessions
+ReadWritePaths=-/home/botuser/bots/agent-coder/telegram_state.json
+ReadWritePaths=-/home/botuser/.cache/agent-coder
+
 StandardOutput=journal
 StandardError=journal
 
