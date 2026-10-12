@@ -49,11 +49,17 @@ from .project_utils import (
     _validate_project_name,
 )
 from .shared import (
+    _audit_reasoning_warning as _audit_reasoning_warning,
+)
+from .shared import (
     _fmt_cost,
     _get_active_session,
     _list_projects,
     _session_summary,
     router,
+)
+from .shared import (
+    _should_preserve_history as _should_preserve_history,
 )
 
 # Активные задачи: {chat_id: asyncio.Task}
@@ -258,41 +264,6 @@ async def cmd_cost(message: Message) -> None:
         f"Стоимость: <b>{_fmt_cost(u.cost)}</b>",
         parse_mode="HTML",
     )
-
-
-def _audit_reasoning_warning(session: Session) -> str:
-    """Текст-предупреждение, если audit-режим на модели без reasoning.
-
-    Возвращает "" если модель поддерживает reasoning или неизвестна как
-    reasoning-способная — только явное отсутствие reasoning даёт warning.
-    """
-    from agent_coder.model_catalog import catalog
-    m = catalog.get(session.model)
-    if m is not None and m.reasoning:
-        return ""
-    name = html_escape(m.name if m else session.model)
-    return (
-        f"\n\n⚠️ <b>Модель {name} не поддерживает reasoning.</b>\n"
-        f"Аудит без thinking будет поверхностным. Для глубокого анализа "
-        f"выбери модель с бейджем ⚙/🧠 (например, Claude Sonnet или DeepSeek Flash)."
-    )
-
-
-def _should_preserve_history(old_mode: Mode, new_mode: Mode) -> bool:
-    """Сохранять ли историю при смене режима.
-
-    Правило: если хотя бы одна сторона — CHAT, история сохраняется.
-    Между plan/act/audit — история очищается (смена контекста задачи).
-
-    Примеры:
-      act → chat  : сохранить (обсуждаем только что сделанное)
-      chat → act  : сохранить (идеи из чата → в работу)
-      plan → chat : сохранить
-      chat → audit: сохранить
-      plan → act  : очистить (как было)
-      act → audit : очистить (как было)
-    """
-    return old_mode == Mode.CHAT or new_mode == Mode.CHAT
 
 
 @router.message(Command("mode"))
