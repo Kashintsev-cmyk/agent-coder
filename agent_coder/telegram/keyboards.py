@@ -54,6 +54,25 @@ def sessions_keyboard(sessions: list[Session]) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def gh_private_keyboard(name: str) -> InlineKeyboardMarkup:
+    """Выбор приватности при создании репо на GitHub."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="🔓 Публичный",
+                callback_data=f"gh:pub:{name}",
+            ),
+            InlineKeyboardButton(
+                text="🔒 Приватный",
+                callback_data=f"gh:priv:{name}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(text="⏭ Отмена", callback_data="gh:skip"),
+        ],
+    ])
+
+
 def models_keyboard(current_model: str) -> InlineKeyboardMarkup:
     """Список кураторских моделей для выбора."""
     from agent_coder.model_catalog import catalog

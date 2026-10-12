@@ -279,6 +279,163 @@ async def _create_project_on_disk(name: str) -> Path:
     return target
 
 
+# ---------- GitHub helpers ----------
+
+
+async def _gh_create_and_push(
+    name: str,
+    *,
+    private: bool,
+    path: Path,
+) -> str:
+    """Создать репо на GitHub и запушить локальный проект.
+
+    Предполагается, что path уже: git init + initial commit.
+    Возвращает html_url созданного репо.
+    Бросает исключение при ошибке.
+    """
+    from agent_coder.github_api import create_repo, whoami
+
+    token = config.GITHUB_TOKEN
+    if not token:
+        raise RuntimeError(
+            "GITHUB_TOKEN не задан в .env — создание на GitHub недоступно"
+        )
+
+    await whoami(token)  # валидация токена: бросит GitHubError при плохом
+    repo = await create_repo(name, private=private, token=token)
+    ssh_url = repo["ssh_url"]  # git@github.com:owner/name.git
+    html_url = repo["html_url"]
+
+    # Привязать origin (если уже есть — заменить)
+    r = await run_shell("git remote -v", cwd=path, timeout=10)
+    if "origin" in r.stdout:
+        await run_shell("git remote remove origin", cwd=path, timeout=10)
+    r = await run_shell(f"git remote add origin {ssh_url}", cwd=path, timeout=10)
+    if not r.ok:
+        raise RuntimeError(f"git remote add: {r.output[:200]}")
+
+    # Push текущей ветки (master) с -u
+    r = await run_shell(
+        "git push -u origin HEAD",
+        cwd=path, timeout=120,
+    )
+    if not r.ok:
+        raise RuntimeError(f"git push: {r.output[:300]}")
+
+    logger.info("gh: created %s and pushed %s", html_url, path)
+    return html_url
+
+
+# ---------- /ghnew ----------
+
+
+@router.message(Command("ghnew"))
+async def cmd_ghnew(message: Message) -> None:
+    """Создать проект на GitHub + локально + push.
+
+    Формат: /ghnew <name>
+    """
+    if not config.GITHUB_TOKEN:
+        await message.answer(
+            "❌ <code>GITHUB_TOKEN</code> не задан в <code>.env</code>.\n"
+            "Создай токен на github.com/settings/tokens (scope: repo).",
+            parse_mode="HTML",
+        )
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2:
+        await message.answer(
+            "Укажи имя проекта:\n<code>/ghnew my-project</code>\n\n"
+            f"Будет создан репозиторий на GitHub + локально в "
+            f"<code>{_PROJECTS_DEFAULT_DIR}/</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    name = parts[1].strip()
+    err = _validate_project_name(name)
+    if err:
+        await message.answer(f"❌ Имя: {html_escape(err)}", parse_mode="HTML")
+        return
+
+    target = (_PROJECTS_DEFAULT_DIR / name).resolve()
+    if target.exists():
+        await message.answer(
+            f"❌ <code>{html_escape(str(target))}</code> уже существует.",
+            parse_mode="HTML",
+        )
+        return
+
+    await message.answer(
+        f"🐙 Создаём <b>{html_escape(name)}</b>…\n\n"
+        "Выбери приватность репозитория:",
+        reply_markup=keyboards.gh_private_keyboard(name),
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data.startswith("gh:pub:") | F.data.startswith("gh:priv:"))
+async def cb_ghnew_create(query: CallbackQuery) -> None:
+    data = query.data
+    if data.startswith("gh:pub:"):
+        name = data[len("gh:pub:"):]
+        private = False
+        label = "публичный"
+    else:
+        name = data[len("gh:priv:"):]
+        private = True
+        label = "приватный"
+
+    err = _validate_project_name(name)
+    if err:
+        await query.answer("Некорректное имя", show_alert=True)
+        return
+
+    target = (_PROJECTS_DEFAULT_DIR / name).resolve()
+    if target.exists():
+        await query.message.edit_text(
+            f"❌ <code>{html_escape(str(target))}</code> уже существует.",
+            parse_mode="HTML",
+        )
+        await query.answer()
+        return
+
+    await query.message.edit_text(
+        f"⏺ Создаю {label} репо <b>{html_escape(name)}</b>…",
+        parse_mode="HTML",
+    )
+    await query.answer()
+
+    try:
+        # 1. Локально (git init + README + .gitignore + commit)
+        path = await _create_project_on_disk(name)
+        # 2. GitHub + push
+        html_url = await _gh_create_and_push(name, private=private, path=path)
+    except Exception as e:
+        logger.exception("ghnew failed")
+        await query.message.edit_text(
+            f"❌ Не удалось:\n<code>{html_escape(str(e))}</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    await query.message.edit_text(
+        f"✅ Готово\n\n"
+        f"📁 Локально: <code>{html_escape(str(path))}</code>\n"
+        f"🌐 GitHub: {html_escape(html_url)}",
+        parse_mode="HTML",
+    )
+    await _create_session(query.message.chat.id, query.message, str(path))
+
+
+@router.callback_query(F.data == "gh:skip")
+async def cb_ghnew_skip(query: CallbackQuery) -> None:
+    await query.message.edit_text("⏭ Пропущено.")
+    await query.answer()
+
+
 # ---------- /clone ----------
 
 # Регулярка: извлекает owner/repo из GitHub-URL или сокращения user/repo

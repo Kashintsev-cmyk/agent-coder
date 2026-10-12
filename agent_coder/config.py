@@ -123,6 +123,9 @@ class Config:
 
     # Telegram
     TELEGRAM_TOKEN: str = os.getenv("TELEGRAM_TOKEN", "")
+
+    # GitHub integration (используется для /ghnew, /clone)
+    GITHUB_TOKEN: str = os.getenv("GITHUB_TOKEN", "")
     TELEGRAM_USER_ID: int = int(os.getenv("TELEGRAM_USER_ID", "0"))
     _telegram_dirs_raw: str = os.getenv(
         "TELEGRAM_PROJECTS_DIRS",
