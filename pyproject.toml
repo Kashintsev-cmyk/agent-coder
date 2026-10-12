@@ -50,7 +50,7 @@ warn_unused_configs = true
 # handlers.py временно исключён: 98 ошибок union-attr от aiogram
 # (Message | InaccessibleMessage | None после 3.x). Разбирать отдельно,
 # вместе с разбиением handlers.py на модули.
-exclude = ['^agent_coder/telegram/handlers\.py$']
+exclude = ['^agent_coder/telegram/handlers/.*\.py$']
 # Не разбирать ошибки в импортах — только в явно указанных файлах.
 # Иначе handlers.py подтягивается через цепочку импортов и игнорирует exclude.
 follow_imports = 'silent'
