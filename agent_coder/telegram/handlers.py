@@ -732,7 +732,7 @@ async def _answer_question(
     except Exception as e:
         logger.exception("question answer failed")
         await bot.send_message(
-            chat_id, f"❌ Ошибка: {_html_escape(str(e))}",
+            chat_id, f"❌ Ошибка: {html_escape(str(e))}",
         )
     finally:
         try:
