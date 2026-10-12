@@ -393,10 +393,12 @@ CI (GitHub Actions) прогоняет `ruff check .`, `mypy agent_coder tests` 
 - PDF-отчётов нет — только Markdown.
 - Медиа удаляются по retention: файлы старше `MEDIA_RETENTION_DAYS` (30)
   подчищает фоновая задача раз в сутки. При `/delete` — сразу.
-- `mypy` в CI исключает `handlers.py`: 98 из 105 ошибок — `union-attr`
-  от aiogram (`Message | InaccessibleMessage | None`), mypy не видит
-  защитных проверок `if not session`. Разбирать при разбиении
-  `handlers.py` на модули.
+- `mypy` в CI исключает `agent_coder/telegram/handlers/**`:
+  ~150 ошибок `union-attr` от aiogram 3.x
+  (`Message | InaccessibleMessage | None`). Все одного класса —
+  mypy не видит защитных `if not session`, которые есть в коде.
+  Чинить через хелпер `_msg(query)` — 2–3 часа рефакторинга без
+  функциональной пользы; отложено.
 - systemd hardening даёт боту право писать в `~/bots` и `~/projects`
   (для `/new`, `/clone`, `/ghnew`). В пределах одного пользователя
   это приемлемо.
