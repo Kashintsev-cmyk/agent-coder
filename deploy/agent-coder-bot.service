@@ -39,6 +39,9 @@ LockPersonality=true
 # - ~/.cache/agent-coder (кэш каталога моделей)
 ReadWritePaths=/home/botuser/bots/agent-coder/sessions
 ReadWritePaths=-/home/botuser/.cache/agent-coder
+# Куда бот создаёт новые проекты (папки) и куда клонирует репо
+ReadWritePaths=-/home/botuser/bots
+ReadWritePaths=-/home/botuser/projects
 
 StandardOutput=journal
 StandardError=journal
