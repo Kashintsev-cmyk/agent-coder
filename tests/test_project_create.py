@@ -4,6 +4,7 @@ from __future__ import annotations
 import pytest
 
 from agent_coder.telegram import handlers
+from agent_coder.telegram.handlers import project_utils as _pu
 
 # --- validate ---
 
@@ -23,7 +24,7 @@ def test_validate_name_bad():
 
 @pytest.mark.asyncio
 async def test_create_project_structure(tmp_path, monkeypatch):
-    monkeypatch.setattr(handlers, "_PROJECTS_DEFAULT_DIR", tmp_path)
+    monkeypatch.setattr(_pu, "_PROJECTS_DEFAULT_DIR", tmp_path)
 
     path = await handlers._create_project_on_disk("test-proj")
 
@@ -46,7 +47,7 @@ async def test_create_project_structure(tmp_path, monkeypatch):
 
 @pytest.mark.asyncio
 async def test_create_project_twice_raises(tmp_path, monkeypatch):
-    monkeypatch.setattr(handlers, "_PROJECTS_DEFAULT_DIR", tmp_path)
+    monkeypatch.setattr(_pu, "_PROJECTS_DEFAULT_DIR", tmp_path)
     await handlers._create_project_on_disk("dup")
     with pytest.raises(FileExistsError):
         await handlers._create_project_on_disk("dup")
@@ -55,7 +56,7 @@ async def test_create_project_twice_raises(tmp_path, monkeypatch):
 @pytest.mark.asyncio
 async def test_create_project_initial_commit(tmp_path, monkeypatch):
     """Если git config настроен — должен быть initial commit."""
-    monkeypatch.setattr(handlers, "_PROJECTS_DEFAULT_DIR", tmp_path)
+    monkeypatch.setattr(_pu, "_PROJECTS_DEFAULT_DIR", tmp_path)
     path = await handlers._create_project_on_disk("with-git")
 
     from agent_coder.shell_runner import run_shell
