@@ -50,8 +50,6 @@ warn_unused_configs = true
 # handlers/ исключён: ~150 union-attr от aiogram 3.x,
 # все одного класса (Message | InaccessibleMessage | None).
 # mypy не видит защитных `if not session` в коде. Сигнал/шум = 0.
-# (Message | InaccessibleMessage | None после 3.x). Разбирать отдельно,
-# вместе с разбиением handlers.py на модули.
 exclude = ['^agent_coder/telegram/handlers/.*\.py$']
 # Не разбирать ошибки в импортах — только в явно указанных файлах.
 # Иначе handlers.py подтягивается через цепочку импортов и игнорирует exclude.
