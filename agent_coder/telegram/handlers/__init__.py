@@ -956,7 +956,6 @@ async def _start_task(
 
 # ---------- Callback: выбор проекта / сессии / режима ----------
 
-@router.callback_query(F.data.startswith("new:"))
 @router.callback_query(F.data.startswith("pc:yes:"))
 async def cb_project_create_yes(query: CallbackQuery, bot: Bot) -> None:
     """Подтверждение создания проекта."""
@@ -1002,7 +1001,6 @@ async def cb_project_create_yes(query: CallbackQuery, bot: Bot) -> None:
     await _create_session(query.message.chat.id, query.message, str(path))
 
 
-@router.callback_query(F.data == "pc:no")
 @router.callback_query(F.data.startswith("gh:pub_new:") | F.data.startswith("gh:priv_new:"))
 async def cb_gh_offer_create(query: CallbackQuery) -> None:
     """Создание GitHub-репо после локального /new."""
@@ -1065,6 +1063,7 @@ async def cb_gh_offer_skip(query: CallbackQuery) -> None:
     await _create_session(query.message.chat.id, query.message, str(path))
 
 
+@router.callback_query(F.data == "pc:no")
 async def cb_project_create_no(query: CallbackQuery) -> None:
     await query.message.edit_text("❌ Создание отменено.")
     await query.answer()
@@ -1084,6 +1083,7 @@ async def cb_new_project_hint(query: CallbackQuery) -> None:
     await query.answer()
 
 
+@router.callback_query(F.data.startswith("new:"))
 async def cb_new(query: CallbackQuery, bot: Bot) -> None:
     raw = query.data.split(":", 1)[1]
     try:
