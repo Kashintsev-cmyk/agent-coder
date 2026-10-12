@@ -6,14 +6,15 @@
   _session_summary, _get_active_session
 
 Глобальное состояние (_running, _pending, _shutting_down, shutdown)
-пока остаётся в handlers/__init__.py — переедет при разбиении task.py.
+живёт здесь, чтобы быть доступным всем подмодулям (task.py, commands.py).
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 from pathlib import Path
 
-from aiogram import F, Router
+from aiogram import Bot, F, Router
 
 from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
@@ -22,6 +23,44 @@ from agent_coder.telegram import state as tg_state
 from agent_coder.telegram.renderer import html_escape
 
 logger = logging.getLogger(__name__)
+
+# ---------- Глобальное состояние задач ----------
+# Активные задачи: {chat_id: asyncio.Task}
+_running: dict[int, asyncio.Task] = {}
+# Ожидания approval: {request_id: asyncio.Future}
+_pending: dict[str, asyncio.Future] = {}
+# Идёт ли корректная остановка (меняет тексты уведомлений)
+_shutting_down = False
+
+
+async def shutdown(bot: Bot) -> None:
+    """Корректная остановка: уведомить и прервать активные задачи.
+
+    Вызывается при получении SIGTERM/SIGINT перед выходом процесса.
+    """
+    global _shutting_down
+    _shutting_down = True
+
+    # Висящие подтверждения сразу отклоняем, чтобы циклы не ждали таймаут
+    for request_id, future in list(_pending.items()):
+        _pending.pop(request_id, None)
+        if not future.done():
+            future.set_result(False)
+
+    active = [(cid, t) for cid, t in _running.items() if not t.done()]
+    if not active:
+        return
+
+    for cid, _ in active:
+        try:
+            await bot.send_message(cid, "🔄 Бот перезагружается, задача прервана.")
+        except Exception as e:
+            logger.warning("shutdown notify failed: %s", e)
+
+    for _, task in active:
+        task.cancel()
+    await asyncio.gather(*(t for _, t in active), return_exceptions=True)
+
 
 # Единый роутер — регистрируется в handlers/__init__.py.
 # Все подмодули вешают свои хендлеры через @router.message / @router.callback_query
