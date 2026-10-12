@@ -17,9 +17,24 @@ def projects_keyboard(projects: list[Path]) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=f"📁 {p.name}", callback_data=f"new:{idx}")
         ])
     rows.append([
+        InlineKeyboardButton(text="➕ Новый проект", callback_data="new_project")
+    ])
+    rows.append([
         InlineKeyboardButton(text="📚 Все сессии", callback_data="sessions")
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def confirm_create_project_keyboard(name: str) -> InlineKeyboardMarkup:
+    """Кнопки подтверждения создания проекта.
+
+    name уже прошёл валидацию по _PROJECT_NAME_RE (до 40 символов,
+    без спец-символов кроме _ . -), поэтому безопасно класть в callback_data.
+    """
+    return InlineKeyboardMarkup(inline_keyboard=[[
+        InlineKeyboardButton(text="✅ Создать", callback_data=f"pc:yes:{name}"),
+        InlineKeyboardButton(text="❌ Отмена", callback_data="pc:no"),
+    ]])
 
 
 def sessions_keyboard(sessions: list[Session]) -> InlineKeyboardMarkup:

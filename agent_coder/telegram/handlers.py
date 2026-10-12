@@ -172,18 +172,170 @@ async def cmd_projects(message: Message) -> None:
     )
 
 
+# Директория по умолчанию для новых проектов
+_PROJECTS_DEFAULT_DIR: Path = Path.home() / "bots"
+# Валидация имени: буква/цифра, затем любые [a-zA-Z0-9_.-], до 40 символов
+_PROJECT_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,39}$")
+
+_GITIGNORE_PY = """\
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.venv/
+venv/
+env/
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Env
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Project-local
+sessions/
+"""
+
+_README_TEMPLATE = """\
+# {name}
+
+Описание проекта.
+
+## Установка
+
+    python3 -m venv .venv
+    source .venv/bin/activate
+    pip install -r requirements.txt
+
+## Запуск
+
+    python -m {module}
+"""
+
+
+def _validate_project_name(name: str) -> str | None:
+    """Вернуть текст ошибки или None, если имя валидно."""
+    if not name:
+        return "пустое имя"
+    if not _PROJECT_NAME_RE.match(name):
+        return ("недопустимое имя (буквы/цифры/подчёркивания/дефисы/точки, "
+                "до 40 символов, не начинается с точки или дефиса)")
+    return None
+
+
+async def _create_project_on_disk(name: str) -> Path:
+    """Создать проект в _PROJECTS_DEFAULT_DIR/<name> по стандартам.
+
+    - git init
+    - README.md, .gitignore
+    - git add + initial commit
+    Возвращает Path. Бросает исключение при ошибке.
+    """
+    target = (_PROJECTS_DEFAULT_DIR / name).resolve()
+    try:
+        target.relative_to(_PROJECTS_DEFAULT_DIR.resolve())
+    except ValueError:
+        raise ValueError(f"путь вне {_PROJECTS_DEFAULT_DIR}")
+
+    if target.exists():
+        raise FileExistsError(f"уже существует: {target}")
+
+    target.mkdir(parents=True)
+    (target / ".gitignore").write_text(_GITIGNORE_PY, encoding="utf-8")
+    (target / "README.md").write_text(
+        _README_TEMPLATE.format(
+            name=name,
+            module=name.replace("-", "_").replace(".", "_"),
+        ),
+        encoding="utf-8",
+    )
+
+    for cmd in (
+        "git init -q",
+        "git add .gitignore README.md",
+        "git -c commit.gpgsign=false commit -q -m 'Initial commit'",
+    ):
+        r = await run_shell(cmd, cwd=target, timeout=30)
+        if not r.ok:
+            logger.warning("create_project %r: %s", cmd, r.output)
+
+    return target
+
+
 # ---------- /new ----------
 
 @router.message(Command("new"))
 async def cmd_new(message: Message) -> None:
+    """Создать или открыть проект.
+
+    Формат:
+      /new <name>     → ~/bots/<name> (создаст, если нет)
+      /new /abs/path  → открыть существующий по пути
+    """
     parts = (message.text or "").split(maxsplit=1)
     if len(parts) < 2:
         await message.answer(
-            "Укажи путь: <code>/new /home/botuser/projects/weather-bot</code>",
+            "Укажи имя проекта: <code>/new weather-bot</code>\n\n"
+            f"Проект создастся в <code>{_PROJECTS_DEFAULT_DIR}/</code>\n"
+            "Стандарт: git init + README.md + .gitignore + initial commit.\n\n"
+            "Или полный путь, если проект уже есть:\n"
+            "<code>/new /home/botuser/projects/existing</code>",
             parse_mode="HTML",
         )
         return
-    await _create_session(message.chat.id, message, parts[1].strip())
+
+    arg = parts[1].strip()
+
+    if arg.startswith(("/", "./", "../")):
+        path = Path(arg).resolve()
+        if path.is_dir():
+            await _create_session(message.chat.id, message, str(path))
+            return
+        await message.answer(
+            f"❌ Директория не найдена: <code>{html_escape(str(path))}</code>\n"
+            f"По явным путям проект не создаётся. Используй короткое имя:\n"
+            f"<code>/new my-project</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    err = _validate_project_name(arg)
+    if err:
+        await message.answer(
+            f"❌ Имя проекта: {html_escape(err)}",
+            parse_mode="HTML",
+        )
+        return
+
+    target = (_PROJECTS_DEFAULT_DIR / arg).resolve()
+    if target.is_dir():
+        await _create_session(message.chat.id, message, str(target))
+        return
+
+    await message.answer(
+        f"📁 Проекта <b>{html_escape(arg)}</b> ещё нет.\n"
+        f"Создать <code>{html_escape(str(target))}</code>?\n\n"
+        f"<i>Будет создан: git init · README.md · .gitignore · initial commit.</i>",
+        reply_markup=keyboards.confirm_create_project_keyboard(arg),
+        parse_mode="HTML",
+    )
 
 
 async def _create_session(chat_id: int, message: Message, path_str: str) -> None:
@@ -528,6 +680,59 @@ def _get_active_session(chat_id: int) -> Session | None:
 # ---------- Callback: выбор проекта / сессии / режима ----------
 
 @router.callback_query(F.data.startswith("new:"))
+@router.callback_query(F.data.startswith("pc:yes:"))
+async def cb_project_create_yes(query: CallbackQuery, bot: Bot) -> None:
+    """Подтверждение создания проекта."""
+    name = query.data.split(":", 2)[2]
+    err = _validate_project_name(name)
+    if err:
+        await query.answer(f"Некорректное имя: {err}", show_alert=True)
+        return
+
+    await query.message.edit_text(
+        f"⏺ Создаю <b>{html_escape(name)}</b>…",
+        parse_mode="HTML",
+    )
+    try:
+        path = await _create_project_on_disk(name)
+    except Exception as e:
+        logger.exception("create project failed")
+        await query.message.edit_text(
+            f"❌ Не удалось создать: <code>{html_escape(str(e))}</code>",
+            parse_mode="HTML",
+        )
+        await query.answer("Ошибка")
+        return
+
+    await query.message.edit_text(
+        f"✅ Проект создан: <code>{html_escape(str(path))}</code>\n"
+        f"<i>git init · README.md · .gitignore · initial commit</i>",
+        parse_mode="HTML",
+    )
+    await query.answer("Проект создан")
+    await _create_session(query.message.chat.id, query.message, str(path))
+
+
+@router.callback_query(F.data == "pc:no")
+async def cb_project_create_no(query: CallbackQuery) -> None:
+    await query.message.edit_text("❌ Создание отменено.")
+    await query.answer()
+
+
+@router.callback_query(F.data == "new_project")
+async def cb_new_project_hint(query: CallbackQuery) -> None:
+    """Кнопка ➕ Новый проект — подсказка по команде."""
+    await query.message.edit_text(
+        "➕ <b>Новый проект</b>\n\n"
+        "Отправь: <code>/new my-project</code>\n\n"
+        f"• Имя = папка в <code>{_PROJECTS_DEFAULT_DIR}/</code>\n"
+        "• Создаётся git-репозиторий с README.md и .gitignore\n"
+        "• Если проект уже существует — просто откроется сессия",
+        parse_mode="HTML",
+    )
+    await query.answer()
+
+
 async def cb_new(query: CallbackQuery, bot: Bot) -> None:
     raw = query.data.split(":", 1)[1]
     try:
