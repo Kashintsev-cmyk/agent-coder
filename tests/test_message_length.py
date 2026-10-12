@@ -18,7 +18,6 @@ from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
 from agent_coder.llm.types import AssistantMessage, ChatResponse, Usage
 from agent_coder.telegram import handlers
-from agent_coder.telegram.handlers import shared as _shared
 from agent_coder.telegram.handlers import task as _task
 
 # Telegram Bot API: "Text of the message to be sent, 1-4096 characters".
@@ -49,7 +48,7 @@ def _stub_session(monkeypatch):
     session = Session.new(
         workspace="/tmp/proj", model="test/model", mode=Mode.ACT,
     )
-    monkeypatch.setattr(_shared, "_get_active_session", lambda chat_id: session)
+    monkeypatch.setattr(_task, "_get_active_session", lambda chat_id: session)
     return session
 
 
