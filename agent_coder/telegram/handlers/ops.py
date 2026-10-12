@@ -6,8 +6,10 @@
 from __future__ import annotations
 
 import logging
+import tempfile
 
 from aiogram import F
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command
 from aiogram.types import CallbackQuery, Message
 
@@ -15,7 +17,7 @@ from agent_coder.shell_runner import run_shell
 from agent_coder.telegram import keyboards
 from agent_coder.telegram.renderer import html_escape
 
-from .shared import router
+from .shared import _get_active_session, router
 
 logger = logging.getLogger(__name__)
 
