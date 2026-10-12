@@ -73,6 +73,7 @@ class AgentLoop:
             Mode.PLAN: config.MAX_ITERATIONS_PLAN,
             Mode.ACT: config.MAX_ITERATIONS_ACT,
             Mode.AUDIT: config.MAX_ITERATIONS_AUDIT,
+            Mode.CHAT: config.MAX_ITERATIONS_CHAT,
         }.get(self.session.mode, config.MAX_ITERATIONS)
 
         soft = compression.soft_limit(self.session)

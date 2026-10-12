@@ -65,11 +65,17 @@ class ToolRegistry:
         return self._tools.get(name)
 
     def for_mode(self, mode: Mode) -> list[Tool]:
-        """Plan и Audit — только read-only + run_command (с whitelist на уровне loop)."""
+        """Набор инструментов под режим.
+
+        - PLAN / AUDIT: read-only + run_command (whitelisted-вызовы)
+        - CHAT: только read_file / list_files / search (без run_command)
+        - ACT: все инструменты
+        """
+        if mode == Mode.CHAT:
+            allowed = {"read_file", "list_files", "search"}
+            return [t for t in self._tools.values() if t.name in allowed]
         if mode in (Mode.PLAN, Mode.AUDIT):
             out = [t for t in self._tools.values() if t.read_only]
-            # run_command добавляем отдельно: сам он не read_only,
-            # но его whitelisted-вызовы разрешены через is_call_allowed
             rc = self._tools.get("run_command")
             if rc and rc not in out:
                 out.append(rc)
@@ -80,10 +86,11 @@ class ToolRegistry:
         """Разрешён ли вызов инструмента в этом режиме."""
         if mode == Mode.ACT:
             return True
+        if mode == Mode.CHAT:
+            return tool.name in {"read_file", "list_files", "search"}
         # Plan и Audit
         if tool.read_only:
             return True
-        # run_command — только whitelisted-команды
         if tool.name == "run_command" and tool.is_safe_call:
             try:
                 return tool.is_safe_call(args)

@@ -277,27 +277,50 @@ def _audit_reasoning_warning(session: Session) -> str:
 
 
 @router.message(Command("mode"))
+def _should_preserve_history(old_mode: Mode, new_mode: Mode) -> bool:
+    """Сохранять ли историю при смене режима.
+
+    Правило: если хотя бы одна сторона — CHAT, история сохраняется.
+    Между plan/act/audit — история очищается (смена контекста задачи).
+
+    Примеры:
+      act → chat  : сохранить (обсуждаем только что сделанное)
+      chat → act  : сохранить (идеи из чата → в работу)
+      plan → chat : сохранить
+      chat → audit: сохранить
+      plan → act  : очистить (как было)
+      act → audit : очистить (как было)
+    """
+    return old_mode == Mode.CHAT or new_mode == Mode.CHAT
+
+
 async def cmd_mode(message: Message) -> None:
     session = _get_active_session(message.chat.id)
     if session is None:
         await message.answer("Нет активной сессии.")
         return
     parts = (message.text or "").split(maxsplit=1)
-    valid = {"plan": Mode.PLAN, "act": Mode.ACT, "audit": Mode.AUDIT}
+    valid = {
+        "plan": Mode.PLAN, "act": Mode.ACT,
+        "audit": Mode.AUDIT, "chat": Mode.CHAT,
+    }
     if len(parts) < 2 or parts[1].strip() not in valid:
         await message.answer(
             f"Текущий режим: <b>{session.mode.value}</b>\n\n"
-            f"Сменить: /mode plan | /mode act | /mode audit\n\n"
+            f"Сменить: /mode plan | /mode act | /mode audit | /mode chat\n\n"
             f"• <b>plan</b> — планирование (только чтение)\n"
             f"• <b>act</b> — работа с кодом (правки, команды)\n"
-            f"• <b>audit</b> — строгий аудит (только отчёт)",
+            f"• <b>audit</b> — строгий аудит (только отчёт)\n"
+            f"• <b>chat</b> — обсуждение без правок (read-only tools)",
             parse_mode="HTML",
         )
         return
     new_mode = valid[parts[1].strip()]
     if session.mode != new_mode:
+        old_mode = session.mode
         session.mode = new_mode
-        session.messages = []
+        if not _should_preserve_history(old_mode, new_mode):
+            session.messages = []
         session.save()
     extra = _audit_reasoning_warning(session) if new_mode == Mode.AUDIT else ""
     await message.answer(
@@ -557,15 +580,21 @@ async def cb_mode(query: CallbackQuery) -> None:
     if session is None:
         await query.answer("Сессия не найдена", show_alert=True)
         return
-    if mode_str == "plan":
-        new_mode = Mode.PLAN
-    elif mode_str == "audit":
-        new_mode = Mode.AUDIT
-    else:
-        new_mode = Mode.ACT
+    mode_map = {
+        "plan": Mode.PLAN,
+        "act": Mode.ACT,
+        "audit": Mode.AUDIT,
+        "chat": Mode.CHAT,
+    }
+    new_mode = mode_map.get(mode_str)
+    if new_mode is None:
+        await query.answer("Неизвестный режим", show_alert=True)
+        return
     if session.mode != new_mode:
+        old_mode = session.mode
         session.mode = new_mode
-        session.messages = []
+        if not _should_preserve_history(old_mode, new_mode):
+            session.messages = []
         session.save()
     extra = _audit_reasoning_warning(session) if new_mode == Mode.AUDIT else ""
     await query.message.edit_text(

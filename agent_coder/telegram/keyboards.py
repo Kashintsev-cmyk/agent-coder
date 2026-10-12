@@ -177,7 +177,10 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
     rows.append([
         InlineKeyboardButton(text="🟡 Plan",  callback_data=f"mode:plan:{sid}"),
         InlineKeyboardButton(text="🟢 Act",   callback_data=f"mode:act:{sid}"),
+    ])
+    rows.append([
         InlineKeyboardButton(text="🔒 Audit", callback_data=f"mode:audit:{sid}"),
+        InlineKeyboardButton(text="💬 Chat",  callback_data=f"mode:chat:{sid}"),
     ])
     rows.append([
         InlineKeyboardButton(text="💰 Стоимость", callback_data=f"cost:{sid}"),

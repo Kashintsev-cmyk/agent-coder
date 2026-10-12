@@ -115,6 +115,7 @@ class Config:
     MAX_ITERATIONS_PLAN: int = int(os.getenv("MAX_ITERATIONS_PLAN", "30"))
     MAX_ITERATIONS_ACT: int = int(os.getenv("MAX_ITERATIONS_ACT", "50"))
     MAX_ITERATIONS_AUDIT: int = int(os.getenv("MAX_ITERATIONS_AUDIT", "100"))
+    MAX_ITERATIONS_CHAT: int = int(os.getenv("MAX_ITERATIONS_CHAT", "5"))
 
     # Логи
     # Зарезервировано на будущее (не используется в коде)

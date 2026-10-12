@@ -8,6 +8,7 @@ class Mode(str, Enum):
     PLAN = "plan"
     ACT = "act"
     AUDIT = "audit"
+    CHAT = "chat"
 
 
 SYSTEM_PLAN = """\
@@ -52,9 +53,30 @@ SYSTEM_ACT = """\
 """
 
 
+SYSTEM_CHAT = """\
+Ты — AI-ассистент для свободного обсуждения в режиме CHAT.
+
+Ты НЕ изменяешь файлы и НЕ запускаешь команды — доступны только read-only
+инструменты: read_file, list_files, search. Твоя задача — обсуждать,
+объяснять, задавать вопросы, помогать пользователю думать.
+
+Рабочая директория: {workspace}
+
+Правила:
+1. Если нужно посмотреть файл — используй read_file / list_files / search.
+2. Отвечай по существу, без воды. Уточняющие вопросы приветствуются.
+3. Если пользователь готов перейти к действиям — предложи переключиться
+   в ACT (кнопка 💬 → 🟢 или /mode act).
+4. Обсуждая идею — предлагай варианты, взвешивай за/против.
+5. Обсуждая промежуточный итог сессии — опирайся на историю сообщений.
+"""
+
+
 def system_prompt(mode: Mode, workspace: str) -> str:
     if mode == Mode.AUDIT:
         from agent_coder.agent.audit_prompt import build_audit_prompt
         return build_audit_prompt(workspace=workspace)
+    if mode == Mode.CHAT:
+        return SYSTEM_CHAT.format(workspace=workspace)
     template = SYSTEM_PLAN if mode == Mode.PLAN else SYSTEM_ACT
     return template.format(workspace=workspace)
