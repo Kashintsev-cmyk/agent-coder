@@ -506,6 +506,14 @@ async def _start_task(
             parse_mode="HTML",
         )
 
+    # Вопрос (заканчивается на ?) — быстрый ответ без агентного цикла
+    if images is None and _is_question(task_text):
+        task = asyncio.create_task(
+            _answer_question(bot, chat_id, session, task_text)
+        )
+        _running[chat_id] = task
+        return
+
     task = asyncio.create_task(_run_task(bot, chat_id, session, task_text, images=images))
     _running[chat_id] = task
 
@@ -671,6 +679,67 @@ async def cb_deny(query: CallbackQuery) -> None:
 
 
 # ---------- Запуск задачи ----------
+
+def _is_question(text: str) -> bool:
+    """Сообщение — вопрос? (заканчивается на ? и не слишком длинное).
+
+    Длинные сообщения с вопросом в конце всё равно считаются задачей.
+    """
+    t = text.rstrip()
+    return t.endswith("?") and len(t) <= 200
+
+
+async def _answer_question(
+    bot: Bot, chat_id: int, session: Session, question: str,
+) -> None:
+    """Быстрый ответ на вопрос: один LLM-запрос с CHAT-промптом, без tools.
+
+    session.mode НЕ меняется. Ответ добавляется в историю сессии.
+    """
+    from agent_coder.agent.prompts import Mode, system_prompt
+    from agent_coder.config import config as _cfg
+    from agent_coder.llm.client import LLMClient
+
+    client = LLMClient()
+    await client.start()
+    try:
+        chat_system = system_prompt(Mode.CHAT, session.workspace)
+        # system — от CHAT, остальное — история как есть (без старого system)
+        msgs = [{"role": "system", "content": chat_system}]
+        msgs += [m for m in session.messages if m.get("role") != "system"]
+        msgs.append({"role": "user", "content": question})
+
+        resp = await client.chat(
+            messages=msgs,
+            model=session.model,
+            temperature=_cfg.TEMPERATURE,
+            reasoning_effort=session.reasoning_effort,
+            web_search=session.web_search,
+            service_tier=session.service_tier or _cfg.SERVICE_TIER,
+            verbosity=session.verbosity or None,
+        )
+        session.add_usage(resp.usage)
+        session.add_message({"role": "user", "content": question})
+        session.add_message({
+            "role": "assistant",
+            "content": resp.message.content or "",
+        })
+        session.save()
+
+        await bot.send_message(
+            chat_id, resp.message.content or "(пустой ответ)",
+        )
+    except Exception as e:
+        logger.exception("question answer failed")
+        await bot.send_message(
+            chat_id, f"❌ Ошибка: {_html_escape(str(e))}",
+        )
+    finally:
+        try:
+            await client.close()
+        except Exception:
+            pass
+
 
 async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str,
                     images: list[Path] | None = None) -> None:
