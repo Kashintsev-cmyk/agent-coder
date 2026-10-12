@@ -10,7 +10,7 @@ import time
 import uuid
 from pathlib import Path
 
-from aiogram import Bot, F, Router
+from aiogram import Bot, F
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (
@@ -33,11 +33,15 @@ from agent_coder.tools import build_registry
 
 logger = logging.getLogger(__name__)
 
-router = Router()
-
-# Ограничиваем доступ одним пользователем
-router.message.filter(F.from_user.id == config.TELEGRAM_USER_ID)
-router.callback_query.filter(F.from_user.id == config.TELEGRAM_USER_ID)
+# Роутер и общие утилиты — в shared.py (единая точка).
+# re-export чтобы существующий код и тесты продолжали работать.
+from .shared import (
+    _fmt_cost,
+    _get_active_session,
+    _list_projects,
+    _session_summary,
+    router,
+)
 
 # Активные задачи: {chat_id: asyncio.Task}
 _running: dict[int, asyncio.Task] = {}
@@ -77,41 +81,6 @@ async def shutdown(bot: Bot) -> None:
 
 
 # ---------- Утилиты ----------
-
-def _list_projects() -> list[Path]:
-    """Список проектов в стабильном (детерминированном) порядке.
-
-    Порядок — глобальная сортировка по str(Path.resolve()) независимо от
-    порядка обхода корневых папок, чтобы индекс в callback_data совпадал
-    между рендером клавиатуры и обработкой нажатия.
-    """
-    projects: list[Path] = []
-    for root in config.TELEGRAM_PROJECTS_DIRS:
-        if not root.exists():
-            continue
-        try:
-            for child in root.iterdir():
-                if child.is_dir() and not child.name.startswith("."):
-                    projects.append(child)
-        except PermissionError:
-            continue
-    projects.sort(key=lambda p: str(p.resolve()))
-    return projects[:30]
-
-
-def _fmt_cost(value: float) -> str:
-    from agent_coder.llm.types import format_cost
-    return format_cost(value)
-
-
-def _session_summary(s: Session) -> str:
-    icon = "🟡" if s.mode.value == "plan" else "🟢"
-    return (
-        f"{icon} <b>{s.title or '(без названия)'}</b>\n"
-        f"   <code>{s.id}</code> · {s.mode.value} · "
-        f"{_fmt_cost(s.total_usage.cost)} · {s.age_str()}"
-    )
-
 
 # ---------- /start, /help ----------
 
@@ -981,13 +950,6 @@ async def _start_task(
 
     task = asyncio.create_task(_run_task(bot, chat_id, session, task_text, images=images))
     _running[chat_id] = task
-
-
-def _get_active_session(chat_id: int) -> Session | None:
-    sid = tg_state.get_active_session(chat_id)
-    if not sid:
-        return None
-    return Session.load(sid)
 
 
 # ---------- Callback: выбор проекта / сессии / режима ----------
