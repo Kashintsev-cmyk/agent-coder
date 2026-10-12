@@ -11,16 +11,18 @@ remote-helper'ов, с точным учётом стоимости каждой
 ## Возможности
 
 **Агент**
-- Три режима: `plan` (только чтение), `act` (полный доступ), `audit` (строгий аудитор)
-- 10 инструментов: чтение/запись/правки файлов, поиск (`ripgrep`), shell с whitelist, git
+- Три режима работы: `plan` (только чтение), `act` (полный доступ),
+  `audit` (строгий аудитор), `chat` (обсуждение без правок)
+- 10 инструментов: чтение/запись/правки файлов, поиск (`ripgrep`),
+  shell с whitelist, git
 - Подтверждения на опасные операции; безопасные read-only команды — без вопросов
 - Точная стоимость от RouterAI (`usage.cost`), без оценок по токенам
 
 **Модели**
 - Каталог из `/api/v1/models` RouterAI, кэшируется на диск (TTL 24 ч)
 - Список моделей задаётся в `.env` (`CURATED_MODEL_IDS`) — без правок кода
-- Адаптивное меню: кнопки (reasoning / web search / tier / verbosity) только для
-  возможностей, которые модель реально поддерживает
+- Адаптивное меню: кнопки (reasoning / web search / tier / verbosity) только
+  для возможностей, которые модель реально поддерживает
 - Карточка модели с описанием, контекстом и ценами
 
 **LLM-фичи**
@@ -29,19 +31,32 @@ remote-helper'ов, с точным учётом стоимости каждой
 - Verbosity, reasoning, temperature — с per-session настройкой
 - Сжатие истории: старые сообщения резюмируются дешёвой моделью
 - Приём изображений (vision-модели): фото передаётся как `image_url`
+- Быстрый вопрос: сообщение, заканчивающееся на `?` (< 200 символов), —
+  ответ без агентного цикла, с CHAT-промптом
+
+**Проекты и GitHub**
+- `/new <name>` — создать проект с нуля (`git init` + `README.md` +
+  `.gitignore` + initial commit)
+- `/clone <url>` — клонировать любой GitHub-репозиторий в `~/bots/<repo>`
+- `/ghnew <name>` — создать репо на GitHub (публичный/приватный) +
+  локально + push
+- После `/new` — опционально предложить создание GitHub-репо
+- SSH-ключ (для clone/push) + `GITHUB_TOKEN` (для создания через API)
 
 **Безопасность**
 - Whitelist read-only команд; pipe без `awk`/`sed`/`env`/`printenv`
-- Маскирование секретов (`ROUTERAI_API_KEY`, `TELEGRAM_TOKEN`, `sk-*`, `Bearer *`)
-  в логах и выводе команд
-- Path traversal защищён в `search`, `read_file`, `write_file`, `list_files`
-- systemd hardening: `NoNewPrivileges`, `ProtectSystem=strict`, `ReadWritePaths`
+- Маскирование секретов (`ROUTERAI_API_KEY`, `TELEGRAM_TOKEN`, `sk-*`,
+  `Bearer *`) в логах и выводе команд
+- Path traversal защищён в `search`, `read_file`, `write_file`,
+  `list_files`, `/new`, `/clone`
+- systemd hardening: `NoNewPrivileges`, `ProtectSystem=strict`,
+  `ReadWritePaths` для нужных директорий
 
 **Инфраструктура**
 - Сессии на диске + sidecar-индекс метаданных (быстрый `/sessions`)
 - Медиа-retention: файлы старше 30 дней удаляются фоновой задачей
 - Retry с jitter и уважением `Retry-After`
-- GitHub Actions: pytest + ruff на Python 3.10–3.12
+- CI: pytest + ruff + mypy на Python 3.10–3.12
 
 ## Быстрый старт
 
@@ -52,7 +67,8 @@ remote-helper'ов, с точным учётом стоимости каждой
 | Python **≥ 3.10** | `requires-python` в `pyproject.toml` | да |
 | `ROUTERAI_API_KEY` | доступ к моделям через [routerai.ru](https://routerai.ru) | да |
 | `ripgrep` (`rg`) | инструмент `search` | для поиска |
-| `git` | инструменты `git_*` | для git-работы |
+| `git` + SSH-ключ на GitHub | инструменты `git_*`, `/clone`, `/ghnew` | для GitHub |
+| `GITHUB_TOKEN` | создание репо на GitHub через API | для `/ghnew` |
 
 ### Установка
 
@@ -70,24 +86,23 @@ remote-helper'ов, с точным учётом стоимости каждой
 
 ### Первый запуск (CLI)
 
-    agent-coder --cwd /path/to/project "проанализируй структуру и предложи план рефакторинга"
+    agent-coder --cwd /path/to/project "проанализируй структуру проекта"
 
 Без задачи — откроется REPL.
 
 ### Первый запуск (Telegram)
 
-    # в .env должен быть TELEGRAM_TOKEN и TELEGRAM_USER_ID
+    # в .env: TELEGRAM_TOKEN, TELEGRAM_USER_ID
     agent-coder-bot
 
-Открой бота в Telegram → `/start` → `/projects` → выбери проект → отправь
-задачу текстом.
+Открой бота → `/start` → `/projects` → выбери проект → отправь задачу.
 
 ## Использование
 
 ### CLI
 
     # Одна задача — выполнить и выйти
-    agent-coder --cwd /path/to/project "создай README.md с описанием проекта"
+    agent-coder --cwd /path/to/project "создай README.md"
 
     # REPL (без аргумента-задачи)
     agent-coder --cwd /path/to/project
@@ -98,12 +113,12 @@ remote-helper'ов, с точным учётом стоимости каждой
     # Без подтверждений (осторожно)
     agent-coder --yolo "прогони тесты и почини падения"
 
-    # Возобновить сессию / продолжить последнюю в директории
+    # Возобновить сессию / продолжить последнюю
     agent-coder --resume 7db6a452
     agent-coder --continue --cwd /path/to/project
 
     # Выбрать модель и включить debug-логи
-    agent-coder --model anthropic/claude-sonnet-5.5 -v "отрефактори модуль парсера"
+    agent-coder --model anthropic/claude-sonnet-5.5 -v "отрефактори парсер"
 
 ### CLI-флаги
 
@@ -116,7 +131,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 | `--yolo` | выкл. | Без подтверждений |
 | `--resume ID` | — | Возобновить сессию |
 | `--continue` | выкл. | Продолжить последнюю для workspace |
-| `--max-iterations N` | из `.env` | Лимит итераций (переопределяет `MAX_ITERATIONS_*` для всех режимов) |
+| `--max-iterations N` | из `.env` | Лимит итераций (переопределяет `MAX_ITERATIONS_*`) |
 | `--verbose`, `-v` | выкл. | DEBUG-логи |
 | `--version` | — | Версия |
 
@@ -124,7 +139,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 
 | Команда | Действие |
 |---|---|
-| `/plan`, `/act`, `/audit` | Сменить режим (история очищается) |
+| `/plan`, `/act`, `/audit`, `/chat` | Сменить режим |
 | `/cost` | Стоимость и число запросов |
 | `/session` | Информация о текущей сессии |
 | `/sessions` | Список сессий (до 20, свежие сверху) |
@@ -132,7 +147,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 | `/title <текст>` | Заголовок сессии |
 | `/history` | Последние 20 сообщений |
 | `/clear` | Очистить историю (стоимость сохраняется) |
-| `/model` | Выбрать модель (интерактивно) |
+| `/model` | Выбрать модель |
 | `/reasoning` | Уровень reasoning |
 | `/help`, `/exit`, `/quit`, `/q` | Справка / выход |
 
@@ -143,9 +158,15 @@ remote-helper'ов, с точным учётом стоимости каждой
 | `plan` | read-only инструменты + whitelist-команды | `MAX_ITERATIONS_PLAN` (30) |
 | `act` | всё: запись, правки, любые команды, git-коммит | `MAX_ITERATIONS_ACT` (50) |
 | `audit` | как `plan`, но с промптом строгого аудитора; в Telegram — Markdown-отчёт | `MAX_ITERATIONS_AUDIT` (100) |
+| `chat` | только `read_file`, `list_files`, `search`; обсуждение без изменений | `MAX_ITERATIONS_CHAT` (5) |
 
-По умолчанию — `act`. В `plan`/`audit` попытки изменить файлы отбиваются
-на уровне реестра инструментов.
+По умолчанию — `act`. В `plan`/`audit`/`chat` попытки изменить файлы
+отбиваются на уровне реестра инструментов.
+
+**История сообщений при смене режима:**
+- Переходы `plan↔act`, `act↔audit`, `plan↔audit` — история **очищается**
+- Переходы с участием `chat` — история **сохраняется**
+  (`act → chat`, `chat → act`, `plan → chat` и т.п.)
 
 ## Инструменты
 
@@ -168,8 +189,8 @@ workspace (path traversal защищён).
 ## Модели
 
 Список моделей для UI задаётся через `.env` → `CURATED_MODEL_IDS`.
-Метаданные (цены, контекст, capabilities) тянутся из `/api/v1/models` RouterAI
-и кэшируются на диск.
+Метаданные (цены, контекст, capabilities) тянутся из `/api/v1/models`
+RouterAI и кэшируются на диск.
 
 Дефолтный набор:
 
@@ -223,7 +244,7 @@ workspace (path traversal защищён).
 | `MODELS_CACHE_DIR` | `~/.cache/agent-coder` | Куда писать кэш |
 | `MODELS_API_TIMEOUT` | `5.0` | Таймаут запроса к `/models` |
 
-**Сжатие истории**
+**Сжатие истории и медиа**
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
@@ -240,6 +261,7 @@ workspace (path traversal защищён).
 | `MAX_ITERATIONS_PLAN` | `30` | Plan |
 | `MAX_ITERATIONS_ACT` | `50` | Act |
 | `MAX_ITERATIONS_AUDIT` | `100` | Audit |
+| `MAX_ITERATIONS_CHAT` | `5` | Chat |
 | `LOG_LEVEL` | `INFO` | Зарезервировано |
 
 **Telegram**
@@ -251,13 +273,20 @@ workspace (path traversal защищён).
 | `TELEGRAM_PROJECTS_DIRS` | `~/projects,~/bots` | Папки для `/projects` |
 | `APPROVAL_TIMEOUT` | `900` | Таймаут approval, с |
 
+**GitHub**
+
+| Переменная | По умолчанию | Описание |
+|---|---|---|
+| `GITHUB_TOKEN` | — | Classic PAT со scope `repo` (для `/ghnew`) |
+
 ## Telegram-бот
 
     agent-coder-bot
 
-**Команды:** `/start`, `/help`, `/projects`, `/new <путь>`, `/sessions`,
-`/current`, `/history`, `/delete [id]`, `/model`, `/reasoning`,
-`/mode plan|act|audit`, `/cost`, `/balance`, `/server`, `/audit`, `/cancel`.
+**Команды:** `/start`, `/help`, `/projects`, `/new <name>`, `/clone <url>`,
+`/ghnew <name>`, `/sessions`, `/current`, `/history`, `/delete [id]`,
+`/model`, `/reasoning`, `/mode plan|act|audit|chat`, `/cost`, `/balance`,
+`/server`, `/audit`, `/cancel`.
 
 **Меню сессии** (кнопки):
 - **🧠 Модель** — список моделей с бейджами; клик → карточка с описанием,
@@ -266,19 +295,26 @@ workspace (path traversal защищён).
 - **🌐 Web search** — toggle встроенного поиска (только у моделей с ним).
 - **⚡ Tier** — циклическое `default → flex → priority`.
 - **📏 Verbosity** — уровень многословности.
-- **Plan / Act / Audit**, **Стоимость**, **Новая**, **История**, **Удалить**.
+- **Plan / Act / Audit / Chat**, **Стоимость**, **Новая**, **История**,
+  **Удалить**.
 
-Quick-настройки раскладываются в 1, 2, 3 или 2+2 кнопки в ряд — в зависимости
-от того, сколько возможностей поддерживает выбранная модель.
+**Меню `/projects`:**
+- Список проектов (по одному в строке)
+- **➕ Новый** — подсказка по `/new`
+- **🐙 Клонировать** — подсказка по `/clone`
+- **🌐 GitHub-репо** — подсказка по `/ghnew`
+- **📚 Все сессии**
 
 **Приём задач:**
 - Текст сообщения — обычная задача.
 - `.txt` / `.md` и т.п. — длинный промт файлом (до 1 МБ).
 - **Фото** — прикладывается как `image_url` (base64). Модель должна
   поддерживать vision, иначе бот предупредит.
+- **Вопрос** (заканчивается на `?`, < 200 символов) — быстрый ответ
+  без агентного цикла, с CHAT-промптом.
 
-**Меню `/server` и `/audit`** выполняют read-only команды напрямую, минуя LLM —
-бесплатно, сгруппированы по категориям.
+**Меню `/server` и `/audit`** выполняют read-only команды напрямую, минуя
+LLM — бесплатно, сгруппированы по категориям.
 
 ## Где хранятся данные
 
@@ -291,8 +327,14 @@ Quick-настройки раскладываются в 1, 2, 3 или 2+2 кн
 | Медиа-вложения | `sessions/media/<id>/` |
 | Audit-отчёты (Markdown) | `sessions/audits/` |
 | Экспорт истории | `sessions/history/` |
-| Активная сессия Telegram | `telegram_state.json` |
+| Активная сессия Telegram | `sessions/telegram_state.json` |
 | `.env` | корень репозитория |
+
+**Проекты по умолчанию:**
+
+- `/new <name>` → `~/bots/<name>`
+- `/clone` → `~/bots/<repo>`
+- `/ghnew <name>` → `~/bots/<name>` + репо на GitHub
 
 ID сессии — 8 hex-символов.
 
@@ -303,6 +345,7 @@ ID сессии — 8 hex-символов.
     ├── config.py            # конфиг из .env
     ├── models.py            # ModelInfo + fallback-каталог
     ├── model_catalog.py     # ModelCatalog: API + кэш + fallback
+    ├── github_api.py        # create_repo, whoami (через httpx)
     ├── log_safety.py        # маскирование секретов
     ├── shell_runner.py      # единый subprocess с таймаутом и killpg
     ├── audit_ops.py         # read-only проверки проекта
@@ -312,7 +355,7 @@ ID сессии — 8 hex-символов.
     │   ├── session.py       # история, стоимость, save/load
     │   ├── session_index.py # sidecar-индекс
     │   ├── compression.py   # сжатие истории
-    │   └── prompts.py       # системные промпты
+    │   └── prompts.py       # системные промпты (PLAN/ACT/AUDIT/CHAT)
     ├── llm/
     │   ├── client.py        # AsyncOpenAI + retry
     │   └── types.py         # Usage, ToolCall, format_cost
@@ -325,33 +368,38 @@ ID сессии — 8 hex-символов.
     # установка с dev-зависимостями
     pip install -e ".[dev]"
 
-    # тесты (276)
+    # тесты (311)
     pytest -q
 
     # линтер
     ruff check .
 
-    # mypy (запускается вручную — см. Известные ограничения)
+    # типы
     mypy agent_coder tests
 
-CI (GitHub Actions) прогоняет `ruff check .` и `pytest -q` на Python
-3.10 / 3.11 / 3.12 при каждом push в `master` и в PR.
+CI (GitHub Actions) прогоняет `ruff check .`, `mypy agent_coder tests` и
+`pytest -q -n auto` на Python 3.10 / 3.11 / 3.12 при каждом push в `master`
+и в PR.
 
 ## Известные ограничения
 
 - Агент работает только через RouterAI; других провайдеров нет.
-- `--max-iterations N` переопределяет `MAX_ITERATIONS_*` **только если указан
-  явно**. Без флага используются значения из `.env`.
+- `--max-iterations N` переопределяет `MAX_ITERATIONS_*` **только если
+  указан явно**. Без флага используются значения из `.env`.
 - `MODEL_FAST` и `LOG_LEVEL` читаются из окружения, но в коде пока
   не используются — зарезервированы.
 - Стоимость хранится как `float`. Для UI этого достаточно; для биллинга
-  точность не гарантируется (переход на `Decimal` — при появлении такой задачи).
+  точность не гарантируется (переход на `Decimal` — при появлении задачи).
 - PDF-отчётов нет — только Markdown.
 - Медиа удаляются по retention: файлы старше `MEDIA_RETENTION_DAYS` (30)
   подчищает фоновая задача раз в сутки. При `/delete` — сразу.
-- `mypy` настроен в `pyproject.toml`, но **не входит в CI**: 98 из 105 ошибок —
-  `union-attr` от aiogram в `handlers.py`. Разбирать вместе с разбиением
+- `mypy` в CI исключает `handlers.py`: 98 из 105 ошибок — `union-attr`
+  от aiogram (`Message | InaccessibleMessage | None`), mypy не видит
+  защитных проверок `if not session`. Разбирать при разбиении
   `handlers.py` на модули.
+- systemd hardening даёт боту право писать в `~/bots` и `~/projects`
+  (для `/new`, `/clone`, `/ghnew`). В пределах одного пользователя
+  это приемлемо.
 
 ## Лицензия
 
