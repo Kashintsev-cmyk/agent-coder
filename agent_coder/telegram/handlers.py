@@ -282,17 +282,16 @@ async def _create_project_on_disk(name: str) -> Path:
 # ---------- GitHub helpers ----------
 
 
-async def _gh_create_and_push(
+async def _gh_create_repo_only(
     name: str,
     *,
     private: bool,
     path: Path,
 ) -> str:
-    """Создать репо на GitHub и запушить локальный проект.
+    """Создать репо на GitHub и привязать origin (без push).
 
-    Предполагается, что path уже: git init + initial commit.
-    Возвращает html_url созданного репо.
-    Бросает исключение при ошибке.
+    path — локальная папка с уже готовым git-репозиторием.
+    Возвращает html_url. Бросает исключение при ошибке.
     """
     from agent_coder.github_api import create_repo, whoami
 
@@ -302,9 +301,9 @@ async def _gh_create_and_push(
             "GITHUB_TOKEN не задан в .env — создание на GitHub недоступно"
         )
 
-    await whoami(token)  # валидация токена: бросит GitHubError при плохом
+    await whoami(token)  # валидация токена
     repo = await create_repo(name, private=private, token=token)
-    ssh_url = repo["ssh_url"]  # git@github.com:owner/name.git
+    ssh_url = repo["ssh_url"]
     html_url = repo["html_url"]
 
     # Привязать origin (если уже есть — заменить)
@@ -315,7 +314,21 @@ async def _gh_create_and_push(
     if not r.ok:
         raise RuntimeError(f"git remote add: {r.output[:200]}")
 
-    # Push текущей ветки (master) с -u
+    return html_url
+
+
+async def _gh_create_and_push(
+    name: str,
+    *,
+    private: bool,
+    path: Path,
+) -> str:
+    """Создать репо на GitHub + push текущей ветки.
+
+    Возвращает html_url. Бросает исключение при ошибке.
+    """
+    html_url = await _gh_create_repo_only(name, private=private, path=path)
+
     r = await run_shell(
         "git push -u origin HEAD",
         cwd=path, timeout=120,
@@ -540,6 +553,28 @@ async def cmd_clone(message: Message) -> None:
         parse_mode="HTML",
     )
     await _create_session(message.chat.id, message, str(dest))
+
+
+@router.callback_query(F.data == "ghnew_hint")
+async def cb_ghnew_hint(query: CallbackQuery) -> None:
+    if not config.GITHUB_TOKEN:
+        await query.message.edit_text(
+            "🌐 <b>Создать репо на GitHub</b>\n\n"
+            "❌ <code>GITHUB_TOKEN</code> не задан в <code>.env</code>.\n"
+            "Создай токен на github.com/settings/tokens (scope: repo).",
+            parse_mode="HTML",
+        )
+        await query.answer()
+        return
+    await query.message.edit_text(
+        "🌐 <b>Создать репо на GitHub</b>\n\n"
+        "Отправь: <code>/ghnew my-project</code>\n\n"
+        f"• Репо создастся на GitHub (приватный или публичный — выберешь кнопкой)\n"
+        f"• Локально: <code>{_PROJECTS_DEFAULT_DIR}/&lt;name&gt;</code>\n"
+        "• git init + README.md + .gitignore + push",
+        parse_mode="HTML",
+    )
+    await query.answer()
 
 
 @router.callback_query(F.data == "clone_hint")
@@ -982,6 +1017,18 @@ async def cb_project_create_yes(query: CallbackQuery, bot: Bot) -> None:
         await query.answer("Ошибка")
         return
 
+    # Если GITHUB_TOKEN настроен — предложить создать репо на GitHub
+    if config.GITHUB_TOKEN:
+        await query.message.edit_text(
+            f"✅ Проект создан: <code>{html_escape(str(path))}</code>\n"
+            f"<i>git init · README.md · .gitignore · initial commit</i>\n\n"
+            f"🐙 Создать репозиторий на GitHub?",
+            reply_markup=keyboards.gh_offer_keyboard(name),
+            parse_mode="HTML",
+        )
+        await query.answer("Проект создан")
+        return
+
     await query.message.edit_text(
         f"✅ Проект создан: <code>{html_escape(str(path))}</code>\n"
         f"<i>git init · README.md · .gitignore · initial commit</i>",
@@ -992,6 +1039,68 @@ async def cb_project_create_yes(query: CallbackQuery, bot: Bot) -> None:
 
 
 @router.callback_query(F.data == "pc:no")
+@router.callback_query(F.data.startswith("gh:pub_new:") | F.data.startswith("gh:priv_new:"))
+async def cb_gh_offer_create(query: CallbackQuery) -> None:
+    """Создание GitHub-репо после локального /new."""
+    data = query.data
+    if data.startswith("gh:pub_new:"):
+        name = data[len("gh:pub_new:"):]
+        private = False
+        label = "публичный"
+    else:
+        name = data[len("gh:priv_new:"):]
+        private = True
+        label = "приватный"
+
+    path = (_PROJECTS_DEFAULT_DIR / name).resolve()
+    if not path.is_dir():
+        await query.answer("Проект не найден", show_alert=True)
+        return
+
+    await query.message.edit_text(
+        f"⏺ Создаю {label} репо <b>{html_escape(name)}</b> на GitHub…",
+        parse_mode="HTML",
+    )
+    await query.answer()
+
+    try:
+        html_url = await _gh_create_and_push(name, private=private, path=path)
+    except Exception as e:
+        logger.exception("gh offer create failed")
+        await query.message.edit_text(
+            f"⚠️ Локально проект есть, но на GitHub не удалось:\n"
+            f"<code>{html_escape(str(e))}</code>\n\n"
+            f"Можно повторить: <code>/ghnew {html_escape(name)}</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    await query.message.edit_text(
+        f"✅ Готово\n\n"
+        f"📁 <code>{html_escape(str(path))}</code>\n"
+        f"🌐 {html_escape(html_url)}",
+        parse_mode="HTML",
+    )
+    await _create_session(query.message.chat.id, query.message, str(path))
+
+
+@router.callback_query(F.data.startswith("gh:skip_new:"))
+async def cb_gh_offer_skip(query: CallbackQuery) -> None:
+    """Пропустить создание GitHub-репо — просто открыть сессию."""
+    name = query.data[len("gh:skip_new:"):]
+    path = (_PROJECTS_DEFAULT_DIR / name).resolve()
+    if not path.is_dir():
+        await query.answer("Проект не найден", show_alert=True)
+        return
+    await query.message.edit_text(
+        f"✅ Проект создан: <code>{html_escape(str(path))}</code>\n"
+        f"<i>Без GitHub-репозитория.</i>",
+        parse_mode="HTML",
+    )
+    await query.answer("Пропущено")
+    await _create_session(query.message.chat.id, query.message, str(path))
+
+
 async def cb_project_create_no(query: CallbackQuery) -> None:
     await query.message.edit_text("❌ Создание отменено.")
     await query.answer()

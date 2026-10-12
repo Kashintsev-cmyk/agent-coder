@@ -21,6 +21,9 @@ def projects_keyboard(projects: list[Path]) -> InlineKeyboardMarkup:
         InlineKeyboardButton(text="🐙 Клонировать", callback_data="clone_hint"),
     ])
     rows.append([
+        InlineKeyboardButton(text="🌐 GitHub-репо", callback_data="ghnew_hint"),
+    ])
+    rows.append([
         InlineKeyboardButton(text="📚 Все сессии", callback_data="sessions")
     ])
     return InlineKeyboardMarkup(inline_keyboard=rows)
@@ -52,6 +55,28 @@ def sessions_keyboard(sessions: list[Session]) -> InlineKeyboardMarkup:
         ])
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def gh_offer_keyboard(name: str) -> InlineKeyboardMarkup:
+    """Предложение создать GitHub-репо после /new."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="🔓 Публичный",
+                callback_data=f"gh:pub_new:{name}",
+            ),
+            InlineKeyboardButton(
+                text="🔒 Приватный",
+                callback_data=f"gh:priv_new:{name}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text="⏭ Только локально",
+                callback_data=f"gh:skip_new:{name}",
+            ),
+        ],
+    ])
 
 
 def gh_private_keyboard(name: str) -> InlineKeyboardMarkup:
