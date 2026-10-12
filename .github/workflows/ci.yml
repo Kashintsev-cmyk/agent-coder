@@ -31,8 +31,11 @@ jobs:
       - name: Ruff
         run: ruff check .
 
+      - name: Mypy
+        run: mypy agent_coder tests
+
       - name: Pytest
-        run: pytest -q
+        run: pytest -q -n auto
         env:
           # Заглушки, чтобы config.validate() не падал на импорте.
           ROUTERAI_API_KEY: sk-test-ci-dummy
