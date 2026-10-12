@@ -10,7 +10,13 @@ logger = logging.getLogger(__name__)
 # Роутер, утилиты и глобальное состояние — в shared.py (единая точка).
 # Импорт подмодулей — регистрация хендлеров на router (side-effect).
 # Импорт обязателен: без него хендлеры не активируются.
-from . import commands, github, ops, session_menu, task  # noqa: F401
+from . import approval, commands, github, ops, session_menu, task  # noqa: F401
+from .approval import (
+    cb_approve as cb_approve,
+)
+from .approval import (
+    cb_deny as cb_deny,
+)
 from .commands import (
     _send_history_preview as _send_history_preview,
 )
