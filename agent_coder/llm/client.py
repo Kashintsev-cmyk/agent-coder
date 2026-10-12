@@ -76,7 +76,10 @@ class LLMClient:
         self._client = AsyncOpenAI(
             api_key=config.ROUTERAI_API_KEY,
             base_url=f"{config.ROUTERAI_BASE_URL.rstrip('/')}/",
-            http_client=self._http,
+            # openai 3.x использует вендоренный httpx (namespace "httpx2"),
+            # mypy не видит совпадения типов с нашим httpx 0.28.
+            # На рантайме это один и тот же класс.
+            http_client=self._http,  # type: ignore[arg-type]
         )
 
     async def close(self) -> None:

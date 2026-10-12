@@ -13,7 +13,7 @@ def _registered_command_names() -> set[str]:
     """Все Command(...) в router.message."""
     names: set[str] = set()
     for h in handlers.router.message.handlers:
-        for f in h.filters:
+        for f in (h.filters or []):
             # aiogram хранит фильтры в разных обёртках; достаём Command
             cmd = getattr(f, "commands", None)
             if cmd is None:

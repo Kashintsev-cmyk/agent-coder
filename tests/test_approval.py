@@ -51,7 +51,10 @@ class FakeBot:
 
 def _make_runner() -> tuple[_TaskRunner, FakeBot]:
     bot = FakeBot()
-    runner = _TaskRunner(bot, chat_id=42, message_id=1)
+    runner = _TaskRunner(
+        bot,  # type: ignore[arg-type]  # FakeBot — минимальный двойник
+        chat_id=42, message_id=1,
+    )
     return runner, bot
 
 

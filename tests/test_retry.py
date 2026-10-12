@@ -84,7 +84,7 @@ async def test_retry_eventually_succeeds():
     async def factory():
         attempts.append(1)
         if len(attempts) == 1:
-            raise APITimeoutError(request=SimpleNamespace())  # type: ignore
+            raise APITimeoutError(request=SimpleNamespace())
         return "ok"
 
     # jitter не должен добавить реального времени — backoff = 0
@@ -109,7 +109,7 @@ async def test_retry_4xx_no_429_raises_immediately():
     async def factory():
         calls.append(1)
         err = APIError("bad", request=SimpleNamespace(), body=None)
-        err.status_code = 400  # type: ignore
+        err.status_code = 400
         raise err
 
     with pytest.raises(APIError):
@@ -123,7 +123,7 @@ async def test_retry_exhausted_raises_last():
     client = _make_client()
 
     async def factory():
-        raise APIConnectionError(request=SimpleNamespace())  # type: ignore
+        raise APIConnectionError(request=SimpleNamespace())
 
     import agent_coder.llm.client as c
     old_max, old_backoff = c.config.MAX_RETRIES, c.config.RETRY_BACKOFF
@@ -186,7 +186,7 @@ async def test_retry_jitter_in_range(monkeypatch):
     monkeypatch.setattr("asyncio.sleep", fake_sleep)
 
     async def factory():
-        raise APIConnectionError(request=SimpleNamespace())  # type: ignore
+        raise APIConnectionError(request=SimpleNamespace())
 
     import agent_coder.llm.client as c
     old_max, old_backoff = c.config.MAX_RETRIES, c.config.RETRY_BACKOFF
