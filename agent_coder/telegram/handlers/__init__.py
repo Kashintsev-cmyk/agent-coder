@@ -278,7 +278,6 @@ def _audit_reasoning_warning(session: Session) -> str:
     )
 
 
-@router.message(Command("mode"))
 def _should_preserve_history(old_mode: Mode, new_mode: Mode) -> bool:
     """Сохранять ли историю при смене режима.
 
@@ -296,6 +295,7 @@ def _should_preserve_history(old_mode: Mode, new_mode: Mode) -> bool:
     return old_mode == Mode.CHAT or new_mode == Mode.CHAT
 
 
+@router.message(Command("mode"))
 async def cmd_mode(message: Message) -> None:
     session = _get_active_session(message.chat.id)
     if session is None:
