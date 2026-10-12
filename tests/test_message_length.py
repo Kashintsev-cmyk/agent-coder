@@ -18,6 +18,8 @@ from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
 from agent_coder.llm.types import AssistantMessage, ChatResponse, Usage
 from agent_coder.telegram import handlers
+from agent_coder.telegram.handlers import shared as _shared
+from agent_coder.telegram.handlers import task as _task
 
 # Telegram Bot API: "Text of the message to be sent, 1-4096 characters".
 # Входящий текст, который бот вообще способен получить, не длиннее 4096.
@@ -47,7 +49,7 @@ def _stub_session(monkeypatch):
     session = Session.new(
         workspace="/tmp/proj", model="test/model", mode=Mode.ACT,
     )
-    monkeypatch.setattr(handlers, "_get_active_session", lambda chat_id: session)
+    monkeypatch.setattr(_shared, "_get_active_session", lambda chat_id: session)
     return session
 
 
@@ -58,7 +60,7 @@ async def _dispatch_text(monkeypatch, text: str) -> str:
     async def fake_run_task(bot, chat_id, session, task_text, images=None):
         captured["task_text"] = task_text
 
-    monkeypatch.setattr(handlers, "_run_task", fake_run_task)
+    monkeypatch.setattr(_task, "_run_task", fake_run_task)
 
     await handlers.handle_task(_make_message(text), FakeBot())
 
