@@ -279,6 +279,127 @@ async def _create_project_on_disk(name: str) -> Path:
     return target
 
 
+# ---------- /clone ----------
+
+# Регулярка: извлекает owner/repo из GitHub-URL или сокращения user/repo
+_GITHUB_URL_RE = re.compile(
+    r"^(?:"
+    r"https?://github\.com/"
+    r"|git@github\.com:"
+    r")?(?P<owner>[\w.-]+)/(?P<repo>[\w.-]+?)(?:\.git)?$"
+)
+
+
+def _normalize_github_url(raw: str) -> tuple[str, str] | None:
+    """Нормализовать URL/сокращение в (ssh_url, repo_name).
+
+    Возвращает None, если не удалось распарсить.
+    """
+    raw = raw.strip()
+    if not raw:
+        return None
+    m = _GITHUB_URL_RE.match(raw)
+    if not m:
+        return None
+    owner = m.group("owner")
+    repo = m.group("repo")
+    ssh_url = f"git@github.com:{owner}/{repo}.git"
+    return ssh_url, repo
+
+
+async def _clone_repo(ssh_url: str, dest: Path) -> None:
+    """Клонировать репо в dest. Бросает исключение при ошибке."""
+    if dest.exists():
+        raise FileExistsError(f"уже существует: {dest}")
+
+    r = await run_shell(
+        f"git clone --quiet {ssh_url} {dest}",
+        cwd=dest.parent,
+        timeout=300,
+    )
+    if not r.ok:
+        raise RuntimeError(r.output[:300])
+
+
+@router.message(Command("clone"))
+async def cmd_clone(message: Message) -> None:
+    """Склонировать GitHub-репозиторий в ~/bots/<name>."""
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) < 2 or not parts[1].strip():
+        await message.answer(
+            "Укажи репозиторий:\n\n"
+            "<code>/clone user/repo</code>\n"
+            "<code>/clone https://github.com/user/repo</code>\n"
+            "<code>/clone git@github.com:user/repo.git</code>\n\n"
+            f"Клонируется в <code>{_PROJECTS_DEFAULT_DIR}/&lt;repo&gt;</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    raw = parts[1].strip()
+    parsed = _normalize_github_url(raw)
+    if parsed is None:
+        await message.answer(
+            f"❌ Не разобрал URL: <code>{html_escape(raw)}</code>\n"
+            "Ожидаю <code>owner/repo</code> или полный GitHub-URL.",
+            parse_mode="HTML",
+        )
+        return
+
+    ssh_url, repo_name = parsed
+    dest = (_PROJECTS_DEFAULT_DIR / repo_name).resolve()
+
+    try:
+        dest.relative_to(_PROJECTS_DEFAULT_DIR.resolve())
+    except ValueError:
+        await message.answer("❌ Путь вне разрешённой директории.")
+        return
+
+    if dest.exists():
+        await message.answer(
+            f"❌ <code>{html_escape(str(dest))}</code> уже существует.",
+            parse_mode="HTML",
+        )
+        return
+
+    await message.answer(
+        f"⏺ Клонирую <b>{html_escape(repo_name)}</b>…\n"
+        f"<code>{html_escape(ssh_url)}</code>",
+        parse_mode="HTML",
+    )
+
+    try:
+        await _clone_repo(ssh_url, dest)
+    except Exception as e:
+        logger.exception("clone failed")
+        await message.answer(
+            f"❌ Не удалось клонировать:\n<code>{html_escape(str(e))}</code>",
+            parse_mode="HTML",
+        )
+        return
+
+    await message.answer(
+        f"✅ Склонировано: <code>{html_escape(str(dest))}</code>",
+        parse_mode="HTML",
+    )
+    await _create_session(message.chat.id, message, str(dest))
+
+
+@router.callback_query(F.data == "clone_hint")
+async def cb_clone_hint(query: CallbackQuery) -> None:
+    await query.message.edit_text(
+        "🐙 <b>Клонировать репозиторий</b>\n\n"
+        "Отправь: <code>/clone user/repo</code>\n\n"
+        "Поддерживаются формы:\n"
+        "• <code>user/repo</code>\n"
+        "• <code>https://github.com/user/repo</code>\n"
+        "• <code>git@github.com:user/repo.git</code>\n\n"
+        f"Клонируется в <code>{_PROJECTS_DEFAULT_DIR}/&lt;repo&gt;</code>",
+        parse_mode="HTML",
+    )
+    await query.answer()
+
+
 # ---------- /new ----------
 
 @router.message(Command("new"))

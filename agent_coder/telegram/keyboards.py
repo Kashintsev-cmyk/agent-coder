@@ -17,7 +17,8 @@ def projects_keyboard(projects: list[Path]) -> InlineKeyboardMarkup:
             InlineKeyboardButton(text=f"📁 {p.name}", callback_data=f"new:{idx}")
         ])
     rows.append([
-        InlineKeyboardButton(text="➕ Новый проект", callback_data="new_project")
+        InlineKeyboardButton(text="➕ Новый",       callback_data="new_project"),
+        InlineKeyboardButton(text="🐙 Клонировать", callback_data="clone_hint"),
     ])
     rows.append([
         InlineKeyboardButton(text="📚 Все сессии", callback_data="sessions")
