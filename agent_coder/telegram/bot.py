@@ -25,6 +25,7 @@ BOT_COMMANDS = [
     BotCommand(command="audit",     description="🔒 Аудит проекта"),
     BotCommand(command="balance",   description="💳 Баланс RouterAI"),
     BotCommand(command="new",       description="➕ Новая сессия"),
+    BotCommand(command="chat",      description="💬 Обсуждение"),
     BotCommand(command="sessions",  description="📚 Все сессии"),
     BotCommand(command="current",   description="📍 Текущая сессия"),
     BotCommand(command="history",   description="📜 История сессии"),

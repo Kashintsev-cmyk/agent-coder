@@ -44,3 +44,19 @@ def test_history_cleared_between_non_chat():
     assert _should_preserve_history(Mode.PLAN, Mode.ACT) is False
     assert _should_preserve_history(Mode.ACT, Mode.AUDIT) is False
     assert _should_preserve_history(Mode.PLAN, Mode.AUDIT) is False
+
+
+# --- cmd_chat: создание сессии ---
+
+def test_create_session_accepts_mode_and_title(tmp_path, monkeypatch):
+    """Проверяем сигнатуру _create_session — поддерживает mode и title."""
+    import inspect
+
+    from agent_coder.telegram.handlers.project_utils import _create_session
+
+    sig = inspect.signature(_create_session)
+    params = sig.parameters
+    assert "mode" in params
+    assert "title" in params
+    assert params["mode"].default == Mode.ACT
+    assert params["title"].default is None

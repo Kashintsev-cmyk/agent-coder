@@ -127,7 +127,17 @@ async def _create_project_on_disk(name: str) -> Path:
     return target
 
 
-async def _create_session(chat_id: int, message: Message, path_str: str) -> None:
+async def _create_session(
+    chat_id: int, message: Message, path_str: str,
+    *,
+    mode: Mode = Mode.ACT,
+    title: str | None = None,
+) -> None:
+    """Создать сессию в указанной директории.
+
+    mode — режим сессии (по умолчанию ACT).
+    title — заголовок (по умолчанию "Новая сессия в <dir>").
+    """
     workspace = Path(path_str).resolve()
     if not workspace.is_dir():
         await message.answer(f"❌ Директория не найдена: <code>{workspace}</code>",
@@ -137,15 +147,15 @@ async def _create_session(chat_id: int, message: Message, path_str: str) -> None
     session = Session.new(
         workspace=str(workspace),
         model=config.MODEL_MAIN,
-        mode=Mode.ACT,
+        mode=mode,
     )
-    session.title = f"Новая сессия в {workspace.name}"
+    session.title = title or f"Новая сессия в {workspace.name}"
     session.save()
     tg_state.set_active_session(chat_id, session.id)
 
     await message.answer(
-        f"✅ Сессия создана: <b>{workspace.name}</b>\n"
-        f"   <code>{session.id}</code> · режим: act · модель: {session.model}\n\n"
+        f"✅ Сессия создана: <b>{session.title}</b>\n"
+        f"   <code>{session.id}</code> · режим: {mode.value} · модель: {session.model}\n\n"
         f"Отправь задачу текстом.",
         reply_markup=keyboards.session_menu_keyboard(session),
         parse_mode="HTML",

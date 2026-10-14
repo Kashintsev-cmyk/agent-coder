@@ -66,6 +66,9 @@ from .commands import (
     cmd_cancel as cmd_cancel,
 )
 from .commands import (
+    cmd_chat as cmd_chat,
+)
+from .commands import (
     cmd_cost as cmd_cost,
 )
 from .commands import (
