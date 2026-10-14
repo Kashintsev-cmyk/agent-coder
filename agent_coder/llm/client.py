@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 from typing import Any
 
 import httpx
@@ -22,6 +23,29 @@ from agent_coder.log_safety import SecretFilter
 
 logger = logging.getLogger(__name__)
 logger.addFilter(SecretFilter())
+
+
+_DSML_RE = re.compile(
+    r"<\|\|DSML\|\|[^>]*>.*?</\|\|DSML\|\|[^>]*>",
+    re.DOTALL,
+)
+_DSML_SIMPLE_RE = re.compile(r"<\|\|DSML\|\|[^>]*>.*?(?=<\|\|DSML\|\||\Z)", re.DOTALL)
+
+
+def _strip_dsml(text: str) -> str:
+    """Убрать нативные DSML-теги DeepSeek из content.
+
+    DeepSeek иногда возвращает вызовы инструментов в нативном формате
+    `<||DSML||invoke ...>...</||DSML||invoke>`, минуя стандартные
+    OpenAI tool_calls. Это ломает UI и вводит в заблуждение пользователя.
+    RouterAI обычно мапит их корректно, но в редких конфигурациях
+    (например, урезанный набор tools) утечка случается.
+    """
+    if not text or "DSML" not in text:
+        return text
+    text = _DSML_RE.sub("", text)
+    text = _DSML_SIMPLE_RE.sub("", text)
+    return text.strip()
 
 
 def _build_request_kwargs(
@@ -172,7 +196,7 @@ class LLMClient:
         reasoning = getattr(msg, "reasoning", None) or None
 
         assistant = AssistantMessage(
-            content=msg.content,
+            content=_strip_dsml(msg.content or ""),
             tool_calls=tool_calls,
             reasoning=reasoning,
         )

@@ -15,18 +15,23 @@ def test_chat_max_iterations_config():
     assert config.MAX_ITERATIONS_CHAT >= 1
 
 
-def test_chat_tools_are_readonly_subset():
+def test_chat_tools_are_empty():
+    """CHAT работает без инструментов.
+
+    Причина: с урезанным набором tools DeepSeek уходил в нативный
+    DSML-формат вместо OpenAI tool_calls, и сырой XML утекал в ответ.
+    """
     r = build_registry()
-    names = {t.name for t in r.for_mode(Mode.CHAT)}
-    assert names == {"read_file", "list_files", "search"}
+    assert r.for_mode(Mode.CHAT) == []
 
 
-def test_chat_call_allowed_only_three():
+def test_chat_call_allowed_nothing():
+    """В CHAT не разрешён ни один инструмент (их там и нет)."""
     r = build_registry()
     read_tool = r.get("read_file")
     write_tool = r.get("write_file")
     run_tool = r.get("run_command")
-    assert r.is_call_allowed(Mode.CHAT, read_tool, {"path": "x"}) is True
+    assert r.is_call_allowed(Mode.CHAT, read_tool, {"path": "x"}) is False
     assert r.is_call_allowed(Mode.CHAT, write_tool, {"path": "x"}) is False
     assert r.is_call_allowed(Mode.CHAT, run_tool, {"command": "ls"}) is False
 

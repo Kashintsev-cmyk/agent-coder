@@ -72,8 +72,11 @@ class ToolRegistry:
         - ACT: все инструменты
         """
         if mode == Mode.CHAT:
-            allowed = {"read_file", "list_files", "search"}
-            return [t for t in self._tools.values() if t.name in allowed]
+            # Chat — чистое обсуждение, без инструментов.
+            # Причина: с урезанным набором tools DeepSeek уходил в нативный
+            # DSML-формат (<||DSML||invoke>) вместо OpenAI tool_calls, и
+            # сырой XML утекал в ответ пользователю.
+            return []
         if mode in (Mode.PLAN, Mode.AUDIT):
             out = [t for t in self._tools.values() if t.read_only]
             rc = self._tools.get("run_command")
@@ -87,7 +90,8 @@ class ToolRegistry:
         if mode == Mode.ACT:
             return True
         if mode == Mode.CHAT:
-            return tool.name in {"read_file", "list_files", "search"}
+            # Chat — без инструментов (см. for_mode).
+            return False
         # Plan и Audit
         if tool.read_only:
             return True
