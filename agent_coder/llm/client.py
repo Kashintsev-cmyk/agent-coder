@@ -26,10 +26,10 @@ logger.addFilter(SecretFilter())
 
 
 _DSML_RE = re.compile(
-    r"<\|\|DSML\|\|[^>]*>.*?</\|\|DSML\|\|[^>]*>",
+    r"<\|\|DSML\|\|.*?>.*?<\|\|DSML\|\|.*?>",
     re.DOTALL,
 )
-_DSML_SIMPLE_RE = re.compile(r"<\|\|DSML\|\|[^>]*>.*?(?=<\|\|DSML\|\||\Z)", re.DOTALL)
+_DSML_SIMPLE_RE = re.compile(r"<\|\|DSML\|\|.*", re.DOTALL)
 
 
 def _strip_dsml(text: str) -> str:
