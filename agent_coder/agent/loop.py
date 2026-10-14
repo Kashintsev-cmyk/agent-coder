@@ -33,6 +33,17 @@ class LoopEvents:
     request_approval: Callable[[ToolCall], Awaitable[bool]]
 
 
+
+@dataclass
+class LoopResult:
+    """Итог одного запуска agent-loop."""
+    iterations_used: int = 0
+    limit_reached: bool = False        # вышли по max_iter
+    watchdog_triggered: bool = False   # вышли по MAX_CONSECUTIVE_ERRORS
+    consecutive_errors: int = 0        # сколько ошибок было подряд на выходе
+
+
+
 async def _maybe_await(fn, *args) -> None:
     """Вызвать колбэк: если он async — await, если sync — просто выполнить."""
     try:
@@ -63,20 +74,24 @@ class AgentLoop:
         self.events = events
         self.yolo = yolo
 
-    async def run(self, task: str, images: list | None = None) -> None:
+    async def run(self, task: str, images: list | None = None) -> LoopResult:
         self._refresh_system_prompt()
         content = _build_user_content(task, images)
         self.session.add_message({"role": "user", "content": content})
         self.session.save()
 
+        # В CHAT нет агентного цикла (нет tools) — max_iter не используется,
+        # но на всякий случай даём ему безопасное значение.
         max_iter = {
             Mode.PLAN: config.MAX_ITERATIONS_PLAN,
             Mode.ACT: config.MAX_ITERATIONS_ACT,
             Mode.AUDIT: config.MAX_ITERATIONS_AUDIT,
-            Mode.CHAT: config.MAX_ITERATIONS_CHAT,
+            Mode.CHAT: config.MAX_ITERATIONS,
         }.get(self.session.mode, config.MAX_ITERATIONS)
 
         soft = compression.soft_limit(self.session)
+        consecutive_errors = 0
+
         for iteration in range(1, max_iter + 1):
             logger.debug("Итерация %d", iteration)
             fixed = self.session.sanitize_tool_calls()
@@ -104,7 +119,10 @@ class AgentLoop:
             except Exception as e:
                 await _maybe_await(self.events.on_error, f"LLM ошибка: {e}")
                 self.session.save()
-                return
+                return LoopResult(
+                    iterations_used=iteration,
+                    consecutive_errors=consecutive_errors,
+                )
 
             self.session.add_usage(response.usage)
             await _maybe_await(self.events.on_usage, response.usage)
@@ -136,19 +154,46 @@ class AgentLoop:
 
             if not msg.tool_calls:
                 self.session.save()
-                return
+                return LoopResult(
+                    iterations_used=iteration,
+                    consecutive_errors=consecutive_errors,
+                )
 
             for tc in msg.tool_calls:
                 await self._handle_tool_call(tc)
 
+            # Watchdog: считаем подряд идущие ошибочные tool-результаты
+            if self.session.messages:
+                last_msg = self.session.messages[-1]
+                if last_msg.get("role") == "tool":
+                    last_content = last_msg.get("content", "")
+                    if isinstance(last_content, str) and last_content.lstrip().startswith("Ошибка"):
+                        consecutive_errors += 1
+                    else:
+                        consecutive_errors = 0
+
+            if consecutive_errors >= config.MAX_CONSECUTIVE_ERRORS:
+                await _maybe_await(
+                    self.events.on_error,
+                    f"⚠️ {consecutive_errors} ошибок подряд — останавливаюсь, "
+                    f"чтобы не зациклиться. Последняя: {last_content[:150]}",
+                )
+                self.session.save()
+                return LoopResult(
+                    iterations_used=iteration,
+                    watchdog_triggered=True,
+                    consecutive_errors=consecutive_errors,
+                )
+
             self.session.save()
 
-        await _maybe_await(
-            self.events.on_error,
-            f"⏸ Достигнут лимит итераций ({max_iter}). "
-            f"Прогресс сохранён. Напиши «продолжи» — я продолжу с этого места.",
-        )
+        # Цикл завершился естественно = упёрлись в лимит
         self.session.save()
+        return LoopResult(
+            iterations_used=max_iter,
+            limit_reached=True,
+            consecutive_errors=consecutive_errors,
+        )
 
     async def _handle_tool_call(self, tc: ToolCall) -> None:
         await _maybe_await(self.events.on_tool_call, tc)

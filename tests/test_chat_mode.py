@@ -11,8 +11,14 @@ def test_mode_chat_exists():
     assert Mode.CHAT.value == "chat"
 
 
-def test_chat_max_iterations_config():
-    assert config.MAX_ITERATIONS_CHAT >= 1
+def test_chat_no_own_iteration_limit():
+    """В CHAT нет собственного лимита итераций: нет tools → нет цикла.
+
+    Chat использует общий MAX_ITERATIONS как страховку, но реально
+    всегда 1 итерация (LLM отвечает и завершает).
+    """
+    assert not hasattr(config, "MAX_ITERATIONS_CHAT")
+    assert config.MAX_ITERATIONS >= 1
 
 
 def test_chat_tools_are_empty():

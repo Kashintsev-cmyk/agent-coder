@@ -111,11 +111,18 @@ class Config:
     DEFAULT_WORKSPACE: str = os.getenv(
         "DEFAULT_WORKSPACE", str(Path.home() / "projects")
     )
-    MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "50"))
-    MAX_ITERATIONS_PLAN: int = int(os.getenv("MAX_ITERATIONS_PLAN", "30"))
-    MAX_ITERATIONS_ACT: int = int(os.getenv("MAX_ITERATIONS_ACT", "50"))
-    MAX_ITERATIONS_AUDIT: int = int(os.getenv("MAX_ITERATIONS_AUDIT", "100"))
-    MAX_ITERATIONS_CHAT: int = int(os.getenv("MAX_ITERATIONS_CHAT", "5"))
+    MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "200"))
+    MAX_ITERATIONS_PLAN: int = int(os.getenv("MAX_ITERATIONS_PLAN", "100"))
+    MAX_ITERATIONS_ACT: int = int(os.getenv("MAX_ITERATIONS_ACT", "200"))
+    MAX_ITERATIONS_AUDIT: int = int(os.getenv("MAX_ITERATIONS_AUDIT", "300"))
+
+    # Авто-продолжение: сколько раз бот сам шлёт "продолжи", если агент
+    # остановился на лимите, но задача не завершена.
+    MAX_AUTO_CONTINUE: int = int(os.getenv("MAX_AUTO_CONTINUE", "3"))
+
+    # Watchdog: если столько tool-результатов подряд начинаются с "Ошибка" —
+    # останавливаемся, чтобы не зациклиться и не сжечь баланс.
+    MAX_CONSECUTIVE_ERRORS: int = int(os.getenv("MAX_CONSECUTIVE_ERRORS", "5"))
 
     # Логи
     # Зарезервировано на будущее (не используется в коде)
