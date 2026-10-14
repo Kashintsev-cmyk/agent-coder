@@ -9,12 +9,14 @@ import logging
 from pathlib import Path
 
 from aiogram import Bot, F
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 
 from agent_coder.agent.loop import AgentLoop
 from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
+from agent_coder.config import config
 from agent_coder.llm.client import LLMClient
+from agent_coder.telegram import keyboards
 from agent_coder.telegram.renderer import html_escape
 from agent_coder.tools import build_registry
 
@@ -91,6 +93,38 @@ async def handle_task_photo(message: Message, bot: Bot) -> None:
         source_note=f"фото <code>{path.name}</code>",
         images=[path],
     )
+
+
+@router.callback_query(F.data.startswith("continue_task:"))
+async def cb_continue_task(query: CallbackQuery, bot: Bot) -> None:
+    """Кнопка «▶️ Продолжить» после достижения лимита итераций."""
+    from agent_coder.telegram import state as tg_state
+
+    sid = query.data.split(":", 1)[1]
+    session = Session.load(sid)
+    if session is None:
+        await query.answer("Сессия не найдена", show_alert=True)
+        return
+
+    chat_id = query.message.chat.id
+    if _running.get(chat_id) and not _running[chat_id].done():
+        await query.answer("Другая задача уже выполняется", show_alert=True)
+        return
+
+    tg_state.set_active_session(chat_id, sid)
+
+    # Снимаем кнопки, чтобы не нажали дважды
+    try:
+        await query.message.edit_reply_markup(reply_markup=None)
+    except Exception:
+        pass
+    await query.answer("Продолжаю…")
+
+    # Запускаем «продолжи» как обычную задачу
+    task = asyncio.create_task(
+        _run_task(bot, chat_id, session, "продолжи", images=None)
+    )
+    _running[chat_id] = task
 
 
 @router.message(F.text & ~F.text.startswith("/"))
@@ -292,13 +326,53 @@ async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str,
             session=session,
             events=runner.events(),
         )
-        await loop.run(task_text, images=images)
-        session.save()
-        await runner.flush()
 
-        # Если это был Audit-режим — генерируем отчёт
-        if session.mode == Mode.AUDIT:
-            await _generate_and_send_audit(bot, chat_id, session)
+        # Авто-продолжение: если агент упёрся в лимит итераций, но задача
+        # не завершена — сами шлём «продолжи» до MAX_AUTO_CONTINUE раз.
+        # После — показываем кнопку «▶️ Продолжить».
+        auto_continue = 0
+        current_task = task_text
+        current_images = images
+
+        while True:
+            result = await loop.run(current_task, images=current_images)
+            session.save()
+            await runner.flush()
+
+            # Watchdog уже сообщил через events.on_error — выходим
+            if result.watchdog_triggered:
+                return
+
+            # Задача завершена нормально
+            if not result.limit_reached:
+                if session.mode == Mode.AUDIT:
+                    await _generate_and_send_audit(bot, chat_id, session)
+                return
+
+            # Лимит достигнут, но автопродолжений ещё есть
+            if auto_continue < config.MAX_AUTO_CONTINUE:
+                auto_continue += 1
+                logger.info(
+                    "auto-continue %d/%d для сессии %s (итераций: %d)",
+                    auto_continue, config.MAX_AUTO_CONTINUE,
+                    session.id, result.iterations_used,
+                )
+                current_task = "продолжи"
+                current_images = None  # фото только на первом круге
+                continue
+
+            # Автопродолжения закончились — даём кнопку пользователю
+            try:
+                await bot.send_message(
+                    chat_id,
+                    f"⏸ Лимит итераций ({result.iterations_used}). "
+                    f"Автопродолжений: {auto_continue}/{config.MAX_AUTO_CONTINUE}.\n\n"
+                    f"Задача не завершена — нажми, чтобы продолжить.",
+                    reply_markup=keyboards.continue_keyboard(session.id),
+                )
+            except Exception as e:
+                logger.warning("continue message failed: %s", e)
+            return
 
     except asyncio.CancelledError:
         if not _shutting_down:

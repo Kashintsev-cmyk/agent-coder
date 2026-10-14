@@ -71,3 +71,31 @@ def test_create_session_accepts_mode_and_title(tmp_path, monkeypatch):
     assert "title" in params
     assert params["mode"].default == Mode.ACT
     assert params["title"].default is None
+
+
+# --- continue_keyboard ---
+
+def test_continue_keyboard_structure():
+    from agent_coder.telegram import keyboards
+    kb = keyboards.continue_keyboard("abc12345")
+    cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
+    assert any(cb.startswith("continue_task:abc12345") for cb in cbs)
+    assert any(cb.startswith("mode:chat:abc12345") for cb in cbs)
+    assert any(cb.startswith("mode:plan:abc12345") for cb in cbs)
+
+
+# --- loop result contract ---
+
+def test_loop_result_defaults():
+    from agent_coder.agent.loop import LoopResult
+    r = LoopResult()
+    assert r.iterations_used == 0
+    assert r.limit_reached is False
+    assert r.watchdog_triggered is False
+    assert r.consecutive_errors == 0
+
+
+def test_auto_continue_config_exists():
+    from agent_coder.config import config
+    assert config.MAX_AUTO_CONTINUE >= 1
+    assert config.MAX_CONSECUTIVE_ERRORS >= 1

@@ -171,6 +171,9 @@ from .task import (
     _start_task as _start_task,
 )
 from .task import (
+    cb_continue_task as cb_continue_task,
+)
+from .task import (
     handle_task as handle_task,
 )
 from .task import (

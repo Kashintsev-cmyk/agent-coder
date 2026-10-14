@@ -253,6 +253,26 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
+def continue_keyboard(session_id: str) -> InlineKeyboardMarkup:
+    """Кнопки после достижения лимита итераций: продолжить / сменить режим."""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="▶️ Продолжить",
+            callback_data=f"continue_task:{session_id}",
+        )],
+        [
+            InlineKeyboardButton(
+                text="💬 Chat",
+                callback_data=f"mode:chat:{session_id}",
+            ),
+            InlineKeyboardButton(
+                text="🟡 Plan",
+                callback_data=f"mode:plan:{session_id}",
+            ),
+        ],
+    ])
+
+
 def approval_keyboard(request_id: str) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=[[
         InlineKeyboardButton(text="✅ Разрешить", callback_data=f"approve:{request_id}"),
