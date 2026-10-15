@@ -36,11 +36,33 @@ def mask_secrets(text: str) -> str:
 
 
 
-_DSML_RE = re.compile(
-    r"<\|\|DSML\|\|.*?>.*?<\|\|DSML\|\|.*?>",
-    re.DOTALL,
-)
-_DSML_SIMPLE_RE = re.compile(r"<\|\|DSML\|\|.*", re.DOTALL)
+# Разделитель в теге DSML: ASCII-пайп `|` (U+007C) или FULLWIDTH VERTICAL
+# LINE `｜` (U+FF5C) — DeepSeek отдаёт оба варианта, причём fullwidth
+# встречается чаще (напр. `<｜｜DSML｜｜ calls>`). Раньше учитывался только
+# ASCII-вариант, из-за чего разметка утекала в чат и историю сессии.
+_DSML_MARK = r"[|\uFF5C]{2}DSML[|\uFF5C]{2}"
+
+# Открывающий (или закрывающий) DSML-тег: `<||DSML||invoke`,
+# `</｜｜DSML｜｜parameter` и т.п. Закрывающий `>` не обязателен — поток
+# может быть обрезан на полуслове.
+_DSML_TAG_RE = re.compile(rf"</?{_DSML_MARK}")
+
+# Имена структурных тегов нативного формата (внутри блока вызова).
+_DSML_BLOCK_TAGS = ("calls", "invoke", "parameter")
+
+
+def _last_dsml_tag_end(text: str) -> int:
+    """Индекс сразу после `>` последнего DSML-тега или -1, если `>` нет.
+
+    Учитываются только те маркеры, после которых в тексте вообще есть `>`:
+    у обрезанного потока (`<||DSML||invoke name="x"`) такого нет.
+    """
+    end = -1
+    for m in _DSML_TAG_RE.finditer(text):
+        gt = text.find(">", m.end())
+        if gt != -1:
+            end = max(end, gt + 1)
+    return end
 
 
 def strip_dsml(text: str) -> str:
@@ -51,12 +73,38 @@ def strip_dsml(text: str) -> str:
     OpenAI tool_calls. Это ломает UI и вводит в заблуждение пользователя.
     RouterAI обычно мапит их корректно, но в редких конфигурациях
     (например, урезанный набор tools) утечка случается.
+
+    Формат нестабилен: разделителем бывает и ASCII-пайп `|` (U+007C), и
+    fullwidth `｜` (U+FF5C). Раньше распознавался только ASCII-вариант,
+    поэтому разметка утекала в Telegram и оставалась в истории сессии.
+
+    Две стратегии:
+    - если разметка тянется до конца сообщения (обычная утечка вызова
+      инструмента, в т.ч. обрезанный поток) — отрезаем от первого маркера,
+      сохраняя осмысленный текст перед ним;
+    - если после разметки ещё есть текст (модель *упоминает* теги в прозе)
+      — удаляем только цельные блоки `calls/invoke/parameter`, не калеча
+      объяснение.
     """
     if not text or "DSML" not in text:
         return text
-    text = _DSML_RE.sub("", text)
-    text = _DSML_SIMPLE_RE.sub("", text)
-    return text.strip()
+    first = _DSML_TAG_RE.search(text)
+    if first is None:
+        return text
+
+    last_end = _last_dsml_tag_end(text)
+    if last_end == -1 or not text[last_end:].strip():
+        return text[: first.start()].rstrip()
+
+    cleaned = text
+    for tag in _DSML_BLOCK_TAGS:
+        cleaned = re.sub(
+            rf"<{_DSML_MARK}\s*{tag}\b.*?</{_DSML_MARK}\s*{tag}>",
+            "",
+            cleaned,
+            flags=re.DOTALL,
+        )
+    return cleaned.strip()
 
 
 class SecretFilter(logging.Filter):
