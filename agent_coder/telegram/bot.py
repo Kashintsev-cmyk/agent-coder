@@ -33,6 +33,7 @@ BOT_COMMANDS = [
     BotCommand(command="model",     description="🧠 Выбрать модель"),
     BotCommand(command="reasoning", description="💭 Уровень reasoning"),
     BotCommand(command="mode",      description="🔄 Plan / Act / Audit / Chat"),
+    BotCommand(command="yolo",      description="⚡ Без подтверждений (вкл/выкл)"),
     BotCommand(command="cost",      description="💰 Стоимость сессии"),
     BotCommand(command="projects",  description="📂 Проекты"),
     BotCommand(command="cancel",    description="⏹ Отменить задачу"),

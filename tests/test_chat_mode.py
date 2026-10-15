@@ -104,15 +104,15 @@ def test_auto_continue_config_exists():
 # --- YOLO ---
 
 def test_session_yolo_default_false():
-    from agent_coder.agent.session import Session
     from agent_coder.agent.prompts import Mode
+    from agent_coder.agent.session import Session
     s = Session.new(workspace="/tmp", model="x", mode=Mode.ACT)
     assert s.yolo is False
 
 
 def test_session_yolo_roundtrip():
-    from agent_coder.agent.session import Session
     from agent_coder.agent.prompts import Mode
+    from agent_coder.agent.session import Session
     s = Session.new(workspace="/tmp", model="x", mode=Mode.ACT)
     s.yolo = True
     s2 = Session.from_dict(s.to_dict())
@@ -120,8 +120,8 @@ def test_session_yolo_roundtrip():
 
 
 def test_session_yolo_backward_compat():
-    from agent_coder.agent.session import Session
     from agent_coder.agent.prompts import Mode
+    from agent_coder.agent.session import Session
     s = Session.new(workspace="/tmp", model="x", mode=Mode.ACT)
     d = s.to_dict()
     d.pop("yolo", None)

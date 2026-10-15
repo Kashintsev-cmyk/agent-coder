@@ -248,7 +248,7 @@ RouterAI и кэшируются на диск.
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
-| `MAX_HISTORY_TOKENS` | `128000` | Порог = `min(model.context * 0.6, MAX_HISTORY_TOKENS)` |
+| `MAX_HISTORY_TOKENS` | `60000` | Порог = `min(model.context * 0.6, MAX_HISTORY_TOKENS)` |
 | `SUMMARY_MODEL` | `z-ai/glm-5.3-flash` | Модель для резюме |
 | `MEDIA_RETENTION_DAYS` | `30` | Retention медиа-вложений, дней |
 
@@ -286,7 +286,11 @@ RouterAI и кэшируются на диск.
 **Команды:** `/start`, `/help`, `/projects`, `/new <name>`, `/clone <url>`,
 `/ghnew <name>`, `/sessions`, `/current`, `/history`, `/delete [id]`,
 `/model`, `/reasoning`, `/mode plan|act|audit|chat`, `/cost`, `/balance`,
-`/server`, `/audit`, `/cancel`.
+`/server`, `/audit`, `/cancel`, `/yolo [on|off]`.
+
+> **⚡ YOLO** (`/yolo`) — per-session режим без подтверждений опасных
+> операций. Переключается командой или кнопкой ⚡ в меню сессии.
+> Деструктивные команды (`rm -rf /`, `mkfs`, …) заблокированы всегда.
 
 **Меню сессии** (кнопки):
 - **🧠 Модель** — список моделей с бейджами; клик → карточка с описанием,

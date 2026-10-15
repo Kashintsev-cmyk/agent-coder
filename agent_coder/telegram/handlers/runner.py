@@ -49,6 +49,7 @@ class _TaskRunner:
             on_usage=self._on_usage,
             on_error=self._on_error,
             request_approval=self._request_approval,
+            on_compression=self._on_compression,
         )
 
     async def _on_text(self, text: str) -> None:
@@ -70,6 +71,12 @@ class _TaskRunner:
     async def _on_error(self, msg: str) -> None:
         self.buffer.append(f"✗ <b>{html_escape(msg)}</b>")
         await self._schedule_edit()
+
+    async def _on_compression(self, comp) -> None:
+        """Явный лог сжатия истории: пользователь видит, когда оно сработало."""
+        self.buffer.append(renderer.render_compression(comp))
+        self.last_edit = 0.0  # событие редкое — показываем сразу, без троттлинга
+        await self.flush()
 
     async def _schedule_edit(self) -> None:
         now = time.monotonic()

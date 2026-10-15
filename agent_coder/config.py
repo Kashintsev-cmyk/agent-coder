@@ -87,7 +87,7 @@ class Config:
     # Сжатие истории сессии
     # Верхняя граница input-токенов на один запрос (жёсткий потолок).
     # Итоговый порог = min(model.context * 0.6, MAX_HISTORY_TOKENS).
-    MAX_HISTORY_TOKENS: int = _env_int("MAX_HISTORY_TOKENS", "128000")
+    MAX_HISTORY_TOKENS: int = _env_int("MAX_HISTORY_TOKENS", "60000")
 
     # Дефолтная температура генерации (0.0–2.0). Для кода — 0.2.
     TEMPERATURE: float = _env_float("TEMPERATURE", "0.2")

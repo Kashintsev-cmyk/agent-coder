@@ -56,6 +56,19 @@ def render_assistant_text(text: str) -> str:
     return f"⏺ {html_escape(text)}"
 
 
+def render_compression(comp) -> str:
+    """Строка о сжатии истории: «📦 История сжата: 90k → 18k токенов»."""
+    def _k(n: int) -> str:
+        return f"{n // 1000}k" if n >= 1000 else str(n)
+
+    return (
+        f"📦 <b>История сжата</b>: "
+        f"{_k(comp.tokens_before)} → {_k(comp.tokens_after)} токенов "
+        f"<i>({comp.messages_before} → {comp.messages_after} сообщений, "
+        f"сжатие #{comp.summary_count})</i>"
+    )
+
+
 def _short_args(args: dict) -> str:
     out = []
     for k, v in args.items():

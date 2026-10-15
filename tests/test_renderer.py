@@ -62,6 +62,33 @@ class TestRenderAssistantText:
         assert "&lt;b&gt;" in out
 
 
+class TestRenderCompression:
+    def _comp(self, before=90000, after=18000, mb=40, ma=10, n=1):
+        from agent_coder.agent.compression import CompressionResult
+        return CompressionResult(
+            messages_before=mb, messages_after=ma,
+            tokens_before=before, tokens_after=after, summary_count=n,
+        )
+
+    def test_shows_token_flow(self):
+        out = renderer.render_compression(self._comp())
+        assert "История сжата" in out
+        assert "90k" in out
+        assert "18k" in out
+        assert "токенов" in out
+
+    def test_shows_message_counts_and_index(self):
+        out = renderer.render_compression(self._comp(mb=40, ma=10, n=3))
+        assert "40 → 10 сообщений" in out
+        assert "сжатие #3" in out
+
+    def test_small_numbers_not_scaled(self):
+        out = renderer.render_compression(self._comp(before=900, after=120))
+        assert "900" in out
+        assert "120" in out
+        assert "0k" not in out
+
+
 def test_tool_icon_known_and_fallback():
     from agent_coder.telegram.renderer import tool_icon
     assert tool_icon("read_file") == "📖"

@@ -54,7 +54,8 @@ async def run_once(args: argparse.Namespace, session: Session) -> int:
         await client.start()
         loop = AgentLoop(
             client=client, registry=build_registry(),
-            session=session, events=_events(), yolo=args.yolo,
+            session=session, events=_events(),
+            yolo=args.yolo or session.yolo,
         )
         await loop.run(args.task)
         ui.print_total_usage(session.total_usage, session.request_count)
@@ -96,7 +97,8 @@ async def run_repl(args: argparse.Namespace, session: Session) -> int:
 
             loop = AgentLoop(
                 client=client, registry=registry,
-                session=session, events=_events(), yolo=args.yolo,
+                session=session, events=_events(),
+                yolo=args.yolo or session.yolo,
             )
             try:
                 await loop.run(line)
@@ -163,6 +165,18 @@ async def _handle_slash(line: str, session: Session) -> bool:
         _model_picker(session)
     elif cmd == "reasoning":
         _reasoning_picker(session)
+    elif cmd == "yolo":
+        if arg and arg.strip().lower() not in ("on", "off"):
+            ui.print_error("Использование: /yolo (toggle) или /yolo on|off")
+        else:
+            session.yolo = (arg.strip().lower() == "on") if arg else not session.yolo
+            session.save()
+            if session.yolo:
+                ui.print_success(
+                    "⚡ YOLO включён: опасные операции без подтверждения."
+                )
+            else:
+                ui.print_success("🔒 YOLO выключен: подтверждения включены.")
     elif cmd == "clear":
         session.messages = []
         ui.print_success("История очищена (стоимость сохранена).")
@@ -192,6 +206,7 @@ def _print_help() -> None:
         "Настройки:\n"
         "  /model         — выбрать модель\n"
         "  /reasoning     — уровень thinking\n"
+        "  /yolo [on|off] — без подтверждений опасных операций\n"
         "\n"
         "Прочее:\n"
         "  /history       — последние сообщения\n"

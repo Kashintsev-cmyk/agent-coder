@@ -6,7 +6,9 @@
 """
 from __future__ import annotations
 
+import json
 import logging
+from dataclasses import dataclass
 from typing import Any
 
 from agent_coder.agent.session import content_to_text
@@ -16,6 +18,37 @@ logger = logging.getLogger(__name__)
 
 MIN_RECENT = 6   # сколько последних сообщений оставить как есть
 MIN_TOTAL = 10   # минимум сообщений для запуска сжатия
+
+
+@dataclass
+class CompressionResult:
+    """Итог сжатия — для лога в UI.
+
+    tokens_before/tokens_after — оценка (см. estimate_tokens): точной
+    токенизации у нас нет, а после сжатия реальный usage ещё не измерен
+    (следующий запрос к LLM только предстоит). Для сообщения в Telegram
+    такой точности достаточно.
+    """
+    messages_before: int
+    messages_after: int
+    tokens_before: int
+    tokens_after: int
+    summary_count: int
+
+
+def estimate_tokens(messages: list[dict[str, Any]]) -> int:
+    """Грубая оценка токенов по длине текста (≈4 символа на токен).
+
+    Точного tokenizer'а нет (модели разные, тащить его ради строки в
+    логе не стоит). Оценка нужна только для информационного сообщения,
+    не для принятия решений о сжатии.
+    """
+    chars = 0
+    for m in messages:
+        chars += len(content_to_text(m.get("content")))
+        for tc in (m.get("tool_calls") or []):
+            chars += len(json.dumps(tc, ensure_ascii=False))
+    return max(0, round(chars / 4))
 
 
 def soft_limit(session) -> int:
@@ -78,19 +111,23 @@ _SUMMARY_SYSTEM = (
 )
 
 
-async def compress(session, client) -> bool:
-    """Сжать историю сессии. True — если сжатие выполнено."""
+async def compress(session, client) -> CompressionResult | None:
+    """Сжать историю сессии.
+
+    Возвращает CompressionResult при успехе (для лога в UI) или None,
+    если сжатие не выполнялось/не удалось.
+    """
     messages = session.messages
     cut = find_cut(messages)
     if cut is None or cut <= 1:
-        return False
+        return None
 
     old = messages[1:cut]
     recent = messages[cut:]
     system_msg = messages[0]
     transcript = format_for_summary(old)
     if not transcript.strip():
-        return False
+        return None
 
     try:
         resp = await client.chat(
@@ -103,12 +140,15 @@ async def compress(session, client) -> bool:
         )
     except Exception as e:
         logger.warning("compress: LLM вызов не удался: %s", e)
-        return False
+        return None
 
     text = (getattr(resp.message, "content", None) or "").strip()
     if not text:
         logger.warning("compress: пустой ответ модели — пропускаю")
-        return False
+        return None
+
+    # Оценку «до» снимаем, пока в messages ещё лежит несжатая история.
+    tokens_before = estimate_tokens(messages)
 
     # Aux-вызов: добавляем usage, но не инкрементим request_count.
     session.total_usage = session.total_usage + resp.usage
@@ -122,8 +162,17 @@ async def compress(session, client) -> bool:
     }
     session.messages = [system_msg, summary_msg] + recent
     session.last_input_tokens = 0
+
+    tokens_after = estimate_tokens(session.messages)
     logger.info(
-        "compress: %d сообщений → %d (summary_count=%d)",
-        len(messages), len(session.messages), session.summary_count,
+        "compress: %d сообщений → %d, ~%d → ~%d токенов (summary_count=%d)",
+        len(messages), len(session.messages),
+        tokens_before, tokens_after, session.summary_count,
     )
-    return True
+    return CompressionResult(
+        messages_before=len(messages),
+        messages_after=len(session.messages),
+        tokens_before=tokens_before,
+        tokens_after=tokens_after,
+        summary_count=session.summary_count,
+    )

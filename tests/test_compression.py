@@ -6,6 +6,7 @@ from agent_coder.agent.compression import (
     format_for_summary,
     soft_limit,
 )
+from agent_coder.config import config
 
 
 def _mk_session(model="openai/gpt-5.6-luna"):
@@ -18,20 +19,33 @@ def _mk_session(model="openai/gpt-5.6-luna"):
 
 def test_soft_limit_uses_min_of_context_and_cap():
     s = _mk_session("openai/gpt-5.6-luna")  # context 1_050_000
-    # 0.6 * 1_050_000 = 630_000 → cap 128_000
-    assert soft_limit(s) == 128_000
+    # 0.6 * 1_050_000 = 630_000 → берётся cap из config
+    assert soft_limit(s) == config.MAX_HISTORY_TOKENS
 
 
 def test_soft_limit_small_model():
-    # Искусственно: подменим через fallback? Проверим известные:
-    # kimi-k2.7-code context=262_144 → 0.6*262_144 ≈ 157_286 → cap 128_000
+    # kimi-k2.7-code context=262_144 → 0.6*262_144 ≈ 157_286 → cap из config
     s = _mk_session("moonshotai/kimi-k2.7-code")
-    assert soft_limit(s) == 128_000
+    assert soft_limit(s) == config.MAX_HISTORY_TOKENS
 
 
 def test_soft_limit_unknown_model_returns_cap():
     s = _mk_session("no/such-model-xyz")
-    assert soft_limit(s) == 128_000
+    assert soft_limit(s) == config.MAX_HISTORY_TOKENS
+
+
+def test_soft_limit_context_wins_when_smaller_than_cap(monkeypatch):
+    """Если 0.6*context < MAX_HISTORY_TOKENS — порог задаёт модель, а не cap."""
+    from agent_coder.model_catalog import catalog
+
+    class _TinyModel:
+        id = "test/tiny"
+        context = 10_000
+        name = "Tiny"
+
+    monkeypatch.setattr(catalog, "get", lambda mid: _TinyModel())
+    s = _mk_session("test/tiny")
+    assert soft_limit(s) == 6_000
 
 
 # --- find_cut ---
@@ -98,6 +112,45 @@ def test_format_for_summary_assistant_with_tool_calls():
     assert "вызвал: read_file" in out
 
 
+# --- estimate_tokens ---
+
+def test_estimate_tokens_empty():
+    from agent_coder.agent.compression import estimate_tokens
+    assert estimate_tokens([]) == 0
+
+
+def test_estimate_tokens_grows_with_text():
+    from agent_coder.agent.compression import estimate_tokens
+    small = estimate_tokens([{"role": "user", "content": "x" * 400}])
+    big = estimate_tokens([{"role": "user", "content": "x" * 4000}])
+    assert small == 100   # 400 символов / 4
+    assert big == 1000
+    assert big > small
+
+
+def test_estimate_tokens_counts_tool_calls():
+    from agent_coder.agent.compression import estimate_tokens
+    plain = estimate_tokens([{"role": "assistant", "content": "hi"}])
+    with_tc = estimate_tokens([{
+        "role": "assistant",
+        "content": "hi",
+        "tool_calls": [{"function": {"name": "run_command", "arguments": "{}"}}],
+    }])
+    assert with_tc > plain
+
+
+def test_estimate_tokens_handles_multimodal_content():
+    from agent_coder.agent.compression import estimate_tokens
+    n = estimate_tokens([{
+        "role": "user",
+        "content": [
+            {"type": "text", "text": "x" * 80},
+            {"type": "image_url", "image_url": {"url": "data:..."}},
+        ],
+    }])
+    assert n > 0
+
+
 # --- compress (с mock-клиентом) ---
 
 import pytest
@@ -141,8 +194,13 @@ async def test_compress_replaces_old():
 
     before = len(s.messages)
     client = _FakeClient(reply="СЖАТО")
-    ok = await compress(s, client)
-    assert ok is True
+    comp = await compress(s, client)
+    assert comp is not None
+    assert comp.tokens_before > 0
+    assert comp.tokens_after < comp.tokens_before
+    assert comp.messages_before == before
+    assert comp.messages_after == len(s.messages)
+    assert comp.summary_count == 1
 
     # system на месте
     assert s.messages[0]["role"] == "system"
@@ -166,7 +224,7 @@ async def test_compress_short_history_returns_false():
 
     client = _FakeClient()
     ok = await compress(s, client)
-    assert ok is False
+    assert ok is None
     assert len(client.calls) == 0  # LLM не вызвали
 
 
@@ -180,7 +238,7 @@ async def test_compress_empty_reply_returns_false():
 
     client = _FakeClient(reply="   ")  # пусто после strip
     ok = await compress(s, client)
-    assert ok is False
+    assert ok is None
     assert s.summary_count == 0
 
 
@@ -197,7 +255,7 @@ async def test_compress_llm_error_returns_false():
             raise RuntimeError("boom")
 
     ok = await compress(s, _BoomClient())
-    assert ok is False
+    assert ok is None
     assert s.summary_count == 0
 
 

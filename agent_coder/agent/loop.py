@@ -31,6 +31,9 @@ class LoopEvents:
     on_usage: Callable[[Usage], Any]
     on_error: Callable[[str], Any]
     request_approval: Callable[[ToolCall], Awaitable[bool]]
+    # Необязательный: вызывается после успешного сжатия истории.
+    # None — UI про сжатие не уведомляем (например, CLI-режим).
+    on_compression: Callable[[Any], Any] | None = None
 
 
 
@@ -99,11 +102,12 @@ class AgentLoop:
                 logger.warning("Восстановлено %d dangling tool_calls", fixed)
                 self.session.save()
             # B5.2: сжатие истории при превышении порога input-токенов.
-            if (
-                self.session.last_input_tokens > soft
-                and await compression.compress(self.session, self.client)
-            ):
-                self.session.save()
+            if self.session.last_input_tokens > soft:
+                comp = await compression.compress(self.session, self.client)
+                if comp is not None:
+                    self.session.save()
+                    if self.events.on_compression is not None:
+                        await _maybe_await(self.events.on_compression, comp)
 
             try:
                 response = await self.client.chat(

@@ -36,3 +36,20 @@ def test_all_bot_commands_registered():
         f"Команды объявлены в BOT_COMMANDS, но не зарегистрированы в router: "
         f"{sorted(missing)}"
     )
+
+
+def test_yolo_is_declared_in_bot_menu():
+    """Регресс: /yolo должна быть в меню команд, иначе о ней легко забыть."""
+    declared = {c.command for c in BOT_COMMANDS}
+    assert "yolo" in declared
+    assert "yolo" in _registered_command_names()
+
+
+def test_yolo_is_documented_in_help():
+    """Регресс: /yolo упомянута в тексте справки /start (он же /help)."""
+    import inspect
+
+    from agent_coder.telegram.handlers import commands
+
+    src = inspect.getsource(commands.cmd_start)
+    assert "/yolo" in src

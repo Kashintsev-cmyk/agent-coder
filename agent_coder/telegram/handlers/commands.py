@@ -74,6 +74,7 @@ async def cmd_start(message: Message) -> None:
         "  /model — выбрать модель\n"
         "  /reasoning — уровень thinking\n"
         "  /mode plan | act | audit | chat — режим\n"
+        "  /yolo [on|off] — без подтверждений (⚡ осторожно)\n"
         "\n"
         "💰 <b>Информация:</b>\n"
         "  /cost — стоимость сессии\n"
