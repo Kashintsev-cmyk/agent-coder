@@ -60,6 +60,9 @@ from .commands import (
     cb_sessions as cb_sessions,
 )
 from .commands import (
+    cb_yolo_toggle as cb_yolo_toggle,
+)
+from .commands import (
     cmd_balance as cmd_balance,
 )
 from .commands import (
@@ -103,6 +106,9 @@ from .commands import (
 )
 from .commands import (
     cmd_start as cmd_start,
+)
+from .commands import (
+    cmd_yolo as cmd_yolo,
 )
 from .github import (
     _clone_repo as _clone_repo,

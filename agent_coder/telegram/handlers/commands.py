@@ -311,6 +311,52 @@ async def cmd_mode(message: Message) -> None:
 
 # ---------- /cancel ----------
 
+@router.message(Command("yolo"))
+async def cmd_yolo(message: Message) -> None:
+    """Переключить режим без подтверждений (per-session).
+
+    /yolo         — toggle
+    /yolo on|off  — явно
+    """
+    session = _get_active_session(message.chat.id)
+    if session is None:
+        await message.answer("Нет активной сессии. /projects — выбрать проект.")
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    if len(parts) >= 2:
+        val = parts[1].strip().lower()
+        if val not in ("on", "off"):
+            await message.answer(
+                "Использование: <code>/yolo</code> (toggle) или "
+                "<code>/yolo on|off</code>",
+                parse_mode="HTML",
+            )
+            return
+        session.yolo = (val == "on")
+    else:
+        session.yolo = not session.yolo
+
+    session.save()
+
+    if session.yolo:
+        await message.answer(
+            "⚡ <b>YOLO включён</b>\n\n"
+            "Опасные операции (run_command с rm/kill/sudo/...) больше не "
+            "запрашивают подтверждение. Работает только в этой сессии.\n\n"
+            "Отключить: <code>/yolo off</code>",
+            reply_markup=keyboards.session_menu_keyboard(session),
+            parse_mode="HTML",
+        )
+    else:
+        await message.answer(
+            "🔒 <b>YOLO выключен</b>\n\n"
+            "Опасные операции снова запрашивают подтверждение.",
+            reply_markup=keyboards.session_menu_keyboard(session),
+            parse_mode="HTML",
+        )
+
+
 @router.message(Command("cancel"))
 async def cmd_cancel(message: Message) -> None:
     task = _running.get(message.chat.id)
@@ -366,6 +412,24 @@ async def cb_project_create_yes(query: CallbackQuery, bot: Bot) -> None:
     )
     await query.answer("Проект создан")
     await _create_session(query.message.chat.id, query.message, str(path))
+
+
+@router.callback_query(F.data == "yolo_toggle")
+async def cb_yolo_toggle(query: CallbackQuery) -> None:
+    """Toggle YOLO-режима из меню сессии."""
+    session = _get_active_session(query.message.chat.id)
+    if session is None:
+        await query.answer("Нет сессии", show_alert=True)
+        return
+    session.yolo = not session.yolo
+    session.save()
+    try:
+        await query.message.edit_reply_markup(
+            reply_markup=keyboards.session_menu_keyboard(session),
+        )
+    except Exception:
+        pass
+    await query.answer("YOLO: " + ("вкл ⚡" if session.yolo else "выкл 🔒"))
 
 
 @router.callback_query(F.data == "pc:no")

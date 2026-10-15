@@ -29,6 +29,26 @@ _FORBIDDEN_PATHS = re.compile(
     re.IGNORECASE,
 )
 
+# Hard-block: команды, запрещённые ВСЕГДА, даже с yolo.
+# Эти команды стирают данные без возможности восстановления —
+# никакая автономность не оправдывает их выполнение агентом.
+_HARD_BLOCK = re.compile(
+    r"(?:"
+    r"\brm\s+-[a-z]*[rf][a-z]*\s+/(?:\s|$)"   # rm -rf /
+    r"|\brm\s+-[a-z]*[rf][a-z]*\s+/\*"        # rm -rf /*
+    r"|\brm\s+-[a-z]*[rf][a-z]*\s+/(?:bin|boot|dev|etc|home|lib|proc|root|sbin|sys|usr|var)\b"
+    r"|\bmkfs(?:\.\w+)?\b"                    # mkfs, mkfs.ext4, ...
+    r"|\bdd\s+.*of=/dev/(?:sd|nvme|hd|vd)"
+    r"|\bdd\s+.*of=/dev/mmcblk"
+    r"|:\s*\(\s*\)\s*\{"                     # fork bomb :(){ :|:& };:
+    r"|\bshred\s+/dev/"
+    r"|\bwipefs\b"
+    r"|\b>\s*/dev/(?:sd|nvme|hd)"
+    r")",
+    re.IGNORECASE,
+)
+
+
 # Каждый шаблон — regex, заякоренный с начала строки (^).
 _SAFE_PATTERNS: list[re.Pattern] = [
     # --- Ресурсы ---
@@ -227,6 +247,15 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     command = args.get("command", "").strip()
     if not command:
         return "Ошибка: пустая команда"
+
+    # Hard-block: никогда не выполняем — ни с yolo, ни с approval.
+    if _HARD_BLOCK.search(command):
+        return (
+            "🛑 Команда заблокирована на уровне безопасности: "
+            "потенциально разрушительная операция "
+            "(rm -rf /, mkfs, dd на диск, fork bomb и т.п.). "
+            "Выполни вручную, если уверен."
+        )
 
     result = await run_shell(
         command,

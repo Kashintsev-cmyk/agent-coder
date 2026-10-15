@@ -325,6 +325,7 @@ async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str,
             registry=build_registry(),
             session=session,
             events=runner.events(),
+            yolo=session.yolo,
         )
 
         # Авто-продолжение: если агент упёрся в лимит итераций, но задача

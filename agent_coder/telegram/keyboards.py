@@ -225,6 +225,11 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
             text=f"📏 {v}",
             callback_data="menu_verbosity",
         ))
+    if session.yolo:
+        quick.append(InlineKeyboardButton(
+            text="⚡ YOLO",
+            callback_data="yolo_toggle",
+        ))
 
     # Раскладка: 1 → 1 в ряд; 2 → 2 в ряд; 3 → 3 в ряд; 4 → 2+2.
     if len(quick) <= 3:

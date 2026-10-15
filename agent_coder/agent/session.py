@@ -68,6 +68,7 @@ class Session:
     title: str = ""
     reasoning_effort: str = DEFAULT_REASONING
     web_search: bool = False
+    yolo: bool = False  # без approval на опасные операции
     service_tier: str = ""  # "" = использовать config.SERVICE_TIER
     verbosity: str = ""  # "" = не передавать параметр
     # Статистика сжатия истории (B5.1: только собираем)
@@ -214,6 +215,8 @@ class Session:
             data["reasoning_effort"] = DEFAULT_REASONING
         if "web_search" not in data:
             data["web_search"] = False
+        if "yolo" not in data:
+            data["yolo"] = False
         if "last_input_tokens" not in data:
             data["last_input_tokens"] = 0
         if "summary_count" not in data:
