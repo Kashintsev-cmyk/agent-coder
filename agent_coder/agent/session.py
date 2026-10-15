@@ -113,6 +113,13 @@ class Session:
         return config.SESSIONS_DIR / "media" / self.id
 
     def add_message(self, message: dict[str, Any]) -> None:
+        # Sanitize: убираем нативный DSML DeepSeek из assistant-контента.
+        # Иначе модель видит его в истории и воспроизводит снова.
+        if message.get("role") == "assistant":
+            content = message.get("content")
+            if isinstance(content, str) and "DSML" in content:
+                from agent_coder.log_safety import strip_dsml
+                message["content"] = strip_dsml(content)
         self.messages.append(message)
         self.updated_at = time.time()
         if not self.title and message.get("role") == "user":
@@ -221,6 +228,19 @@ class Session:
             data["last_input_tokens"] = 0
         if "summary_count" not in data:
             data["summary_count"] = 0
+
+        # Разовая чистка: если в истории есть DSML-мусор (старые версии
+        # кода не фильтровали) — убираем при загрузке.
+        msgs = data.get("messages", [])
+        if any(
+            isinstance(m.get("content"), str) and "DSML" in m.get("content", "")
+            for m in msgs
+        ):
+            from agent_coder.log_safety import strip_dsml
+            for m in msgs:
+                if m.get("role") == "assistant" and isinstance(m.get("content"), str):
+                    m["content"] = strip_dsml(m["content"])
+
         return cls(**data)
 
     @classmethod

@@ -34,6 +34,31 @@ def mask_secrets(text: str) -> str:
     return text
 
 
+
+
+_DSML_RE = re.compile(
+    r"<\|\|DSML\|\|.*?>.*?<\|\|DSML\|\|.*?>",
+    re.DOTALL,
+)
+_DSML_SIMPLE_RE = re.compile(r"<\|\|DSML\|\|.*", re.DOTALL)
+
+
+def strip_dsml(text: str) -> str:
+    """Убрать нативные DSML-теги DeepSeek из content.
+
+    DeepSeek иногда возвращает вызовы инструментов в нативном формате
+    `<||DSML||invoke ...>...</||DSML||invoke>`, минуя стандартные
+    OpenAI tool_calls. Это ломает UI и вводит в заблуждение пользователя.
+    RouterAI обычно мапит их корректно, но в редких конфигурациях
+    (например, урезанный набор tools) утечка случается.
+    """
+    if not text or "DSML" not in text:
+        return text
+    text = _DSML_RE.sub("", text)
+    text = _DSML_SIMPLE_RE.sub("", text)
+    return text.strip()
+
+
 class SecretFilter(logging.Filter):
     """Маскирует record.msg/args перед форматированием.
 
