@@ -160,6 +160,19 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         output_price=326.66,
         tag="для кода",
     ),
+    "openai/gpt-6-sol": ModelInfo(
+        id="openai/gpt-6-sol",
+        name="GPT-6 Sol",
+        context=1_050_000,
+        reasoning=True,
+        vision=True,
+        tools=True,
+        reasoning_effort=True,
+        web_search_builtin=True,
+        input_price=217.78,
+        output_price=1088.88,
+        tag="агентный кодинг",
+    ),
     # --- Прочие ранее известные модели (сохранены, чтобы старые id остались
     # валидными, если пользователь вернёт их в CURATED_MODEL_IDS). ---
     "openai/gpt-5.6-luna": ModelInfo(
