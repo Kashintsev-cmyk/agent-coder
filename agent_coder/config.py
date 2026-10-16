@@ -145,7 +145,7 @@ class Config:
     APPROVAL_TIMEOUT: float = float(os.getenv("APPROVAL_TIMEOUT", "900"))
     
     # Путь сессий
-    SESSIONS_DIR: Path = BASE_DIR / "sessions"
+    SESSIONS_DIR: Path = Path(os.getenv("SESSIONS_DIR", str(BASE_DIR / "sessions")))
 
     @classmethod
     def validate(cls) -> bool:

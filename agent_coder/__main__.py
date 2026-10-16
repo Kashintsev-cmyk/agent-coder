@@ -23,6 +23,7 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--cwd", default=config.DEFAULT_WORKSPACE, help="Рабочая директория")
     p.add_argument("--model", default=config.MODEL_MAIN, help="Модель RouterAI")
     p.add_argument("--plan", action="store_true", help="Plan-режим")
+    p.add_argument("--audit", action="store_true", help="Audit-режим: только чтение")
     p.add_argument("--yolo", action="store_true", help="Без подтверждений")
     p.add_argument("--resume", metavar="ID", help="Возобновить сессию по ID")
     p.add_argument(
@@ -282,6 +283,9 @@ def main() -> int:
     )
 
     config.validate()
+    if args.audit and args.plan:
+        ui.print_error("--audit и --plan нельзя использовать одновременно")
+        return 2
     # --max-iterations применяется ко всем режимам, ТОЛЬКО если указан явно.
     # Иначе уважаем MAX_ITERATIONS_PLAN/ACT/AUDIT из .env.
     if args.max_iterations is not None:
@@ -302,19 +306,21 @@ def main() -> int:
         if session is None:
             ui.print_error(f"Сессия не найдена: {args.resume}")
             return 2
-        if args.plan:
+        if args.audit:
+            session.mode = Mode.AUDIT
+        elif args.plan:
             session.mode = Mode.PLAN
         ui.print_info(f"Возобновлена сессия {session.id}: {session.title}")
     elif args.continue_last:
         session = Session.latest(workspace=workspace)
         if session is None:
             ui.print_error(f"Нет сессий для {workspace}. Создаю новую.")
-            mode = Mode.PLAN if args.plan else Mode.ACT
+            mode = Mode.AUDIT if args.audit else (Mode.PLAN if args.plan else Mode.ACT)
             session = Session.new(workspace=workspace, model=args.model, mode=mode)
         else:
             ui.print_info(f"Продолжаем сессию {session.id}: {session.title}")
     else:
-        mode = Mode.PLAN if args.plan else Mode.ACT
+        mode = Mode.AUDIT if args.audit else (Mode.PLAN if args.plan else Mode.ACT)
         session = Session.new(workspace=workspace, model=args.model, mode=mode)
 
     try:
