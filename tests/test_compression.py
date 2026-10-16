@@ -277,3 +277,118 @@ async def test_compress_preserves_recent():
     assert s.messages[-2]["content"] == "СВЕЖАЯ_ЗАДАЧА"
     assert s.messages[-1]["content"] == "СВЕЖИЙ_ОТВЕТ"
 
+
+# --- новые защиты (update-режим, huge-recent, cooldown) ---
+
+import time as _time
+
+from agent_coder.agent import compression as _comp
+
+
+@pytest.mark.asyncio
+async def test_compress_updates_prev_summary_separately():
+    """Предыдущее резюме передаётся отдельно, а не в общем транскрипте."""
+    s = _mk_session()
+    s.messages = [{"role": "system", "content": "S"}]
+    s.messages.append({
+        "role": "user",
+        "content": "[Резюме предыдущего контекста, сжатие #1]\nСТАРОЕ_РЕЗЮМЕ",
+    })
+    s.summary_count = 1  # одно сжатие уже было
+    for i in range(14):
+        s.messages.append({"role": "user", "content": f"u{i}"})
+        s.messages.append({"role": "assistant", "content": f"a{i}"})
+
+    client = _FakeClient(reply="ОБНОВЛЁННОЕ")
+    comp = await compress(s, client)
+    assert comp is not None
+
+    sent = client.calls[0]
+    # Используется update-промпт
+    assert "ПРЕДЫДУЩЕЕ РЕЗЮМЕ" in sent["messages"][1]["content"]
+    assert "СТАРОЕ_РЕЗЮМЕ" in sent["messages"][1]["content"]
+    assert "НОВЫЕ СОБЫТИЯ" in sent["messages"][1]["content"]
+    # Старое резюме не попало в транскрипт второй раз
+    transcript_part = sent["messages"][1]["content"].split(
+        "НОВЫЕ СОБЫТИЯ ДИАЛОГА:"
+    )[1]
+    assert "СТАРОЕ_РЕЗЮМЕ" not in transcript_part
+    # Новый счётчик сжатия
+    assert "сжатие #2" in s.messages[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_compress_skips_when_old_share_tiny():
+    """Огромный recent-блок: сжатие почти не сэкономит — пропускаем."""
+    s = _mk_session()
+    s.messages = [{"role": "system", "content": "S"}]
+    # Маленькая старая часть
+    for i in range(10):
+        s.messages.append({"role": "user", "content": f"u{i}"})
+        s.messages.append({"role": "assistant", "content": f"a{i}"})
+    # Огромный recent-блок (последние 6 сообщений)
+    s.messages.append({"role": "user", "content": "x" * 100_000})
+    s.messages.append({"role": "assistant", "content": "y" * 100_000})
+    s.messages.append({"role": "user", "content": "x" * 100_000})
+    s.messages.append({"role": "assistant", "content": "y" * 100_000})
+    s.messages.append({"role": "user", "content": "x" * 100_000})
+    s.messages.append({"role": "assistant", "content": "y" * 100_000})
+
+    client = _FakeClient(reply="НЕ_ДОЛЖЕН_ВЫЗВАТЬСЯ")
+    comp = await compress(s, client)
+    assert comp is None
+    assert len(client.calls) == 0
+
+
+@pytest.mark.asyncio
+async def test_compress_cooldown_after_failures(monkeypatch):
+    """После 2 неудач подряд — cooldown, LLM не дёргаем."""
+    monkeypatch.setattr(_comp, "_COOLDOWN_SECONDS", 60.0)
+    s = _mk_session()
+    s.messages = [{"role": "system", "content": "S"}]
+    for i in range(14):
+        s.messages.append({"role": "user", "content": f"u{i}"})
+        s.messages.append({"role": "assistant", "content": f"a{i}"})
+
+    class _BoomClient:
+        def __init__(self):
+            self.calls = 0
+
+        async def chat(self, *a, **kw):
+            self.calls += 1
+            raise RuntimeError("boom")
+
+    client = _BoomClient()
+    assert await compress(s, client) is None
+    assert await compress(s, client) is None
+    assert client.calls == 2
+    # Третий вызов — в cooldown, LLM не вызывается
+    assert await compress(s, client) is None
+    assert client.calls == 2
+
+    # Успех сбрасывает cooldown
+    _comp._register_success(s.id)
+    ok_client = _FakeClient(reply="ok")
+    assert await compress(s, ok_client) is not None
+
+
+def test_cooldown_expires(monkeypatch):
+    monkeypatch.setattr(_comp, "_COOLDOWN_SECONDS", 60.0)
+    _comp._register_failure("sess-x")
+    _comp._register_failure("sess-x")
+    assert _comp._cooldown_active("sess-x")
+    # Симулируем истечение
+    _comp._fail_until["sess-x"] = _time.monotonic() - 1
+    assert not _comp._cooldown_active("sess-x")
+    _comp._register_success("sess-x")
+
+
+def test_format_for_summary_skips_prev_summary():
+    msgs = [
+        {"role": "user", "content": "[Резюме предыдущего контекста, сжатие #1]\nстарое"},
+        {"role": "user", "content": "живой вопрос"},
+    ]
+    out = format_for_summary(msgs)
+    assert "старое" not in out
+    assert "живой вопрос" in out
+
