@@ -71,6 +71,9 @@ class Session:
     yolo: bool = False  # без approval на опасные операции
     service_tier: str = ""  # "" = использовать config.SERVICE_TIER
     verbosity: str = ""  # "" = не передавать параметр
+    # Модель выбрана пользователем вручную (/model или меню сессии).
+    # True — роутер не меняет модель, работает только fallback-цепочка.
+    model_manual: bool = False
     # Статистика сжатия истории (B5.1: только собираем)
     last_input_tokens: int = 0  # usage.input_tokens последнего запроса
     summary_count: int = 0      # сколько раз сжимали историю
@@ -228,6 +231,8 @@ class Session:
             data["last_input_tokens"] = 0
         if "summary_count" not in data:
             data["summary_count"] = 0
+        if "model_manual" not in data:
+            data["model_manual"] = False
 
         # Разовая чистка: если в истории есть DSML-мусор (старые версии
         # кода не фильтровали) — убираем при загрузке.

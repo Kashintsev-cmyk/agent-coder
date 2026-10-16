@@ -90,6 +90,7 @@ async def cb_setmodel(query: CallbackQuery) -> None:
         await query.answer("Нет сессии", show_alert=True)
         return
     session.model = model_id
+    session.model_manual = True  # ручной выбор — роутер не перекрывает
     session.messages = []  # сбрасываем историю — модель поменялась
     session.save()
     await query.message.edit_text(

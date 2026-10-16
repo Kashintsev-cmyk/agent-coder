@@ -16,6 +16,7 @@ from agent_coder.agent.prompts import Mode, system_prompt
 from agent_coder.agent.session import Session
 from agent_coder.config import config
 from agent_coder.llm.client import LLMClient
+from agent_coder.llm.router import RouterState, router
 from agent_coder.llm.types import ToolCall, Usage
 from agent_coder.tools.registry import ToolContext, ToolRegistry
 
@@ -76,9 +77,23 @@ class AgentLoop:
         self.session = session
         self.events = events
         self.yolo = yolo
+        # Состояние fallback-роутера на время одного run().
+        self._router_state = RouterState(
+            manual_model=session.model if session.model_manual else None,
+        )
 
     async def run(self, task: str, images: list | None = None) -> LoopResult:
         self._refresh_system_prompt()
+        # Роутер: если модель не выбрана вручную и MODEL_ROUTER_ENABLED —
+        # подставляем дефолт группы режима (AUDIT → audit-модели, иначе coding).
+        if not self.session.model_manual and config.MODEL_ROUTER_ENABLED:
+            routed = router.resolve(self.session.mode.value)
+            if routed and routed != self.session.model:
+                logger.info(
+                    "Роутер: %s → %s (режим %s)",
+                    self.session.model, routed, self.session.mode.value,
+                )
+                self.session.model = routed
         content = _build_user_content(task, images)
         self.session.add_message({"role": "user", "content": content})
         self.session.save()
@@ -121,6 +136,28 @@ class AgentLoop:
                     temperature=config.TEMPERATURE,
                 )
             except Exception as e:
+                # Fallback-цепочка: при 429/timeout/сетевой ошибке пробуем
+                # следующую модель группы (ручной выбор уважается — цепочка
+                # строится от текущей модели).
+                nxt = router.next_on_error(
+                    self._router_state, self.session.mode.value, e
+                )
+                if nxt is not None:
+                    logger.warning(
+                        "Модель %s недоступна (%s) — переключаюсь на %s",
+                        self.session.model, type(e).__name__, nxt,
+                    )
+                    self.session.model = nxt
+                    await _maybe_await(
+                        self.events.on_error,
+                        f"⚠️ Модель недоступна ({type(e).__name__}) — "
+                        f"переключился на {nxt}, продолжаю",
+                    )
+                    # Повторяем ту же итерацию с новой моделью (без записи
+                    # user-сообщения — оно уже в истории).
+                    iteration -= 1
+                    consecutive_errors = 0
+                    continue
                 await _maybe_await(self.events.on_error, f"LLM ошибка: {e}")
                 self.session.save()
                 return LoopResult(

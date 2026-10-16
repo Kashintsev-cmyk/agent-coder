@@ -877,7 +877,8 @@ async def cmd_model(message: Message) -> None:
     await message.answer(
         f"🧠 <b>Модель</b>\n\n"
         f"Текущая: <b>{get_model_name(session.model)}</b>\n"
-        f"<code>{session.model}</code>",
+        f"<code>{session.model}</code>\n\n"
+        f"<i>Выбор модели вручную — приоритет над автороутером.</i>",
         reply_markup=keyboards.models_keyboard(session.model),
         parse_mode="HTML",
     )

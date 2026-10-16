@@ -58,13 +58,33 @@ class Config:
         mid.strip() for mid in _curated_raw.split(",") if mid.strip()
     ] or [
         "deepseek/deepseek-v4.1-flash",
-        "openai/gpt-5.6-luna",
         "z-ai/glm-5.3-flash",
-        "google/gemini-3.8-flash",
+        "qwen/qwen3-coder-next",
+        "deepseek/deepseek-r1",
+        "z-ai/glm-5.3",
         "moonshotai/kimi-k2.7-code",
-        "anthropic/claude-sonnet-5.5",
-        "x-ai/grok-4.7",
     ]
+
+    # Группа coding: дефолт для ACT/PLAN/CHAT + fallback-цепочка при
+    # 429/timeout (порядок = приоритет). Все id должны входить в
+    # CURATED_MODEL_IDS.
+    _coding_raw: str = os.getenv("CODING_MODEL_IDS", "")
+    CODING_MODEL_IDS: ClassVar[list[str]] = [
+        mid.strip() for mid in _coding_raw.split(",") if mid.strip()
+    ] or CURATED_MODEL_IDS[:3]
+
+    # Группа audit: дефолт для режима AUDIT + fallback-цепочка.
+    _audit_raw: str = os.getenv("AUDIT_MODEL_IDS", "")
+    AUDIT_MODEL_IDS: ClassVar[list[str]] = [
+        mid.strip() for mid in _audit_raw.split(",") if mid.strip()
+    ] or CURATED_MODEL_IDS[3:]
+
+    # Роутер моделей: подставлять дефолт группы по режиму сессии, только
+    # если пользователь не выбрал модель вручную (/model). Fallback-цепочки
+    # при 429/timeout работают независимо от этого флага.
+    MODEL_ROUTER_ENABLED: bool = os.getenv(
+        "MODEL_ROUTER_ENABLED", "1"
+    ).strip().lower() in ("1", "true", "yes", "on")
 
     # Модель по умолчанию (должна входить в CURATED_MODEL_IDS)
     DEFAULT_MODEL_ID: str = os.getenv(
@@ -174,6 +194,40 @@ class Config:
                 errors.append(
                     f"DEFAULT_MODEL_ID={cls.DEFAULT_MODEL_ID!r} не входит в "
                     f"CURATED_MODEL_IDS={cls.CURATED_MODEL_IDS!r}"
+                )
+
+            # Группы coding/audit: непустые, без дублей, подмножества curated.
+            for group_name, group_ids in (
+                ("CODING_MODEL_IDS", cls.CODING_MODEL_IDS),
+                ("AUDIT_MODEL_IDS", cls.AUDIT_MODEL_IDS),
+            ):
+                if not group_ids:
+                    errors.append(f"{group_name} пуст — задайте список через .env")
+                    continue
+                g_seen: set[str] = set()
+                g_dupes: list[str] = []
+                for mid in group_ids:
+                    if mid in g_seen and mid not in g_dupes:
+                        g_dupes.append(mid)
+                    g_seen.add(mid)
+                if g_dupes:
+                    errors.append(
+                        f"{group_name} содержит дубли: "
+                        + ", ".join(repr(d) for d in g_dupes)
+                    )
+                unknown = [mid for mid in group_ids if mid not in seen]
+                if unknown:
+                    errors.append(
+                        f"{group_name} содержит модели вне CURATED_MODEL_IDS: "
+                        + ", ".join(repr(u) for u in unknown)
+                    )
+            overlap = [
+                mid for mid in cls.CODING_MODEL_IDS if mid in cls.AUDIT_MODEL_IDS
+            ]
+            if overlap:
+                errors.append(
+                    "CODING_MODEL_IDS и AUDIT_MODEL_IDS пересекаются: "
+                    + ", ".join(repr(m) for m in overlap)
                 )
 
         if cls.MODELS_CACHE_TTL < 1:
