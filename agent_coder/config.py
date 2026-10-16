@@ -60,9 +60,10 @@ class Config:
         "deepseek/deepseek-v4.1-flash",
         "z-ai/glm-5.3-flash",
         "qwen/qwen3-coder-next",
-        "deepseek/deepseek-r1",
         "z-ai/glm-5.3",
         "moonshotai/kimi-k2.7-code",
+        "deepseek/deepseek-r1",
+        "anthropic/claude-sonnet-5.5",
     ]
 
     # Группа coding: дефолт для ACT/PLAN/CHAT + fallback-цепочка при
@@ -71,13 +72,30 @@ class Config:
     _coding_raw: str = os.getenv("CODING_MODEL_IDS", "")
     CODING_MODEL_IDS: ClassVar[list[str]] = [
         mid.strip() for mid in _coding_raw.split(",") if mid.strip()
-    ] or CURATED_MODEL_IDS[:3]
+    ] or [
+        "deepseek/deepseek-v4.1-flash",
+        "z-ai/glm-5.3-flash",
+        "qwen/qwen3-coder-next",
+    ]
 
-    # Группа audit: дефолт для режима AUDIT + fallback-цепочка.
+    # Группа audit: дефолт для режима AUDIT + fallback-цепочка (порядок =
+    # приоритет). Порядок важен: первыми идут модели с большим контекстом,
+    # чтобы большие diff'ы не обрезались. DeepSeek R1 (64k) — последним,
+    # только для небольших задач (роутер дополнительно пропускает модели,
+    # в чей context_limit не влезает задача, см. llm/router.py).
     _audit_raw: str = os.getenv("AUDIT_MODEL_IDS", "")
     AUDIT_MODEL_IDS: ClassVar[list[str]] = [
         mid.strip() for mid in _audit_raw.split(",") if mid.strip()
-    ] or CURATED_MODEL_IDS[3:]
+    ] or [
+        "z-ai/glm-5.3",
+        "moonshotai/kimi-k2.7-code",
+        "deepseek/deepseek-r1",
+    ]
+
+    # Доля context_limit модели, которую разрешено занимать входным токенам.
+    # Если задача не влезает — модель пропускается (fallback берёт следующую).
+    # 0.8 — запас на ответ и на неточность оценки токенов.
+    CONTEXT_FILL_RATIO: float = _env_float("CONTEXT_FILL_RATIO", "0.8")
 
     # Роутер моделей: подставлять дефолт группы по режиму сессии, только
     # если пользователь не выбрал модель вручную (/model). Fallback-цепочки
@@ -229,6 +247,13 @@ class Config:
                     "CODING_MODEL_IDS и AUDIT_MODEL_IDS пересекаются: "
                     + ", ".join(repr(m) for m in overlap)
                 )
+
+        # Доля контекста под входные токены: разумные границы.
+        if not (0.1 <= cls.CONTEXT_FILL_RATIO <= 1.0):
+            errors.append(
+                f"CONTEXT_FILL_RATIO={cls.CONTEXT_FILL_RATIO} должен быть "
+                "в диапазоне 0.1–1.0"
+            )
 
         if cls.MODELS_CACHE_TTL < 1:
             errors.append(

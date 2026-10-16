@@ -50,6 +50,79 @@ def test_resolve_router_disabled_returns_none(monkeypatch, fresh_router):
     assert fresh_router.resolve("audit", manual_model="x/y") == "x/y"
 
 
+# --- проверка размера контекста ---
+
+def test_max_input_tokens_respects_fill_ratio(fresh_router):
+    # GLM 5.3: 1 048 576 * 0.8
+    assert fresh_router.max_input_tokens("z-ai/glm-5.3") == int(
+        1_048_576 * config.CONTEXT_FILL_RATIO
+    )
+    # R1: 64 000 * 0.8
+    assert fresh_router.max_input_tokens("deepseek/deepseek-r1") == int(
+        64_000 * config.CONTEXT_FILL_RATIO
+    )
+
+
+def test_fits_context_small_task_fits_r1(fresh_router):
+    assert fresh_router.fits_context("deepseek/deepseek-r1", 10_000) is True
+
+
+def test_fits_context_large_task_does_not_fit_r1(fresh_router):
+    # 100k токенов > 64k * 0.8 = 51.2k → R1 не влезает.
+    assert fresh_router.fits_context("deepseek/deepseek-r1", 100_000) is False
+    # Kimi K2.7 (262k) и GLM 5.3 (1048k) влезают.
+    assert fresh_router.fits_context("moonshotai/kimi-k2.7-code", 100_000) is True
+    assert fresh_router.fits_context("z-ai/glm-5.3", 100_000) is True
+
+
+def test_chain_100k_audit_skips_r1(fresh_router):
+    """Задача 100k токенов: R1 пропускается, в цепочке остаются GLM и Kimi."""
+    audit = config.AUDIT_MODEL_IDS
+    assert audit[-1] == "deepseek/deepseek-r1"  # R1 идёт последним в группе
+    chain = fresh_router.chain_for(audit[0], "audit", 100_000)
+    assert chain == ["z-ai/glm-5.3", "moonshotai/kimi-k2.7-code"]
+    assert "deepseek/deepseek-r1" not in chain
+
+
+def test_next_on_error_100k_audit_goes_to_glm_then_stops(fresh_router):
+    """100k токенов в audit: GLM 5.3 → Kimi K2.7, R1 уже не берём."""
+    state = RouterState(input_tokens=100_000)
+    nxt = fresh_router.next_on_error(state, "audit", _rate_limit_error())
+    assert nxt == "moonshotai/kimi-k2.7-code"
+    # Следующая — только R1 (не влезает), значит цепочка исчерпана.
+    assert fresh_router.next_on_error(state, "audit", _rate_limit_error()) is None
+
+
+def test_resolve_100k_audit_picks_glm(fresh_router):
+    """100k токенов в audit: дефолт GLM 5.3 (влезает), R1 не выбирается."""
+    assert fresh_router.resolve("audit", input_tokens=100_000) == "z-ai/glm-5.3"
+
+
+def test_resolve_small_task_still_glm_default(fresh_router):
+    """Небольшая задача в audit: дефолт группы (GLM 5.3) — не R1."""
+    assert fresh_router.resolve("audit", input_tokens=1_000) == "z-ai/glm-5.3"
+
+
+def test_resolve_prefers_biggest_context_model(fresh_router):
+    """resolve берёт ПЕРВУЮ влезающую модель группы, а не самую дешёвую.
+
+    Порядок audit — от большого контекста к малому, поэтому любая задача,
+    которая влезает в GLM 5.3 (838k), решается на GLM 5.3; R1 (51k) не
+    подставляется как дефолт даже для мелких задач.
+    """
+    # 300k влезает и в Kimi (209k)? нет — 300k > 209k; влезает только GLM (838k).
+    assert fresh_router.resolve("audit", input_tokens=300_000) == "z-ai/glm-5.3"
+    # Задача, влезающая во все три, всё равно решается на GLM 5.3.
+    assert fresh_router.resolve("audit", input_tokens=1_000) == "z-ai/glm-5.3"
+
+
+def test_chain_without_metadata_keeps_model(fresh_router):
+    """Модель вне каталога: цепочка не режется (нет данных о контексте)."""
+    assert fresh_router.chain_for("vendor/unknown", "act", 10_000_000) == [
+        "vendor/unknown"
+    ]
+
+
 # --- fallback-цепочки ---
 
 def test_chain_coding_order(fresh_router):

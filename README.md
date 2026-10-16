@@ -194,20 +194,49 @@ RouterAI и кэшируются на диск.
 
 Дефолтный набор:
 
-| Модель | ID | ₽ in / out (за 1M) | Бейджи |
-|---|---|---|---|
-| **DeepSeek V4.1 Flash** *(default)* | `deepseek/deepseek-v4.1-flash` | ~11 / ~21 | 👁⚙🔧 |
-| GPT-5.6 Luna | `openai/gpt-5.6-luna` | ~22 / ~130 | 👁🌐⚙🔧📏 |
-| GLM 5.3 Flash | `z-ai/glm-5.3-flash` | ~9 / ~30 | 👁⚙🔧 |
-| Gemini 3.8 Flash | `google/gemini-3.8-flash` | ~81 / ~406 | 👁🌐⚙🔧 |
-| Claude Sonnet 5.5 | `anthropic/claude-sonnet-5.5` | ~216 / ~1082 | 👁🌐⚙🔧📏 |
-| Grok 4.7 | `x-ai/grok-4.7` | ~216 / ~649 | 👁🌐⚙🔧 |
-| Kimi K2.7 Code | `moonshotai/kimi-k2.7-code` | ~77 / ~325 | 👁🧠🔧 |
+| Модель | ID | Контекст | ₽ in / out (за 1M) | Бейджи |
+|---|---|---|---|---|
+| **DeepSeek V4.1 Flash** *(default)* | `deepseek/deepseek-v4.1-flash` | 1 048 576 | ~11 / ~22 | 👁⚙🔧 |
+| GLM 5.3 Flash | `z-ai/glm-5.3-flash` | 1 048 576 | ~5 / ~17 | 👁⚙🔧 |
+| Qwen3 Coder Next | `qwen/qwen3-coder-next` | 262 144 | ~13 / ~87 | 🔧 |
+| GLM 5.3 | `z-ai/glm-5.3` | 1 048 576 | ~54 / ~164 | ⚙🔧 |
+| Kimi K2.7 Code | `moonshotai/kimi-k2.7-code` | 262 144 | ~78 / ~327 | 👁🧠🔧 |
+| DeepSeek R1 | `deepseek/deepseek-r1` | 64 000 | ~76 / ~272 | 🧠🔧 |
+| GPT-6.1 Sol | `openai/gpt-6.1-sol` | 1 050 000 | ~218 / ~1089 | 👁🌐⚙🔧📏 |
+| Claude Sonnet 5.5 | `anthropic/claude-sonnet-5.5` | 1 000 000 | ~218 / ~1089 | 👁🌐⚙🔧📏 |
 
 **Бейджи:** 👁 vision · 🌐 встроенный web search · 🧠 reasoning · ⚙ reasoning
 с градацией · 🔧 tools · 📏 verbosity.
 
 Цены — ориентир на момент публикации. Актуальные всегда подтягиваются из API.
+
+Последние две модели (`openai/gpt-6.1-sol`, `anthropic/claude-sonnet-5.5`)
+входят в `CURATED_MODEL_IDS`, но **не входят в группы роутера** — доступны
+только ручным выбором (`/model`).
+
+### Роутер моделей
+
+Две группы моделей (порядок = приоритет):
+
+| Группа | Когда используется | Цепочка |
+|---|---|---|
+| `CODING_MODEL_IDS` | `act` / `plan` / `chat`, когда модель не выбрана вручную | `deepseek/deepseek-v4.1-flash` → `z-ai/glm-5.3-flash` → `qwen/qwen3-coder-next` |
+| `AUDIT_MODEL_IDS` | `audit`, когда модель не выбрана вручную | `z-ai/glm-5.3` → `moonshotai/kimi-k2.7-code` → `deepseek/deepseek-r1` |
+
+Логика (вариант «б» — ручной выбор приоритетен):
+
+- Если модель выбрана вручную (`/model` или меню сессии) — роутер её **не
+  трогает**; работает только fallback-цепочка внутри группы этой модели.
+- Если модель не выбрана и `MODEL_ROUTER_ENABLED=1` — при старте задачи
+  подставляется **первая влезающая по контексту** модель группы режима.
+- **Проверка контекста:** перед выбором роутер сверяет оценку входных токенов
+  с `context_limit * CONTEXT_FILL_RATIO` (по умолчанию `0.8`). Модели, в
+  которые задача не влезает, пропускаются — иначе большой diff обрежется или
+  провайдер вернёт ошибку. Поэтому `deepseek/deepseek-r1` (64k) стоит
+  последним в audit-цепочке и получает только небольшие задачи.
+- **Fallback при 429 / timeout:** клиент сначала сам делает retry с backoff,
+  затем роутер переключается на следующую **влезающую** модель цепочки и
+  повторяет итерацию. Если цепочка исчерпана — задача завершается с ошибкой.
 
 ## Переменные окружения
 
@@ -233,8 +262,12 @@ RouterAI и кэшируются на диск.
 |---|---|---|
 | `MODEL_MAIN` | `deepseek/deepseek-v4.1-flash` | Модель для новых сессий |
 | `MODEL_FAST` | `MODEL_MAIN` | Зарезервировано |
-| `CURATED_MODEL_IDS` | 7 id через запятую | Список для UI |
+| `CURATED_MODEL_IDS` | 8 id через запятую | Список для UI |
 | `DEFAULT_MODEL_ID` | `deepseek/deepseek-v4.1-flash` | Должна входить в `CURATED_MODEL_IDS` |
+| `CODING_MODEL_IDS` | 3 id | Группа coding: дефолт `act`/`plan`/`chat` + fallback |
+| `AUDIT_MODEL_IDS` | 3 id | Группа audit: дефолт `audit` + fallback |
+| `MODEL_ROUTER_ENABLED` | `1` | Подставлять модель группы, если не выбрана вручную |
+| `CONTEXT_FILL_RATIO` | `0.8` | Доля `context_limit` под входные токены (0.1–1.0) |
 
 **Каталог моделей**
 

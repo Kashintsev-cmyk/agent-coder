@@ -87,7 +87,7 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="DeepSeek V4.1 Flash",
         context=1_048_576,
         reasoning=True,
-        vision=False,
+        vision=True,  # input_modalities: text+image
         tools=True,
         reasoning_effort=True,
         web_search_builtin=False,
@@ -100,7 +100,7 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="GLM 5.3 Flash",
         context=1_048_576,
         reasoning=True,
-        vision=False,
+        vision=True,  # input_modalities: text+image+video
         tools=True,
         reasoning_effort=True,
         web_search_builtin=False,
@@ -113,8 +113,8 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="Qwen3 Coder Next",
         context=262_144,
         reasoning=False,
-        vision=False,
-        tools=False,
+        vision=False,  # input_modalities: text
+        tools=True,   # supported_parameters: tools
         reasoning_effort=False,
         web_search_builtin=False,
         input_price=13.07,
@@ -152,7 +152,7 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="Kimi K2.7 Code",
         context=262_144,
         reasoning=True,
-        vision=False,
+        vision=True,  # input_modalities: text+image
         tools=True,
         reasoning_effort=False,
         web_search_builtin=False,
@@ -169,6 +169,7 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         tools=True,
         reasoning_effort=True,
         web_search_builtin=True,
+        verbosity=True,
         input_price=217.78,
         output_price=1088.88,
         tag="агентный кодинг",
@@ -190,16 +191,17 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
     ),
     "anthropic/claude-sonnet-5.5": ModelInfo(
         id="anthropic/claude-sonnet-5.5",
-        name="Claude Sonnet 5.5",  # TODO(meta): сверить с дампом
-        context=0,
+        name="Claude Sonnet 5.5",
+        context=1_000_000,
         reasoning=True,
         vision=True,
         tools=True,
         reasoning_effort=True,
         web_search_builtin=True,
-        input_price=0.0,
-        output_price=0.0,
-        tag="sonnet",
+        verbosity=True,
+        input_price=217.78,
+        output_price=1088.88,
+        tag="аудит, файлы",
     ),
     "x-ai/grok-4.7": ModelInfo(
         id="x-ai/grok-4.7",
@@ -317,19 +319,6 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         input_price=8.0,
         output_price=67.0,
         tag="дешёвый Gemini",
-    ),
-    "qwen/qwen3-coder-next": ModelInfo(
-        id="qwen/qwen3-coder-next",
-        name="Qwen3 Coder Next",
-        context=262_144,
-        reasoning=False,
-        vision=False,             # TODO(capabilities)
-        tools=False,              # TODO(capabilities)
-        reasoning_effort=False,   # TODO(capabilities)
-        web_search_builtin=False,  # TODO(capabilities)
-        input_price=3.3,
-        output_price=22.0,
-        tag="для кода",
     ),
 }
 

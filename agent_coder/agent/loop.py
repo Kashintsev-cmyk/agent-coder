@@ -84,19 +84,30 @@ class AgentLoop:
 
     async def run(self, task: str, images: list | None = None) -> LoopResult:
         self._refresh_system_prompt()
-        # Роутер: если модель не выбрана вручную и MODEL_ROUTER_ENABLED —
-        # подставляем дефолт группы режима (AUDIT → audit-модели, иначе coding).
-        if not self.session.model_manual and config.MODEL_ROUTER_ENABLED:
-            routed = router.resolve(self.session.mode.value)
-            if routed and routed != self.session.model:
-                logger.info(
-                    "Роутер: %s → %s (режим %s)",
-                    self.session.model, routed, self.session.mode.value,
-                )
-                self.session.model = routed
         content = _build_user_content(task, images)
         self.session.add_message({"role": "user", "content": content})
         self.session.save()
+
+        # Оценка размера задачи: роутер пропускает модели, в которые она
+        # не влезает по контексту (защита от обрезки больших diff'ов).
+        self._router_state.input_tokens = compression.estimate_tokens(
+            self.session.messages
+        )
+
+        # Роутер: если модель не выбрана вручную и MODEL_ROUTER_ENABLED —
+        # подставляем первую влезающую модель группы режима
+        # (AUDIT → audit-модели, иначе coding).
+        if not self.session.model_manual and config.MODEL_ROUTER_ENABLED:
+            routed = router.resolve(
+                self.session.mode.value, input_tokens=self._router_state.input_tokens
+            )
+            if routed and routed != self.session.model:
+                logger.info(
+                    "Роутер: %s → %s (режим %s, ~%d токенов)",
+                    self.session.model, routed, self.session.mode.value,
+                    self._router_state.input_tokens,
+                )
+                self.session.model = routed
 
         # В CHAT нет агентного цикла (нет tools) — max_iter не используется,
         # но на всякий случай даём ему безопасное значение.
