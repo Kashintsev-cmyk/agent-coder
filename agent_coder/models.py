@@ -160,9 +160,9 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         output_price=326.66,
         tag="для кода",
     ),
-    "openai/gpt-6-sol": ModelInfo(
-        id="openai/gpt-6-sol",
-        name="GPT-6 Sol",
+    "openai/gpt-6.1-sol": ModelInfo(
+        id="openai/gpt-6.1-sol",
+        name="GPT-6.1 Sol",
         context=1_050_000,
         reasoning=True,
         vision=True,
