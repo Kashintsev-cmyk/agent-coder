@@ -232,6 +232,7 @@ class AgentLoop:
             workspace=self.session.workspace,
             mode=self.session.mode,
             yolo=self.yolo,
+            session_id=self.session.id,
         )
         try:
             result = await tool.executor(tc.arguments, ctx)

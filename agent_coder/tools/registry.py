@@ -17,6 +17,7 @@ class ToolContext:
     workspace: str
     mode: Mode
     yolo: bool = False
+    session_id: str = ""  # для search_history (архив сжатой истории)
 
 
 @dataclass

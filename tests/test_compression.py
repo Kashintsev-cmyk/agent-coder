@@ -392,3 +392,71 @@ def test_format_for_summary_skips_prev_summary():
     assert "старое" not in out
     assert "живой вопрос" in out
 
+
+# --- архивация при сжатии (RAG-lite) ---
+
+from agent_coder.agent import history_archive
+
+
+@pytest.fixture
+def sessions_dir(monkeypatch, tmp_path):
+    monkeypatch.setattr(
+        type(history_archive.config), "SESSIONS_DIR", tmp_path, raising=False
+    )
+    return tmp_path
+
+
+@pytest.mark.asyncio
+async def test_compress_archives_old_messages(sessions_dir):
+    s = _mk_session()
+    s.messages = [{"role": "system", "content": "S"}]
+    for i in range(14):
+        s.messages.append({"role": "user", "content": f"уникальный вопрос {i}"})
+        s.messages.append({"role": "assistant", "content": f"ответ {i}"})
+
+    await compress(s, _FakeClient(reply="SUMMARY"))
+
+    archived = history_archive.load(s.id)
+    # 28 старых − 6 recent = 22 заархивировано
+    assert len(archived) == 22
+    assert any("уникальный вопрос 0" in str(m.get("content")) for m in archived)
+    # Свежие (recent) в архив не попали
+    assert not any("уникальный вопрос 13" in str(m.get("content")) for m in archived)
+
+
+@pytest.mark.asyncio
+async def test_compress_archive_failure_not_fatal(sessions_dir, monkeypatch):
+    """Ошибка записи архива не ломает сжатие."""
+    s = _mk_session()
+    s.messages = [{"role": "system", "content": "S"}]
+    for i in range(14):
+        s.messages.append({"role": "user", "content": f"u{i}"})
+        s.messages.append({"role": "assistant", "content": f"a{i}"})
+
+    def _boom(sid, msgs):
+        raise OSError("disk full")
+
+    monkeypatch.setattr(history_archive, "append_messages", _boom)
+    comp = await compress(s, _FakeClient(reply="SUMMARY"))
+    assert comp is not None
+    assert "SUMMARY" in s.messages[1]["content"]
+
+
+# --- точная оценка токенов (кириллица vs латиница) ---
+
+def test_estimate_tokens_cyrillic_denser():
+    from agent_coder.agent.compression import estimate_tokens
+    cyr = estimate_tokens([{"role": "user", "content": "а" * 200}])
+    lat = estimate_tokens([{"role": "user", "content": "a" * 200}])
+    # Кириллица ~2 симв/токен → 100; латиница ~4 → 50
+    assert cyr == 100
+    assert lat == 50
+    assert cyr > lat
+
+
+def test_estimate_tokens_mixed():
+    from agent_coder.agent.compression import estimate_tokens
+    # 100 кириллических + 100 латинских символов
+    n = estimate_tokens([{"role": "user", "content": "а" * 100 + "a" * 100}])
+    assert n == 75  # 100/2 + 100/4
+

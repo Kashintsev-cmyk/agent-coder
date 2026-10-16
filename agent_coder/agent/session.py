@@ -376,6 +376,11 @@ class Session:
             except Exception as e:
                 logger.warning("media cleanup failed for %s: %s", self.id, e)
 
+        # Архив сжатой истории (RAG-lite)
+        from agent_coder.agent import history_archive
+        if history_archive.delete(self.id):
+            removed += 1
+
         # Удалить из sidecar-индекса
         try:
             from agent_coder.agent.session_index import index as _idx

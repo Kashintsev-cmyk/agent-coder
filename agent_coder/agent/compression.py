@@ -55,18 +55,27 @@ class CompressionResult:
 
 
 def estimate_tokens(messages: list[dict[str, Any]]) -> int:
-    """Грубая оценка токенов по длине текста (≈4 символа на токен).
+    """Оценка токенов по длине текста с учётом алфавита.
 
     Точного tokenizer'а нет (модели разные, тащить его ради строки в
-    логе не стоит). Оценка нужна только для информационного сообщения,
-    не для принятия решений о сжатии.
+    логе не стоит). Оценка нужна для информационного сообщения и
+    эвристики MIN_OLD_SHARE, не для принятия решений о сжатии.
+
+    Кириллица токенизируется плотнее (~2 символа на токен у BPE-словарей
+    OpenAI-подобных моделей), латиница/код — ~4 символа на токен.
     """
     chars = 0
+    cyr = 0
     for m in messages:
-        chars += len(content_to_text(m.get("content")))
+        text = content_to_text(m.get("content"))
+        chars += len(text)
+        cyr += sum(1 for ch in text if "а" <= ch.lower() <= "я" or ch.lower() == "ё")
         for tc in (m.get("tool_calls") or []):
-            chars += len(json.dumps(tc, ensure_ascii=False))
-    return max(0, round(chars / 4))
+            tc_json = json.dumps(tc, ensure_ascii=False)
+            chars += len(tc_json)
+            cyr += sum(1 for ch in tc_json if "а" <= ch.lower() <= "я" or ch.lower() == "ё")
+    latin = chars - cyr
+    return max(0, round(cyr / 2 + latin / 4))
 
 
 def soft_limit(session) -> int:
@@ -253,6 +262,16 @@ async def compress(session, client) -> CompressionResult | None:
 
     # Оценку «до» снимаем, пока в messages ещё лежит несжатая история.
     tokens_before = estimate_tokens(messages)
+
+    # RAG-lite: старая часть не выбрасывается, а уходит в архив —
+    # агент сможет найти потерянные детали через search_history.
+    try:
+        from agent_coder.agent import history_archive
+        archived = history_archive.append_messages(session.id, old)
+        if archived:
+            logger.info("compress: %d сообщений заархивировано", archived)
+    except Exception as e:
+        logger.warning("compress: архивация не удалась: %s", e)
 
     # Aux-вызов: добавляем usage, но не инкрементим request_count.
     session.total_usage = session.total_usage + resp.usage
