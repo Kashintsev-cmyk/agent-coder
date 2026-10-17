@@ -184,6 +184,28 @@ remote-helper'ов, с точным учётом стоимости каждой
 - Ошибки чтения (нет прав, битый UTF-8) не роняют агент — system prompt
   остаётся базовым.
 
+### Стандарт оформления проекта (builtin)
+
+Агент знает стандарт Python-проектов в `/home/botuser/bots/`. Текст —
+`agent_coder/rules/project_standard.md` (~2 KB); попадает в system prompt
+для `plan`, `act` и `chat`.
+
+Приоритет: `workspace/AGENTS.md` > builtin. Если в workspace есть
+`AGENTS.md` (даже пустой) — вставляется только он, стандарт не
+подмешивается. Иначе — вставляется стандарт.
+
+Проверка соответствия — tool `check_project_standard` (read-only):
+обязательные файлы, секции `pyproject.toml` (`testpaths`, `ruff`
+`line-length=88`, `select ⊇ {E, F, I}`, `coverage source != "app"`),
+`tests/`, CI при наличии git remote. Возвращает JSON
+`{score, majors, minors, issues}`. Доступен в `plan`, `audit`, `act`;
+в `chat` tools нет по дизайну.
+
+Шаблоны для копирования — в `SHARED_DEV_DIR` (default
+`/home/botuser/bots/_shared-dev/project-template/`):
+`pyproject-snippet.toml`, `ci-template.yml`, `requirements-dev-base.in`,
+`.gitignore-base`, `AGENTS.md`.
+
 ## Инструменты
 
 | Инструмент | Назначение | Подтверждение |
@@ -307,6 +329,7 @@ RouterAI и кэшируются на диск.
 |---|---|---|
 | `DEFAULT_WORKSPACE` | `~/projects` | Workspace по умолчанию |
 | `AGENT_CODER_AGENTS_MD_MAX_BYTES` | `8192` | Лимит размера `AGENTS.md`, байт |
+| `SHARED_DEV_DIR` | `/home/botuser/bots/_shared-dev/project-template/` | Каталог шаблонов оформления проекта |
 | `MAX_ITERATIONS` | `50` | Fallback-лимит |
 | `MAX_ITERATIONS_PLAN` | `30` | Plan |
 | `MAX_ITERATIONS_ACT` | `50` | Act |
