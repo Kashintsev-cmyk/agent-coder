@@ -187,12 +187,14 @@ def test_ci_not_flagged_when_no_remote(tmp_path: Path) -> None:
 # --- path guards ---
 
 
+async def _run_raw(workspace: Path, path: str) -> str:
+    return await check_project_standard_tool.executor({"path": path}, _ctx(workspace))
+
+
 def test_path_outside_workspace_errors(tmp_path: Path) -> None:
     import asyncio
 
-    raw = asyncio.run(
-        check_project_standard_tool.executor({"path": "../etc"}, _ctx(tmp_path))
-    )
+    raw: str = asyncio.run(_run_raw(tmp_path, "../etc"))
     assert raw.startswith("Ошибка: путь вне workspace")
 
 
@@ -201,9 +203,7 @@ def test_non_directory_errors(tmp_path: Path) -> None:
 
     f = tmp_path / "file.txt"
     f.write_text("x", encoding="utf-8")
-    raw = asyncio.run(
-        check_project_standard_tool.executor({"path": "file.txt"}, _ctx(tmp_path))
-    )
+    raw: str = asyncio.run(_run_raw(tmp_path, "file.txt"))
     assert raw.startswith("Не директория")
 
 

@@ -16,7 +16,7 @@ from typing import Any
 try:
     import tomllib
 except ImportError:  # Python 3.10
-    import tomli as tomllib  # type: ignore[no-redef]
+    import tomli as tomllib
 
 from agent_coder.tools.registry import Tool, ToolContext
 
