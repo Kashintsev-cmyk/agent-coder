@@ -81,10 +81,10 @@ class Config:
     ]
 
     # Группа audit: дефолт для режима AUDIT + fallback-цепочка (порядок =
-    # приоритет). Порядок важен: первыми идут модели с большим контекстом,
-    # чтобы большие diff'ы не обрезались. DeepSeek R1 (64k) — последним,
-    # только для небольших задач (роутер дополнительно пропускает модели,
-    # в чей context_limit не влезает задача, см. llm/router.py).
+    # приоритет). resolve берёт ПЕРВУЮ влезающую модель группы. Порядок —
+    # «сильнейшая для аудита первой» (270901b), не по размеру контекста:
+    # kimi (262k) перед glm (1048k). Для крупных задач router пропускает
+    # kimi и берёт glm (см. llm/router.py: resolve / fits_context).
     _audit_raw: str = os.getenv("AUDIT_MODEL_IDS", "")
     AUDIT_MODEL_IDS: ClassVar[list[str]] = [
         mid.strip() for mid in _audit_raw.split(",") if mid.strip()
