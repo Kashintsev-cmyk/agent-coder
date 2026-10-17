@@ -2,6 +2,7 @@
 
 Также содержит запуск задачи (_run_task) и генерацию audit-отчёта.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -46,6 +47,7 @@ async def handle_task_photo(message: Message, bot: Bot) -> None:
 
     # Проверка: модель должна поддерживать vision
     from agent_coder.model_catalog import catalog
+
     m = catalog.get(session.model)
     if not (m and m.vision):
         name = m.name if m else session.model
@@ -89,7 +91,9 @@ async def handle_task_photo(message: Message, bot: Bot) -> None:
     task_text = caption or "Посмотри на изображение и учти его в задаче."
 
     await _start_task(
-        bot, message, task_text,
+        bot,
+        message,
+        task_text,
         source_note=f"фото <code>{path.name}</code>",
         images=[path],
     )
@@ -136,8 +140,20 @@ async def handle_task(message: Message, bot: Bot) -> None:
 # до 20 МБ, но промт такого размера бессмыслен — ограничиваемся 1 МБ.
 _PROMPT_FILE_MAX_BYTES = 1024 * 1024
 
-_PROMPT_FILE_EXT = {".txt", ".md", ".markdown", ".rst", ".csv", ".json",
-                    ".yaml", ".yml", ".py", ".js", ".ts", ".sh"}
+_PROMPT_FILE_EXT = {
+    ".txt",
+    ".md",
+    ".markdown",
+    ".rst",
+    ".csv",
+    ".json",
+    ".yaml",
+    ".yml",
+    ".py",
+    ".js",
+    ".ts",
+    ".sh",
+}
 
 
 @router.message(F.document)
@@ -194,12 +210,16 @@ async def handle_task_document(message: Message, bot: Bot) -> None:
     caption = (message.caption or "").strip()
     task_text = f"{caption}\n\n{content}" if caption else content
 
-    await _start_task(bot, message, task_text,
-                      source_note=f"файл <code>{html_escape(name)}</code>")
+    await _start_task(
+        bot, message, task_text, source_note=f"файл <code>{html_escape(name)}</code>"
+    )
 
 
 async def _start_task(
-    bot: Bot, message: Message, task_text: str, source_note: str = "",
+    bot: Bot,
+    message: Message,
+    task_text: str,
+    source_note: str = "",
     images: list[Path] | None = None,
 ) -> None:
     """Общая точка запуска задачи (из текста или из файла-промта)."""
@@ -217,9 +237,7 @@ async def _start_task(
 
     running = _running.get(chat_id)
     if running and not running.done():
-        await message.answer(
-            "⚠️ Другая задача уже выполняется. /cancel чтобы прервать."
-        )
+        await message.answer("⚠️ Другая задача уже выполняется. /cancel чтобы прервать.")
         return
 
     if source_note:
@@ -229,18 +247,19 @@ async def _start_task(
         )
 
     # Вопрос (заканчивается на ?) — быстрый ответ без агентного цикла
-    if images is None and _is_question(task_text):
-        task = asyncio.create_task(
-            _answer_question(bot, chat_id, session, task_text)
-        )
+    if images is None and _should_answer_directly(session, task_text):
+        task = asyncio.create_task(_answer_question(bot, chat_id, session, task_text))
         _running[chat_id] = task
         return
 
-    task = asyncio.create_task(_run_task(bot, chat_id, session, task_text, images=images))
+    task = asyncio.create_task(
+        _run_task(bot, chat_id, session, task_text, images=images)
+    )
     _running[chat_id] = task
 
 
 # ---------- Запуск задачи ----------
+
 
 def _is_question(text: str) -> bool:
     """Сообщение — вопрос? (заканчивается на ? и не слишком длинное).
@@ -251,8 +270,20 @@ def _is_question(text: str) -> bool:
     return t.endswith("?") and len(t) <= 200
 
 
+def _should_answer_directly(session, text: str) -> bool:
+    """Быстрый ответ на вопрос имеет смысл ТОЛЬКО в CHAT.
+
+    В PLAN/ACT/AUDIT — всегда полный агентный цикл: вопрос может
+    требовать tool-вызовов (прочитать файл, найти код и т.п.).
+    """
+    return session.mode == Mode.CHAT and _is_question(text)
+
+
 async def _answer_question(
-    bot: Bot, chat_id: int, session: Session, question: str,
+    bot: Bot,
+    chat_id: int,
+    session: Session,
+    question: str,
 ) -> None:
     """Быстрый ответ на вопрос: один LLM-запрос с CHAT-промптом, без tools.
 
@@ -282,19 +313,23 @@ async def _answer_question(
         )
         session.add_usage(resp.usage)
         session.add_message({"role": "user", "content": question})
-        session.add_message({
-            "role": "assistant",
-            "content": resp.message.content or "",
-        })
+        session.add_message(
+            {
+                "role": "assistant",
+                "content": resp.message.content or "",
+            }
+        )
         session.save()
 
         await bot.send_message(
-            chat_id, resp.message.content or "(пустой ответ)",
+            chat_id,
+            resp.message.content or "(пустой ответ)",
         )
     except Exception as e:
         logger.exception("question answer failed")
         await bot.send_message(
-            chat_id, f"❌ Ошибка: {html_escape(str(e))}",
+            chat_id,
+            f"❌ Ошибка: {html_escape(str(e))}",
         )
     finally:
         try:
@@ -303,8 +338,13 @@ async def _answer_question(
             pass
 
 
-async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str,
-                    images: list[Path] | None = None) -> None:
+async def _run_task(
+    bot: Bot,
+    chat_id: int,
+    session: Session,
+    task_text: str,
+    images: list[Path] | None = None,
+) -> None:
     """Точка входа задачи.
 
     ВАЖНО: даже если не удалось отправить статус-сообщение или поднять
@@ -355,8 +395,10 @@ async def _run_task(bot: Bot, chat_id: int, session: Session, task_text: str,
                 auto_continue += 1
                 logger.info(
                     "auto-continue %d/%d для сессии %s (итераций: %d)",
-                    auto_continue, config.MAX_AUTO_CONTINUE,
-                    session.id, result.iterations_used,
+                    auto_continue,
+                    config.MAX_AUTO_CONTINUE,
+                    session.id,
+                    result.iterations_used,
                 )
                 current_task = "продолжи"
                 current_images = None  # фото только на первом круге
