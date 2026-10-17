@@ -87,15 +87,7 @@ SYSTEM_CHAT = """\
 """
 
 
-def system_prompt(mode: Mode, workspace: str) -> str:
-    if mode == Mode.AUDIT:
-        from agent_coder.agent.audit_prompt import build_audit_prompt
-
-        return build_audit_prompt(workspace=workspace)
-    if mode == Mode.CHAT:
-        return SYSTEM_CHAT.format(workspace=workspace)
-    template = SYSTEM_PLAN if mode == Mode.PLAN else SYSTEM_ACT
-    base = template.format(workspace=workspace)
+def _with_agents_md(base: str, workspace: str) -> str:
     try:
         from agent_coder.agent.workspace_rules import append_agents_md
 
@@ -106,3 +98,14 @@ def system_prompt(mode: Mode, workspace: str) -> str:
             exc_info=True,
         )
         return base
+
+
+def system_prompt(mode: Mode, workspace: str) -> str:
+    if mode == Mode.AUDIT:
+        from agent_coder.agent.audit_prompt import build_audit_prompt
+
+        return build_audit_prompt(workspace=workspace)
+    if mode == Mode.CHAT:
+        return _with_agents_md(SYSTEM_CHAT.format(workspace=workspace), workspace)
+    template = SYSTEM_PLAN if mode == Mode.PLAN else SYSTEM_ACT
+    return _with_agents_md(template.format(workspace=workspace), workspace)

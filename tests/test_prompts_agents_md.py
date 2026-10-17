@@ -1,4 +1,4 @@
-"""Сквозные тесты: AGENTS.md попадает в system_prompt для PLAN/ACT."""
+"""Сквозные тесты: AGENTS.md попадает в system_prompt для PLAN/ACT/CHAT."""
 
 from __future__ import annotations
 
@@ -34,8 +34,8 @@ def _write(tmp_path: Path, text: str) -> None:
     (tmp_path / "AGENTS.md").write_text(text, encoding="utf-8")
 
 
-# (а) есть AGENTS.md — содержимое в промте PLAN и ACT
-@pytest.mark.parametrize("mode", [Mode.PLAN, Mode.ACT])
+# (а) есть AGENTS.md — содержимое в промте PLAN, ACT и CHAT
+@pytest.mark.parametrize("mode", [Mode.PLAN, Mode.ACT, Mode.CHAT])
 def test_agents_md_added_to_prompt(tmp_path: Path, mode: Mode) -> None:
     _write(tmp_path, "use ruff and pytest")
     out = system_prompt(mode, str(tmp_path))
@@ -47,7 +47,11 @@ def test_agents_md_added_to_prompt(tmp_path: Path, mode: Mode) -> None:
 # (б) нет файла — промт как раньше, байт-в-байт
 @pytest.mark.parametrize(
     "mode,template",
-    [(Mode.PLAN, SYSTEM_PLAN), (Mode.ACT, SYSTEM_ACT)],
+    [
+        (Mode.PLAN, SYSTEM_PLAN),
+        (Mode.ACT, SYSTEM_ACT),
+        (Mode.CHAT, SYSTEM_CHAT),
+    ],
 )
 def test_no_file_backward_compat(tmp_path: Path, mode: Mode, template: str) -> None:
     ws = str(tmp_path)
@@ -75,14 +79,16 @@ def test_truncated_through_prompt(tmp_path: Path) -> None:
     assert len(out.encode("utf-8")) <= upper
 
 
-# (г) CHAT и AUDIT не тронуты при наличии AGENTS.md
-def test_chat_not_touched(tmp_path: Path) -> None:
+# (г) CHAT теперь тоже подхватывает, хвост — базовый SYSTEM_CHAT
+def test_chat_gets_agents_md(tmp_path: Path) -> None:
     _write(tmp_path, "SECRET_RULE_XYZ")
     ws = str(tmp_path)
-    assert system_prompt(Mode.CHAT, ws) == SYSTEM_CHAT.format(workspace=ws)
-    assert "SECRET_RULE_XYZ" not in system_prompt(Mode.CHAT, ws)
+    out = system_prompt(Mode.CHAT, ws)
+    assert "SECRET_RULE_XYZ" in out
+    assert out.startswith(SYSTEM_CHAT.format(workspace=ws))
 
 
+# AUDIT не тронут
 def test_audit_not_touched(tmp_path: Path) -> None:
     _write(tmp_path, "SECRET_RULE_XYZ")
     ws = str(tmp_path)
@@ -92,9 +98,20 @@ def test_audit_not_touched(tmp_path: Path) -> None:
     assert "SECRET_RULE_XYZ" not in system_prompt(Mode.AUDIT, ws)
 
 
-# (д) падение workspace_rules -> откат на base, без исключения
+# (д) падение workspace_rules -> откат на base, для PLAN/ACT/CHAT
+@pytest.mark.parametrize(
+    "mode,template",
+    [
+        (Mode.PLAN, SYSTEM_PLAN),
+        (Mode.ACT, SYSTEM_ACT),
+        (Mode.CHAT, SYSTEM_CHAT),
+    ],
+)
 def test_failure_falls_back_to_base(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path,
+    mode: Mode,
+    template: str,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     _write(tmp_path, "x")
 
@@ -102,7 +119,6 @@ def test_failure_falls_back_to_base(
         raise RuntimeError("boom")
 
     monkeypatch.setattr(workspace_rules, "append_agents_md", boom)
-    # system_prompt импортирует append_agents_md внутри функции,
-    # поэтому подмены в модуле workspace_rules достаточно.
-    out = system_prompt(Mode.PLAN, str(tmp_path))
-    assert out == SYSTEM_PLAN.format(workspace=str(tmp_path))
+    ws = str(tmp_path)
+    out = system_prompt(mode, ws)
+    assert out == template.format(workspace=ws)
