@@ -24,6 +24,7 @@
   `reasoning_effort=True`, то и `reasoning=True` (градация без самого
   reasoning-режима невозможна).
 """
+
 from __future__ import annotations
 
 import logging
@@ -62,7 +63,7 @@ class ModelInfo:
     web_search_builtin: bool = False
     verbosity: bool = False
     description: str = ""  # краткое описание от RouterAI (RU)
-    input_price: float = 0.0   # ₽ за 1M
+    input_price: float = 0.0  # ₽ за 1M
     output_price: float = 0.0  # ₽ за 1M
     tag: str = ""
 
@@ -82,6 +83,20 @@ class ModelInfo:
 # тянет model_catalog при старте.
 _FALLBACK_CATALOG: dict[str, ModelInfo] = {
     # --- Модели с явно заданными capability-флагами ---
+    "deepseek/deepseek-v4-flash": ModelInfo(
+        id="deepseek/deepseek-v4-flash",
+        name="DeepSeek V4 Flash",
+        context=1_048_576,
+        reasoning=True,
+        vision=True,
+        tools=True,
+        reasoning_effort=True,
+        web_search_builtin=False,
+        # TODO(pricing): verify from API. Estimated below v4.1-flash.
+        input_price=5.0,
+        output_price=10.0,
+        tag="быстрая, дешёвая (fallback estimate)",
+    ),
     "deepseek/deepseek-v4.1-flash": ModelInfo(
         id="deepseek/deepseek-v4.1-flash",
         name="DeepSeek V4.1 Flash",
@@ -114,7 +129,7 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         context=262_144,
         reasoning=False,
         vision=False,  # input_modalities: text
-        tools=True,   # supported_parameters: tools
+        tools=True,  # supported_parameters: tools
         reasoning_effort=False,
         web_search_builtin=False,
         input_price=13.07,
@@ -133,6 +148,20 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         input_price=76.22,
         output_price=272.22,
         tag="глубокий аудит",
+    ),
+    "xiaomi/mimo-v2.6-flash": ModelInfo(
+        id="xiaomi/mimo-v2.6-flash",
+        name="MiMo V2.6 Flash",
+        context=262_144,
+        reasoning=True,
+        vision=True,
+        tools=True,
+        reasoning_effort=True,
+        web_search_builtin=False,
+        # TODO(pricing): verify from API.
+        input_price=0.0,
+        output_price=0.0,
+        tag="flash (fallback estimate)",
     ),
     "z-ai/glm-5.3": ModelInfo(
         id="z-ai/glm-5.3",
@@ -221,9 +250,9 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="DeepSeek V4 Pro",
         context=1_048_576,
         reasoning=True,
-        vision=False,             # TODO(capabilities)
-        tools=False,              # TODO(capabilities)
-        reasoning_effort=False,   # TODO(capabilities)
+        vision=False,  # TODO(capabilities)
+        tools=False,  # TODO(capabilities)
+        reasoning_effort=False,  # TODO(capabilities)
         web_search_builtin=False,  # TODO(capabilities)
         input_price=35.0,
         output_price=70.0,
@@ -234,9 +263,9 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="Claude Sonnet 4.6",
         context=1_000_000,
         reasoning=True,
-        vision=False,             # TODO(capabilities)
-        tools=False,              # TODO(capabilities)
-        reasoning_effort=False,   # TODO(capabilities)
+        vision=False,  # TODO(capabilities)
+        tools=False,  # TODO(capabilities)
+        reasoning_effort=False,  # TODO(capabilities)
         web_search_builtin=False,  # TODO(capabilities)
         input_price=80.0,
         output_price=400.0,
@@ -247,9 +276,9 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="Claude Haiku 4.5",
         context=200_000,
         reasoning=True,
-        vision=False,             # TODO(capabilities)
-        tools=False,              # TODO(capabilities)
-        reasoning_effort=False,   # TODO(capabilities)
+        vision=False,  # TODO(capabilities)
+        tools=False,  # TODO(capabilities)
+        reasoning_effort=False,  # TODO(capabilities)
         web_search_builtin=False,  # TODO(capabilities)
         input_price=27.0,
         output_price=135.0,
@@ -260,9 +289,9 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="GPT-5 Nano",
         context=400_000,
         reasoning=True,
-        vision=False,             # TODO(capabilities)
-        tools=False,              # TODO(capabilities)
-        reasoning_effort=False,   # TODO(capabilities)
+        vision=False,  # TODO(capabilities)
+        tools=False,  # TODO(capabilities)
+        reasoning_effort=False,  # TODO(capabilities)
         web_search_builtin=False,  # TODO(capabilities)
         input_price=1.4,
         output_price=11.0,
@@ -273,9 +302,9 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="GPT-5.4 Mini",
         context=400_000,
         reasoning=True,
-        vision=False,             # TODO(capabilities)
-        tools=False,              # TODO(capabilities)
-        reasoning_effort=False,   # TODO(capabilities)
+        vision=False,  # TODO(capabilities)
+        tools=False,  # TODO(capabilities)
+        reasoning_effort=False,  # TODO(capabilities)
         web_search_builtin=False,  # TODO(capabilities)
         input_price=20.0,
         output_price=120.0,
@@ -286,9 +315,9 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="GPT-5.4",
         context=1_050_000,
         reasoning=True,
-        vision=False,             # TODO(capabilities)
-        tools=False,              # TODO(capabilities)
-        reasoning_effort=False,   # TODO(capabilities)
+        vision=False,  # TODO(capabilities)
+        tools=False,  # TODO(capabilities)
+        reasoning_effort=False,  # TODO(capabilities)
         web_search_builtin=False,  # TODO(capabilities)
         input_price=68.0,
         output_price=400.0,
@@ -299,9 +328,9 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="Gemini 3.5 Flash",
         context=1_048_576,
         reasoning=True,
-        vision=False,             # TODO(capabilities)
-        tools=False,              # TODO(capabilities)
-        reasoning_effort=False,   # TODO(capabilities)
+        vision=False,  # TODO(capabilities)
+        tools=False,  # TODO(capabilities)
+        reasoning_effort=False,  # TODO(capabilities)
         web_search_builtin=False,  # TODO(capabilities)
         input_price=40.0,
         output_price=240.0,
@@ -312,9 +341,9 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="Gemini 2.5 Flash",
         context=1_048_576,
         reasoning=True,
-        vision=False,             # TODO(capabilities)
-        tools=False,              # TODO(capabilities)
-        reasoning_effort=False,   # TODO(capabilities)
+        vision=False,  # TODO(capabilities)
+        tools=False,  # TODO(capabilities)
+        reasoning_effort=False,  # TODO(capabilities)
         web_search_builtin=False,  # TODO(capabilities)
         input_price=8.0,
         output_price=67.0,
@@ -353,12 +382,14 @@ def _make_placeholder(model_id: str) -> ModelInfo:
 def find_model(model_id: str) -> ModelInfo | None:
     """Модель по id из ``model_catalog.catalog`` (fallback → cache → api)."""
     from agent_coder.model_catalog import catalog
+
     return catalog.get(model_id)
 
 
 def get_model_name(model_id: str) -> str:
     """Имя модели из ``model_catalog.catalog`` или сам id, если нет."""
     from agent_coder.model_catalog import catalog
+
     m = catalog.get(model_id)
     return m.name if m else model_id
 
@@ -384,6 +415,7 @@ def supports(model_id: str, cap: str) -> bool:
     Неизвестный cap → ValueError.
     """
     from agent_coder.model_catalog import catalog
+
     if cap not in CAPABILITIES:
         raise ValueError(f"unknown capability: {cap!r}")
     m = catalog.get(model_id)
@@ -399,6 +431,7 @@ def capabilities(model_id: str) -> list[str]:
     Для неизвестной модели — пустой список.
     """
     from agent_coder.model_catalog import catalog
+
     if catalog.get(model_id) is None:
         return []
     return sorted(c for c in CAPABILITIES if supports(model_id, c))
