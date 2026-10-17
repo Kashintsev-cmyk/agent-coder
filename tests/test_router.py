@@ -1,5 +1,6 @@
 """Тесты ModelRouter: дефолты по режиму, приоритет ручного выбора,
 fallback-цепочки при 429/timeout."""
+
 from __future__ import annotations
 
 import httpx
@@ -18,6 +19,7 @@ def fresh_router():
 
 # --- дефолты по режиму ---
 
+
 def test_default_for_act_is_first_coding(fresh_router):
     assert fresh_router.default_for_mode("act") == config.CODING_MODEL_IDS[0]
 
@@ -32,6 +34,7 @@ def test_default_for_plan_and_chat_use_coding_group(fresh_router):
 
 
 # --- приоритет ручного выбора (вариант «б») ---
+
 
 def test_resolve_manual_overrides_router(fresh_router):
     manual = config.CURATED_MODEL_IDS[-1]
@@ -51,6 +54,7 @@ def test_resolve_router_disabled_returns_none(monkeypatch, fresh_router):
 
 
 # --- проверка размера контекста ---
+
 
 def test_max_input_tokens_respects_fill_ratio(fresh_router):
     # GLM 5.3: 1 048 576 * 0.8
@@ -75,45 +79,56 @@ def test_fits_context_large_task_does_not_fit_r1(fresh_router):
     assert fresh_router.fits_context("z-ai/glm-5.3", 100_000) is True
 
 
-def test_chain_100k_audit_skips_r1(fresh_router):
-    """Задача 100k токенов: R1 пропускается, в цепочке остаются GLM и Kimi."""
+def test_chain_100k_audit_respects_context(fresh_router):
+    """100k токенов: chain_for = выбранная + все влезающие модели группы."""
     audit = config.AUDIT_MODEL_IDS
-    assert audit[-1] == "deepseek/deepseek-r1"  # R1 идёт последним в группе
     chain = fresh_router.chain_for(audit[0], "audit", 100_000)
-    assert chain == ["z-ai/glm-5.3", "moonshotai/kimi-k2.7-code"]
-    assert "deepseek/deepseek-r1" not in chain
+    assert chain[0] == audit[0]
+    for mid in audit[1:]:
+        if fresh_router.fits_context(mid, 100_000):
+            assert mid in chain
+        else:
+            assert mid not in chain
 
 
-def test_next_on_error_100k_audit_goes_to_glm_then_stops(fresh_router):
-    """100k токенов в audit: GLM 5.3 → Kimi K2.7, R1 уже не берём."""
+def test_next_on_error_100k_audit_moves_to_next_fitting(fresh_router):
+    """100k токенов в audit: next_on_error двигает по цепочке audit-группы."""
+    audit = config.AUDIT_MODEL_IDS
+    chain = fresh_router.chain_for(audit[0], "audit", 100_000)
+    assert len(chain) >= 2  # как минимум kimi и glm влезают в 100k
     state = RouterState(input_tokens=100_000)
     nxt = fresh_router.next_on_error(state, "audit", _rate_limit_error())
-    assert nxt == "moonshotai/kimi-k2.7-code"
-    # Следующая — только R1 (не влезает), значит цепочка исчерпана.
-    assert fresh_router.next_on_error(state, "audit", _rate_limit_error()) is None
+    assert nxt == chain[1]
 
 
-def test_resolve_100k_audit_picks_glm(fresh_router):
-    """100k токенов в audit: дефолт GLM 5.3 (влезает), R1 не выбирается."""
-    assert fresh_router.resolve("audit", input_tokens=100_000) == "z-ai/glm-5.3"
+def test_resolve_100k_audit_picks_first_fitting(fresh_router):
+    """100k токенов в audit: resolve берёт первую влезающую модель группы."""
+    audit = config.AUDIT_MODEL_IDS
+    expected = next(mid for mid in audit if fresh_router.fits_context(mid, 100_000))
+    assert fresh_router.resolve("audit", input_tokens=100_000) == expected
 
 
-def test_resolve_small_task_still_glm_default(fresh_router):
-    """Небольшая задача в audit: дефолт группы (GLM 5.3) — не R1."""
-    assert fresh_router.resolve("audit", input_tokens=1_000) == "z-ai/glm-5.3"
+def test_resolve_small_audit_task_uses_default(fresh_router):
+    """Небольшая задача в audit: resolve возвращает дефолт группы."""
+    assert (
+        fresh_router.resolve("audit", input_tokens=1_000) == config.AUDIT_MODEL_IDS[0]
+    )
 
 
-def test_resolve_prefers_biggest_context_model(fresh_router):
-    """resolve берёт ПЕРВУЮ влезающую модель группы, а не самую дешёвую.
+def test_resolve_picks_first_fitting_not_biggest_context(fresh_router):
+    """resolve берёт ПЕРВУЮ влезающую модель группы, а не самую большую по контексту.
 
-    Порядок audit — от большого контекста к малому, поэтому любая задача,
-    которая влезает в GLM 5.3 (838k), решается на GLM 5.3; R1 (51k) не
-    подставляется как дефолт даже для мелких задач.
+    Новый стек audit = [kimi(262k), glm(1048k), mimo]: маленькие задачи
+    решаются на kimi (первая), крупные — переключаются на glm (838k max).
     """
-    # 300k влезает и в Kimi (209k)? нет — 300k > 209k; влезает только GLM (838k).
-    assert fresh_router.resolve("audit", input_tokens=300_000) == "z-ai/glm-5.3"
-    # Задача, влезающая во все три, всё равно решается на GLM 5.3.
-    assert fresh_router.resolve("audit", input_tokens=1_000) == "z-ai/glm-5.3"
+    audit = config.AUDIT_MODEL_IDS
+    # 1k влезает в первую модель — она и выбирается.
+    assert fresh_router.resolve("audit", input_tokens=1_000) == audit[0]
+    # 300k не влезает в kimi (209k max), но влезает в glm (838k max).
+    assert fresh_router.fits_context(audit[0], 300_000) is False
+    resolved_300k = fresh_router.resolve("audit", input_tokens=300_000)
+    assert resolved_300k != audit[0]
+    assert fresh_router.fits_context(resolved_300k, 300_000) is True
 
 
 def test_chain_without_metadata_keeps_model(fresh_router):
@@ -125,12 +140,15 @@ def test_chain_without_metadata_keeps_model(fresh_router):
 
 # --- fallback-цепочки ---
 
+
 def test_chain_coding_order(fresh_router):
     coding = config.CODING_MODEL_IDS
     assert fresh_router.chain_for(coding[0], "act") == list(coding)
     # Середина цепочки: выбранная модель первая, остальные в исходном порядке.
     assert fresh_router.chain_for(coding[1], "act") == [
-        coding[1], coding[0], coding[2],
+        coding[1],
+        coding[0],
+        coding[2],
     ]
 
 
@@ -144,6 +162,7 @@ def test_chain_unknown_model_single_element(fresh_router):
 
 
 # --- next_on_error ---
+
 
 def _rate_limit_error() -> RateLimitError:
     request = httpx.Request("POST", "https://routerai.ru/api/v1/chat/completions")
