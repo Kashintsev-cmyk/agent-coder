@@ -1,4 +1,5 @@
 """Конфигурация agent-coder."""
+
 import os
 from pathlib import Path
 from typing import ClassVar
@@ -31,9 +32,7 @@ def _env_float(name: str, default: str) -> float:
     try:
         return float(raw)
     except (TypeError, ValueError) as exc:
-        raise ValueError(
-            f"{name}={raw!r} должен быть числом (env {name})"
-        ) from exc
+        raise ValueError(f"{name}={raw!r} должен быть числом (env {name})") from exc
 
 
 class Config:
@@ -149,6 +148,14 @@ class Config:
     DEFAULT_WORKSPACE: str = os.getenv(
         "DEFAULT_WORKSPACE", str(Path.home() / "projects")
     )
+    # Каталог с шаблонами оформления проекта (pyproject-snippet.toml,
+    # ci-template.yml, requirements-dev-base.in, .gitignore-base).
+    # Используется check_project_standard и подсказками агенту в промте.
+    # Путь намеренно абсолютный: агент работает из разных workspace'ов.
+    SHARED_DEV_DIR: str = os.getenv(
+        "SHARED_DEV_DIR",
+        "/home/botuser/bots/_shared-dev/project-template/",
+    )
     MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "200"))
     MAX_ITERATIONS_PLAN: int = int(os.getenv("MAX_ITERATIONS_PLAN", "100"))
     MAX_ITERATIONS_ACT: int = int(os.getenv("MAX_ITERATIONS_ACT", "200"))
@@ -181,7 +188,7 @@ class Config:
     ]
     # Таймаут ожидания подтверждения опасной команды, секунды
     APPROVAL_TIMEOUT: float = float(os.getenv("APPROVAL_TIMEOUT", "900"))
-    
+
     # Путь сессий
     SESSIONS_DIR: Path = Path(os.getenv("SESSIONS_DIR", str(BASE_DIR / "sessions")))
 
@@ -267,7 +274,7 @@ class Config:
         if cls.WEB_SEARCH_ENGINE not in ("native", "exa"):
             errors.append(
                 f"WEB_SEARCH_ENGINE={cls.WEB_SEARCH_ENGINE!r} должен быть "
-                f"\"native\" или \"exa\""
+                f'"native" или "exa"'
             )
         if cls.WEB_SEARCH_MAX_RESULTS < 1:
             errors.append(
@@ -277,7 +284,7 @@ class Config:
         if cls.SERVICE_TIER not in ("default", "flex", "priority"):
             errors.append(
                 f"SERVICE_TIER={cls.SERVICE_TIER!r} должен быть "
-                f"\"default\", \"flex\" или \"priority\""
+                f'"default", "flex" или "priority"'
             )
 
         if cls.MAX_HISTORY_TOKENS < 1000:
