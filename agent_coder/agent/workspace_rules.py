@@ -24,6 +24,8 @@ MAX_AGENTS_MD_BYTES = int(os.getenv("AGENT_CODER_AGENTS_MD_MAX_BYTES", "8192"))
 TRUNCATION_MARKER = "\n\n[AGENTS.md truncated]\n"
 SECTION_HEADER = "\n\n--- AGENTS.md ---\n\n"
 SECTION_FOOTER = "\n--- end AGENTS.md ---\n"
+BUILTIN_HEADER = "\n\n--- PROJECT STANDARD (builtin) ---\n\n"
+BUILTIN_FOOTER = "\n--- end PROJECT STANDARD ---\n"
 
 _cache: dict[str, tuple[int, int, str]] = {}
 _lock = threading.Lock()
@@ -82,3 +84,31 @@ def append_agents_md(prompt: str, workspace: str | Path) -> str:
     if not text:
         return prompt
     return prompt + SECTION_HEADER + text.rstrip() + SECTION_FOOTER
+
+
+def append_builtin_standard(prompt: str) -> str:
+    """Дополнить prompt встроенным стандартом, если он непустой.
+
+    Ошибка импорта/чтения → prompt без изменений (мягкая деградация).
+    """
+    try:
+        from agent_coder.rules import load_project_standard
+
+        text = load_project_standard()
+    except Exception:
+        logger.debug("builtin standard: не удалось загрузить", exc_info=True)
+        return prompt
+    if not text:
+        return prompt
+    return prompt + BUILTIN_HEADER + text.rstrip() + BUILTIN_FOOTER
+
+
+def append_rules(prompt: str, workspace: str | Path) -> str:
+    """Дополнить prompt правилами проекта.
+
+    Приоритет: workspace/AGENTS.md > builtin project_standard.md.
+    Если AGENTS.md есть (даже пустой) — builtin не подмешивается.
+    """
+    if load_agents_md(workspace) is not None:
+        return append_agents_md(prompt, workspace)
+    return append_builtin_standard(prompt)

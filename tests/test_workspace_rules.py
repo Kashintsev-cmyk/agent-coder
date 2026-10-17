@@ -9,11 +9,15 @@ import pytest
 
 from agent_coder.agent import workspace_rules
 from agent_coder.agent.workspace_rules import (
+    BUILTIN_FOOTER,
+    BUILTIN_HEADER,
     MAX_AGENTS_MD_BYTES,
     SECTION_FOOTER,
     SECTION_HEADER,
     TRUNCATION_MARKER,
     append_agents_md,
+    append_builtin_standard,
+    append_rules,
     clear_cache,
     load_agents_md,
 )
@@ -138,3 +142,35 @@ def test_workspace_is_file_not_dir(tmp_path: Path) -> None:
     f = tmp_path / "ws_file"
     f.write_text("x")
     assert load_agents_md(f) is None
+
+
+# --- builtin standard (шаг C) ---
+
+
+def test_append_builtin_standard_adds_section() -> None:
+    out = append_builtin_standard("base")
+    assert out.startswith("base" + BUILTIN_HEADER)
+    assert out.endswith(BUILTIN_FOOTER)
+    assert "Стандарт оформления" in out
+
+
+def test_append_builtin_standard_skipped_when_empty(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from agent_coder import rules
+
+    monkeypatch.setattr(rules, "load_project_standard", lambda: "")
+    assert append_builtin_standard("base") == "base"
+
+
+def test_append_rules_prefers_agents_md(tmp_path: Path) -> None:
+    _write_agents_md(tmp_path, "project-specific rule")
+    out = append_rules("base", tmp_path)
+    assert "project-specific rule" in out
+    assert "Стандарт оформления" not in out
+
+
+def test_append_rules_uses_builtin_when_no_agents_md(tmp_path: Path) -> None:
+    out = append_rules("base", tmp_path)
+    assert "Стандарт оформления" in out
+    assert "project-specific rule" not in out

@@ -87,14 +87,14 @@ SYSTEM_CHAT = """\
 """
 
 
-def _with_agents_md(base: str, workspace: str) -> str:
+def _with_rules(base: str, workspace: str) -> str:
     try:
-        from agent_coder.agent.workspace_rules import append_agents_md
+        from agent_coder.agent.workspace_rules import append_rules
 
-        return append_agents_md(base, workspace)
+        return append_rules(base, workspace)
     except Exception:
         logger.debug(
-            "AGENTS.md: не удалось применить, работаем без него",
+            "workspace rules: не удалось применить, работаем без них",
             exc_info=True,
         )
         return base
@@ -106,6 +106,6 @@ def system_prompt(mode: Mode, workspace: str) -> str:
 
         return build_audit_prompt(workspace=workspace)
     if mode == Mode.CHAT:
-        return _with_agents_md(SYSTEM_CHAT.format(workspace=workspace), workspace)
+        return _with_rules(SYSTEM_CHAT.format(workspace=workspace), workspace)
     template = SYSTEM_PLAN if mode == Mode.PLAN else SYSTEM_ACT
-    return _with_agents_md(template.format(workspace=workspace), workspace)
+    return _with_rules(template.format(workspace=workspace), workspace)

@@ -53,9 +53,30 @@ def test_agents_md_added_to_prompt(tmp_path: Path, mode: Mode) -> None:
         (Mode.CHAT, SYSTEM_CHAT),
     ],
 )
-def test_no_file_backward_compat(tmp_path: Path, mode: Mode, template: str) -> None:
+def test_no_rules_backward_compat(
+    tmp_path: Path,
+    mode: Mode,
+    template: str,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(workspace_rules, "append_builtin_standard", lambda p: p)
     ws = str(tmp_path)
     assert system_prompt(mode, ws) == template.format(workspace=ws)
+
+
+def test_builtin_standard_present_when_no_agents_md(tmp_path: Path) -> None:
+    ws = str(tmp_path)
+    out = system_prompt(Mode.PLAN, ws)
+    assert "--- PROJECT STANDARD (builtin) ---" in out
+    assert "Стандарт оформления" in out
+
+
+def test_builtin_standard_absent_when_agents_md_present(tmp_path: Path) -> None:
+    _write(tmp_path, "project-specific rule")
+    ws = str(tmp_path)
+    out = system_prompt(Mode.PLAN, ws)
+    assert "--- PROJECT STANDARD (builtin) ---" not in out
+    assert "project-specific rule" in out
 
 
 # (в) файл больше лимита — обрезан + маркер, сквозь промт
