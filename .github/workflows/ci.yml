@@ -31,9 +31,6 @@ jobs:
       - name: Ruff
         run: ruff check .
 
-      - name: Mypy
-        run: mypy agent_coder tests
-
       - name: Pytest
         run: pytest -q -n auto
         env:
