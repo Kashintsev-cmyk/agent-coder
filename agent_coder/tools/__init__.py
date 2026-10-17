@@ -1,4 +1,6 @@
 """Регистрация всех инструментов."""
+
+from agent_coder.tools.check_project_standard import check_project_standard_tool
 from agent_coder.tools.edit_file import edit_file_tool
 from agent_coder.tools.git import (
     git_commit_tool,
@@ -22,6 +24,7 @@ def build_registry() -> ToolRegistry:
     registry.register(list_files_tool)
     registry.register(search_tool)
     registry.register(search_history_tool)
+    registry.register(check_project_standard_tool)
     # Правка
     registry.register(write_file_tool)
     registry.register(edit_file_tool)
