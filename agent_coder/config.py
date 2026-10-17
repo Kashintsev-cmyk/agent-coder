@@ -48,7 +48,6 @@ class Config:
     # Модели
     MODEL_MAIN: str = os.getenv("MODEL_MAIN", "deepseek/deepseek-v4-flash")
     # Зарезервировано на будущее (не используется в коде)
-    MODEL_FAST: str = os.getenv("MODEL_FAST", MODEL_MAIN)
 
     # Список curated-моделей для меню выбора (через запятую). Порядок
     # сохраняется в UI. Метаданные моделей — в `agent_coder.models._FALLBACK_CATALOG`.
