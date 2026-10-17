@@ -1,7 +1,11 @@
 """Системные промпты и режимы."""
+
 from __future__ import annotations
 
+import logging
 from enum import Enum
+
+logger = logging.getLogger(__name__)
 
 
 class Mode(str, Enum):
@@ -86,8 +90,19 @@ SYSTEM_CHAT = """\
 def system_prompt(mode: Mode, workspace: str) -> str:
     if mode == Mode.AUDIT:
         from agent_coder.agent.audit_prompt import build_audit_prompt
+
         return build_audit_prompt(workspace=workspace)
     if mode == Mode.CHAT:
         return SYSTEM_CHAT.format(workspace=workspace)
     template = SYSTEM_PLAN if mode == Mode.PLAN else SYSTEM_ACT
-    return template.format(workspace=workspace)
+    base = template.format(workspace=workspace)
+    try:
+        from agent_coder.agent.workspace_rules import append_agents_md
+
+        return append_agents_md(base, workspace)
+    except Exception:
+        logger.debug(
+            "AGENTS.md: не удалось применить, работаем без него",
+            exc_info=True,
+        )
+        return base
