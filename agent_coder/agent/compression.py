@@ -13,6 +13,7 @@
   - после повторных сбоев LLM — cooldown, чтобы не дёргать суммаризацию
     на каждой итерации.
 """
+
 from __future__ import annotations
 
 import json
@@ -26,8 +27,8 @@ from agent_coder.config import config
 
 logger = logging.getLogger(__name__)
 
-MIN_RECENT = 6   # сколько последних сообщений оставить как есть
-MIN_TOTAL = 10   # минимум сообщений для запуска сжатия
+MIN_RECENT = 6  # сколько последних сообщений оставить как есть
+MIN_TOTAL = 10  # минимум сообщений для запуска сжатия
 # Если старая часть — меньше этой доли истории, сжатие неэффективно.
 MIN_OLD_SHARE = 0.2
 
@@ -47,6 +48,7 @@ class CompressionResult:
     (следующий запрос к LLM только предстоит). Для сообщения в Telegram
     такой точности достаточно.
     """
+
     messages_before: int
     messages_after: int
     tokens_before: int
@@ -70,10 +72,12 @@ def estimate_tokens(messages: list[dict[str, Any]]) -> int:
         text = content_to_text(m.get("content"))
         chars += len(text)
         cyr += sum(1 for ch in text if "а" <= ch.lower() <= "я" or ch.lower() == "ё")
-        for tc in (m.get("tool_calls") or []):
+        for tc in m.get("tool_calls") or []:
             tc_json = json.dumps(tc, ensure_ascii=False)
             chars += len(tc_json)
-            cyr += sum(1 for ch in tc_json if "а" <= ch.lower() <= "я" or ch.lower() == "ё")
+            cyr += sum(
+                1 for ch in tc_json if "а" <= ch.lower() <= "я" or ch.lower() == "ё"
+            )
     latin = chars - cyr
     return max(0, round(cyr / 2 + latin / 4))
 
@@ -88,7 +92,9 @@ def soft_limit(session) -> int:
     return config.MAX_HISTORY_TOKENS
 
 
-def find_cut(messages: list[dict[str, Any]], min_recent: int = MIN_RECENT) -> int | None:
+def find_cut(
+    messages: list[dict[str, Any]], min_recent: int = MIN_RECENT
+) -> int | None:
     """Найти индекс начала «recent»-блока.
 
     Безопасная точка разреза — сообщение с role 'user' или 'assistant'
@@ -133,8 +139,7 @@ def format_for_summary(messages: list[dict[str, Any]]) -> str:
             text = content[:2000]
             if tcs:
                 names = ", ".join(
-                    (tc.get("function") or {}).get("name", "?")
-                    for tc in tcs
+                    (tc.get("function") or {}).get("name", "?") for tc in tcs
                 )
                 parts.append(f"АССИСТЕНТ: {text}\n[вызвал: {names}]")
             elif text:
@@ -144,23 +149,62 @@ def format_for_summary(messages: list[dict[str, Any]]) -> str:
     return "\n\n".join(parts)
 
 
-_SUMMARY_SYSTEM = (
-    "Ты — ассистент, сжимающий историю диалога в краткое резюме. "
-    "Сохрани: суть задачи, ключевые решения, изменённые файлы и пути, "
-    "текущее состояние, следующий шаг. Убери: tool-дампы, повторы, "
-    "несущественные детали. Формат: маркированный список, 10–20 пунктов, "
-    "русский язык."
-)
+_SUMMARY_SYSTEM = """Ты — суммаризатор истории диалога агента-программиста. Сожми старые
+сообщения в структурированное резюме.
 
-_SUMMARY_UPDATE_SYSTEM = (
-    "Ты — ассистент, сжимающий историю диалога в краткое резюме. "
-    "Тебе дано ПРЕДЫДУЩЕЕ РЕЗЮМЕ и новые события диалога, произошедшие "
-    "ПОСЛЕ него. Обнови резюме: сохрани из предыдущего всё ещё актуальное "
-    "(задачу, решения, пути файлов, состояние), добавь новое, убери "
-    "устаревшее и выполненное. Не теряй факты из предыдущего резюме, "
-    "если они не отменены. Формат: маркированный список, 10–20 пунктов, "
-    "русский язык."
-)
+ЖЁСТКИЕ ПРАВИЛА:
+- Используй ТОЛЬКО факты из транскрипта ниже.
+- Если чего-то нет в транскрипте — пиши "не было" или пропускай.
+- НЕ додумывай имена файлов, SHA коммитов, пути, версии, результаты
+  тестов. Копируй их буквально из транскрипта.
+- Если факт не подтверждён транскриптом — не включай его.
+- Не описывай код, которого нет в транскрипте.
+- Не выдумывай номера строк, имена функций, названия коммитов.
+
+ФОРМАТ (строго):
+### Задача
+<1-3 пункта: что просил пользователь>
+
+### Сделано
+<маркированный список: что агент сделал; пути файлов — из транскрипта>
+
+### Проверено
+<маркированный список: тесты, проверки; если не проверялось — "не проверялось">
+
+### Осталось
+<маркированный список: что не сделано; если всё сделано — "всё сделано">
+
+Русский язык. 10-20 пунктов максимум. Без воды.
+"""
+
+_SUMMARY_UPDATE_SYSTEM = """Ты — суммаризатор истории диалога агента-программиста. Тебе дано
+ПРЕДЫДУЩЕЕ РЕЗЮМЕ и новые события диалога, произошедшие ПОСЛЕ него.
+
+ЖЁСТКИЕ ПРАВИЛА:
+- Используй ТОЛЬКО факты из предыдущего резюме и нового транскрипта.
+- НЕ додумывай имена файлов, SHA коммитов, пути, версии, результаты
+  тестов. Копируй их буквально.
+- Предыдущее резюме могло содержать неточности. Если факт из него
+  НЕ подтверждён новым транскриптом — пометь "(не подтверждено)"
+  или убери.
+- Не копируй галлюцинации из предыдущего резюме.
+- Если чего-то нет — пиши "не было" или пропускай.
+
+ФОРМАТ (строго):
+### Задача
+<1-3 пункта>
+
+### Сделано
+<маркированный список; пути — из транскрипта>
+
+### Проверено
+<маркированный список; если не проверялось — "не проверялось">
+
+### Осталось
+<маркированный список; если всё сделано — "всё сделано">
+
+Русский язык. 10-20 пунктов максимум. Без воды.
+"""
 
 
 def _cooldown_active(session_id: str) -> bool:
@@ -175,7 +219,8 @@ def _register_failure(session_id: str) -> None:
         _fail_until[session_id] = time.monotonic() + _COOLDOWN_SECONDS
         logger.warning(
             "compress: %d неудач подряд — cooldown %.0f с",
-            n, _COOLDOWN_SECONDS,
+            n,
+            _COOLDOWN_SECONDS,
         )
 
 
@@ -213,7 +258,9 @@ async def compress(session, client) -> CompressionResult | None:
     if total_tokens > 0 and old_tokens / total_tokens < MIN_OLD_SHARE:
         logger.info(
             "compress: старая часть ~%d из ~%d токенов (<%.0f%%) — пропускаю",
-            old_tokens, total_tokens, MIN_OLD_SHARE * 100,
+            old_tokens,
+            total_tokens,
+            MIN_OLD_SHARE * 100,
         )
         return None
 
@@ -247,6 +294,7 @@ async def compress(session, client) -> CompressionResult | None:
             ],
             model=config.SUMMARY_MODEL,
             reasoning_effort="none",
+            temperature=0.0,
         )
     except Exception as e:
         logger.warning("compress: LLM вызов не удался: %s", e)
@@ -267,6 +315,7 @@ async def compress(session, client) -> CompressionResult | None:
     # агент сможет найти потерянные детали через search_history.
     try:
         from agent_coder.agent import history_archive
+
         archived = history_archive.append_messages(session.id, old)
         if archived:
             logger.info("compress: %d сообщений заархивировано", archived)
@@ -279,8 +328,7 @@ async def compress(session, client) -> CompressionResult | None:
     summary_msg = {
         "role": "user",
         "content": (
-            f"[Резюме предыдущего контекста, сжатие #{session.summary_count}]\n"
-            f"{text}"
+            f"[Резюме предыдущего контекста, сжатие #{session.summary_count}]\n{text}"
         ),
     }
     session.messages = [system_msg, summary_msg] + recent
@@ -289,8 +337,11 @@ async def compress(session, client) -> CompressionResult | None:
     tokens_after = estimate_tokens(session.messages)
     logger.info(
         "compress: %d сообщений → %d, ~%d → ~%d токенов (summary_count=%d)",
-        len(messages), len(session.messages),
-        tokens_before, tokens_after, session.summary_count,
+        len(messages),
+        len(session.messages),
+        tokens_before,
+        tokens_after,
+        session.summary_count,
     )
     return CompressionResult(
         messages_before=len(messages),
