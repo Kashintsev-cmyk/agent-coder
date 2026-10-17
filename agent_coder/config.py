@@ -46,7 +46,7 @@ class Config:
     ROUTERAI_TIMEOUT: float = float(os.getenv("ROUTERAI_TIMEOUT", "300.0"))
 
     # Модели
-    MODEL_MAIN: str = os.getenv("MODEL_MAIN", "deepseek/deepseek-v4.1-flash")
+    MODEL_MAIN: str = os.getenv("MODEL_MAIN", "deepseek/deepseek-v4-flash")
     # Зарезервировано на будущее (не используется в коде)
     MODEL_FAST: str = os.getenv("MODEL_FAST", MODEL_MAIN)
 
@@ -56,13 +56,16 @@ class Config:
     CURATED_MODEL_IDS: ClassVar[list[str]] = [
         mid.strip() for mid in _curated_raw.split(",") if mid.strip()
     ] or [
+        "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4.1-flash",
-        "z-ai/glm-5.3-flash",
         "qwen/qwen3-coder-next",
-        "z-ai/glm-5.3",
         "moonshotai/kimi-k2.7-code",
+        "z-ai/glm-5.3",
+        "xiaomi/mimo-v2.6-flash",
         "deepseek/deepseek-r1",
+        "openai/gpt-6.1-sol",
         "anthropic/claude-sonnet-5.5",
+        "x-ai/grok-4.20",
     ]
 
     # Группа coding: дефолт для ACT/PLAN/CHAT + fallback-цепочка при
@@ -72,8 +75,8 @@ class Config:
     CODING_MODEL_IDS: ClassVar[list[str]] = [
         mid.strip() for mid in _coding_raw.split(",") if mid.strip()
     ] or [
+        "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4.1-flash",
-        "z-ai/glm-5.3-flash",
         "qwen/qwen3-coder-next",
     ]
 
@@ -86,9 +89,9 @@ class Config:
     AUDIT_MODEL_IDS: ClassVar[list[str]] = [
         mid.strip() for mid in _audit_raw.split(",") if mid.strip()
     ] or [
-        "z-ai/glm-5.3",
         "moonshotai/kimi-k2.7-code",
-        "deepseek/deepseek-r1",
+        "z-ai/glm-5.3",
+        "xiaomi/mimo-v2.6-flash",
     ]
 
     # Доля context_limit модели, которую разрешено занимать входным токенам.
@@ -104,9 +107,7 @@ class Config:
     ).strip().lower() in ("1", "true", "yes", "on")
 
     # Модель по умолчанию (должна входить в CURATED_MODEL_IDS)
-    DEFAULT_MODEL_ID: str = os.getenv(
-        "DEFAULT_MODEL_ID", "deepseek/deepseek-v4.1-flash"
-    )
+    DEFAULT_MODEL_ID: str = os.getenv("DEFAULT_MODEL_ID", "deepseek/deepseek-v4-flash")
 
     # Model catalog (кэш метаданных моделей из RouterAI)
     # TTL дискового кэша каталога моделей, часы (минимум 1)
@@ -130,7 +131,7 @@ class Config:
     TEMPERATURE: float = _env_float("TEMPERATURE", "0.2")
     # Модель для суммаризации старых сообщений. Должна быть в CURATED_MODEL_IDS
     # (или в _FALLBACK_CATALOG). Дешёвая — для вспомогательной задачи.
-    SUMMARY_MODEL: str = os.getenv("SUMMARY_MODEL", "z-ai/glm-5.3-flash")
+    SUMMARY_MODEL: str = os.getenv("SUMMARY_MODEL", "moonshotai/kimi-k2.7-code")
 
     # Retention медиа-вложений сессий: файлы старше N дней удаляются
     # фоновой задачей бота (раз в сутки + один раз при старте).
