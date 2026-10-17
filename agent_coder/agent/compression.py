@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Any
@@ -207,6 +208,83 @@ _SUMMARY_UPDATE_SYSTEM = """Ты — суммаризатор истории д�
 """
 
 
+_UNCONFIRMED_MARKER = "(не подтверждено)"
+
+# SHA-подобные токены: 7-40 hex-символов, обязательно есть a-f/A-F
+# (чтобы не ловить "1048576" — все цифры). \b с обеих сторон, чтобы не
+# цеплять hex-куски внутри имён (_abc1234, superdeadbeef).
+_SUMMARY_SHA_RE = re.compile(
+    r"\b(?=[0-9a-fA-F]{7,40}\b)[0-9a-fA-F]*[a-fA-F][0-9a-fA-F]*\b"
+)
+
+# Пути: либо путь с одним и более слэшем (agent_coder/models.py,
+# ./scripts/run.sh, /home/user/x.py), либо имя файла с известным
+# расширением (pyproject.toml, README.md). Lookbehind/lookahead по
+# «словоподобным» символам, чтобы не матчить хвосты строк.
+_SUMMARY_PATH_RE = re.compile(
+    r"(?<![\w.@+/-])"
+    r"(?:"
+    r"(?:\.{0,2}/|/)?(?:[A-Za-z0-9._@+-]+/)+[A-Za-z0-9._@+-]+"
+    r"|"
+    r"[A-Za-z0-9._@+-]+\.(?:py|md|toml|yml|yaml|sh|json|cfg|ini|rs|go"
+    r"|js|ts|jsx|tsx|java|rb|php|cpp|hpp|cs|swift|kt|sql|html|css|scss"
+    r"|xml|txt|lock|mk)"
+    r")"
+    r"(?![\w@+/-])"
+)
+
+# Чисто цифры/слэши/точки — это не пути, а даты (2024/10/18) и версии.
+_PURE_DIGITS_PATH_RE = re.compile(r"^[\d/.\-]+$")
+
+
+def _validate_summary(summary: str, transcript: str) -> str:
+    """Пометить (не подтверждено) выдуманные SHA и пути в резюме.
+
+    Защита независимо от качества модели: SHA-коммиты и пути файлов
+    копируются из транскрипта дословно, поэтому любой такой токен,
+    которого нет в транскрипте, почти наверняка галлюцинация.
+
+    Поведение:
+      - токен, который есть в transcript как подстрока, не трогается;
+      - токен, которого нет, получает суффикс (не подтверждено);
+      - токен, уже помеченный (не подтверждено), не помечается повторно
+        (идемпотентность — важно для повторных сжатий).
+
+    Не удаляет: структура ### Задача/Сделано/Проверено/Осталось
+    сохраняется, читатель видит, какие факты требуют перепроверки.
+
+    В update-режиме transcript — только НОВЫЕ события (prev_summary
+    передаётся модели отдельно и не входит в transcript). Это
+    осознанная строгость: _SUMMARY_UPDATE_SYSTEM сам требует помечать
+    факты из предыдущего резюме, не подтверждённые новым транскриптом;
+    валидатор ловит то, что модель пропустила.
+    """
+    if not summary or not transcript:
+        return summary
+
+    def _already_marked(text: str, end: int) -> bool:
+        tail = text[end : end + 40].lstrip()
+        return tail.startswith(_UNCONFIRMED_MARKER)
+
+    def _is_path_noise(token: str) -> bool:
+        return "/" in token and _PURE_DIGITS_PATH_RE.match(token) is not None
+
+    def _repl(m: re.Match[str]) -> str:
+        token = m.group(0)
+        if token in transcript:
+            return token
+        if _is_path_noise(token):
+            return token
+        if _already_marked(m.string, m.end()):
+            return token
+        return f"{token} {_UNCONFIRMED_MARKER}"
+
+    combined = re.compile(
+        rf"(?:{_SUMMARY_PATH_RE.pattern})|(?:{_SUMMARY_SHA_RE.pattern})"
+    )
+    return combined.sub(_repl, summary)
+
+
 def _cooldown_active(session_id: str) -> bool:
     until = _fail_until.get(session_id, 0.0)
     return time.monotonic() < until
@@ -306,6 +384,7 @@ async def compress(session, client) -> CompressionResult | None:
         logger.warning("compress: пустой ответ модели — пропускаю")
         _register_failure(session.id)
         return None
+    text = _validate_summary(text, transcript)
     _register_success(session.id)
 
     # Оценку «до» снимаем, пока в messages ещё лежит несжатая история.

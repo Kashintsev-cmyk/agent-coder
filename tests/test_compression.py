@@ -1,4 +1,5 @@
 """Тесты сжатия истории (agent_coder.agent.compression)."""
+
 from __future__ import annotations
 
 from agent_coder.agent.compression import (
@@ -12,10 +13,12 @@ from agent_coder.config import config
 def _mk_session(model="openai/gpt-5.6-luna"):
     from agent_coder.agent.prompts import Mode
     from agent_coder.agent.session import Session
+
     return Session.new(workspace="/tmp", model=model, mode=Mode.ACT)
 
 
 # --- soft_limit ---
+
 
 def test_soft_limit_uses_min_of_context_and_cap():
     s = _mk_session("openai/gpt-5.6-luna")  # context 1_050_000
@@ -50,6 +53,7 @@ def test_soft_limit_context_wins_when_smaller_than_cap(monkeypatch):
 
 # --- find_cut ---
 
+
 def _msgs(seq: list[str]) -> list[dict]:
     return [{"role": r, "content": ""} for r in seq]
 
@@ -83,6 +87,7 @@ def test_find_cut_no_user_or_assistant_in_range():
 
 # --- format_for_summary ---
 
+
 def test_format_for_summary_basic():
     msgs = [
         {"role": "user", "content": "задача"},
@@ -103,51 +108,68 @@ def test_format_for_summary_truncates_tool():
 
 
 def test_format_for_summary_assistant_with_tool_calls():
-    msgs = [{
-        "role": "assistant",
-        "content": "",
-        "tool_calls": [{"function": {"name": "read_file"}}],
-    }]
+    msgs = [
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"function": {"name": "read_file"}}],
+        }
+    ]
     out = format_for_summary(msgs)
     assert "вызвал: read_file" in out
 
 
 # --- estimate_tokens ---
 
+
 def test_estimate_tokens_empty():
     from agent_coder.agent.compression import estimate_tokens
+
     assert estimate_tokens([]) == 0
 
 
 def test_estimate_tokens_grows_with_text():
     from agent_coder.agent.compression import estimate_tokens
+
     small = estimate_tokens([{"role": "user", "content": "x" * 400}])
     big = estimate_tokens([{"role": "user", "content": "x" * 4000}])
-    assert small == 100   # 400 символов / 4
+    assert small == 100  # 400 символов / 4
     assert big == 1000
     assert big > small
 
 
 def test_estimate_tokens_counts_tool_calls():
     from agent_coder.agent.compression import estimate_tokens
+
     plain = estimate_tokens([{"role": "assistant", "content": "hi"}])
-    with_tc = estimate_tokens([{
-        "role": "assistant",
-        "content": "hi",
-        "tool_calls": [{"function": {"name": "run_command", "arguments": "{}"}}],
-    }])
+    with_tc = estimate_tokens(
+        [
+            {
+                "role": "assistant",
+                "content": "hi",
+                "tool_calls": [
+                    {"function": {"name": "run_command", "arguments": "{}"}}
+                ],
+            }
+        ]
+    )
     assert with_tc > plain
 
 
 def test_estimate_tokens_handles_multimodal_content():
     from agent_coder.agent.compression import estimate_tokens
-    n = estimate_tokens([{
-        "role": "user",
-        "content": [
-            {"type": "text", "text": "x" * 80},
-            {"type": "image_url", "image_url": {"url": "data:..."}},
-        ],
-    }])
+
+    n = estimate_tokens(
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "x" * 80},
+                    {"type": "image_url", "image_url": {"url": "data:..."}},
+                ],
+            }
+        ]
+    )
     assert n > 0
 
 
@@ -290,10 +312,12 @@ async def test_compress_updates_prev_summary_separately():
     """Предыдущее резюме передаётся отдельно, а не в общем транскрипте."""
     s = _mk_session()
     s.messages = [{"role": "system", "content": "S"}]
-    s.messages.append({
-        "role": "user",
-        "content": "[Резюме предыдущего контекста, сжатие #1]\nСТАРОЕ_РЕЗЮМЕ",
-    })
+    s.messages.append(
+        {
+            "role": "user",
+            "content": "[Резюме предыдущего контекста, сжатие #1]\nСТАРОЕ_РЕЗЮМЕ",
+        }
+    )
     s.summary_count = 1  # одно сжатие уже было
     for i in range(14):
         s.messages.append({"role": "user", "content": f"u{i}"})
@@ -309,9 +333,7 @@ async def test_compress_updates_prev_summary_separately():
     assert "СТАРОЕ_РЕЗЮМЕ" in sent["messages"][1]["content"]
     assert "НОВЫЕ СОБЫТИЯ" in sent["messages"][1]["content"]
     # Старое резюме не попало в транскрипт второй раз
-    transcript_part = sent["messages"][1]["content"].split(
-        "НОВЫЕ СОБЫТИЯ ДИАЛОГА:"
-    )[1]
+    transcript_part = sent["messages"][1]["content"].split("НОВЫЕ СОБЫТИЯ ДИАЛОГА:")[1]
     assert "СТАРОЕ_РЕЗЮМЕ" not in transcript_part
     # Новый счётчик сжатия
     assert "сжатие #2" in s.messages[1]["content"]
@@ -385,7 +407,10 @@ def test_cooldown_expires(monkeypatch):
 
 def test_format_for_summary_skips_prev_summary():
     msgs = [
-        {"role": "user", "content": "[Резюме предыдущего контекста, сжатие #1]\nстарое"},
+        {
+            "role": "user",
+            "content": "[Резюме предыдущего контекста, сжатие #1]\nстарое",
+        },
         {"role": "user", "content": "живой вопрос"},
     ]
     out = format_for_summary(msgs)
@@ -444,8 +469,10 @@ async def test_compress_archive_failure_not_fatal(sessions_dir, monkeypatch):
 
 # --- точная оценка токенов (кириллица vs латиница) ---
 
+
 def test_estimate_tokens_cyrillic_denser():
     from agent_coder.agent.compression import estimate_tokens
+
     cyr = estimate_tokens([{"role": "user", "content": "а" * 200}])
     lat = estimate_tokens([{"role": "user", "content": "a" * 200}])
     # Кириллица ~2 симв/токен → 100; латиница ~4 → 50
@@ -456,7 +483,81 @@ def test_estimate_tokens_cyrillic_denser():
 
 def test_estimate_tokens_mixed():
     from agent_coder.agent.compression import estimate_tokens
+
     # 100 кириллических + 100 латинских символов
     n = estimate_tokens([{"role": "user", "content": "а" * 100 + "a" * 100}])
     assert n == 75  # 100/2 + 100/4
 
+
+# --- _validate_summary: защита от выдуманных SHA/путей ---
+
+from agent_coder.agent.compression import _validate_summary
+
+
+def test_validate_summary_flags_invented_sha() -> None:
+    summary = "### Сделано\n- правил models.py, коммит deadbeef1"
+    transcript = "ПОЛЬЗОВАТЕЛЬ:\nпоправь models.py"
+    out = _validate_summary(summary, transcript)
+    assert "deadbeef1 (не подтверждено)" in out
+    assert "models.py (не подтверждено)" not in out
+
+
+def test_validate_summary_keeps_valid_sha() -> None:
+    summary = "коммит abc1234"
+    transcript = "git commit: abc1234 done"
+    assert _validate_summary(summary, transcript) == summary
+
+
+def test_validate_summary_flags_invented_path() -> None:
+    summary = "правил agent_coder/models.py и config.py"
+    transcript = "поправь config.py"
+    out = _validate_summary(summary, transcript)
+    assert "agent_coder/models.py (не подтверждено)" in out
+    assert "config.py (не подтверждено)" not in out
+
+
+def test_validate_summary_keeps_valid_path() -> None:
+    summary = "правил agent_coder/models.py"
+    transcript = "[TOOL]: patched agent_coder/models.py"
+    assert _validate_summary(summary, transcript) == summary
+
+
+def test_validate_summary_idempotent() -> None:
+    summary = "коммит deadbeef1"
+    transcript = "просто текст без sha"
+    once = _validate_summary(summary, transcript)
+    twice = _validate_summary(once, transcript)
+    assert once == twice
+    assert once.count("(не подтверждено)") == 1
+
+
+def test_validate_summary_ignores_plain_numbers() -> None:
+    summary = "context 1048576"
+    transcript = "x"
+    assert _validate_summary(summary, transcript) == summary
+
+
+def test_validate_summary_ignores_dates_and_fractions() -> None:
+    assert _validate_summary("дата 18/10/2026", "x") == "дата 18/10/2026"
+    assert _validate_summary("доля 1/2", "x") == "доля 1/2"
+
+
+def test_validate_summary_already_marked_not_doubled() -> None:
+    summary = "deadbeef1 (не подтверждено)"
+    transcript = "просто текст"
+    assert _validate_summary(summary, transcript) == summary
+
+
+@pytest.mark.asyncio
+async def test_compress_validates_summary_against_transcript() -> None:
+    """Сквозной: выдуманный SHA в ответе модели -> помечен в session."""
+    s = _mk_session()
+    s.messages = [{"role": "system", "content": "S"}]
+    for i in range(14):
+        s.messages.append({"role": "user", "content": f"u{i}"})
+        s.messages.append({"role": "assistant", "content": f"a{i}"})
+
+    client = _FakeClient(reply="### Сделано\n- коммит deadbeef1")
+    comp = await compress(s, client)
+    assert comp is not None
+    assert "deadbeef1 (не подтверждено)" in s.messages[1]["content"]
