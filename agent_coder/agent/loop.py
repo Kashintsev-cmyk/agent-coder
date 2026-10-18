@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from agent_coder.agent import compression
+from agent_coder.agent import compression, history_archive, tool_extract
 from agent_coder.agent.prompts import Mode, system_prompt
 from agent_coder.agent.session import Session
 from agent_coder.config import config
@@ -262,7 +262,7 @@ class AgentLoop:
         tool = self.registry.get(tc.name)
         if tool is None:
             result = f"Ошибка: инструмент '{tc.name}' не найден"
-            self._append_tool_result(tc.id, result)
+            self._append_tool_result(tc, result)
             await _maybe_await(self.events.on_tool_result, tc, result)
             return
 
@@ -273,7 +273,7 @@ class AgentLoop:
                 f"с такими аргументами. "
                 f"{'В Plan/Audit разрешены только read-only команды.' if mode_name in ('plan', 'audit') else ''}"
             )
-            self._append_tool_result(tc.id, result)
+            self._append_tool_result(tc, result)
             await _maybe_await(self.events.on_tool_result, tc, result)
             return
 
@@ -281,7 +281,7 @@ class AgentLoop:
             approved = await self.events.request_approval(tc)
             if not approved:
                 result = "Отклонено пользователем"
-                self._append_tool_result(tc.id, result)
+                self._append_tool_result(tc, result)
                 await _maybe_await(self.events.on_tool_result, tc, result)
                 return
 
@@ -297,18 +297,32 @@ class AgentLoop:
             result = f"Ошибка выполнения инструмента: {e}"
             logger.exception("tool %s failed", tc.name)
 
-        self._append_tool_result(tc.id, result)
+        self._append_tool_result(tc, result)
         await _maybe_await(self.events.on_tool_result, tc, result)
-        self.session.save()
 
-    def _append_tool_result(self, tool_call_id: str, result: str) -> None:
+    def _append_tool_result(self, tc: ToolCall, result: str) -> None:
+        """Полный результат — в архив, extracted — в messages, затем save.
+
+        Полный текст уходит в history_archive (его ищет search_history),
+        чтобы модель могла достать детали. В session.messages кладём
+        детерминированно сжатую версию (см. tool_extract).
+
+        save() внутри — чтобы error-path (tool is None, not allowed,
+        rejected) тоже фиксировался на диске, а не только success.
+        """
+        full_msg = {"role": "tool", "tool_call_id": tc.id, "content": result}
+        history_archive.append_messages(self.session.id, [full_msg])
+        extracted = tool_extract.extract(
+            tc.name, tc.arguments, result, tool_extract.DEFAULT_MAX_CHARS
+        )
         self.session.add_message(
             {
                 "role": "tool",
-                "tool_call_id": tool_call_id,
-                "content": result,
+                "tool_call_id": tc.id,
+                "content": extracted,
             }
         )
+        self.session.save()
 
     def _refresh_system_prompt(self) -> None:
         prompt = system_prompt(self.session.mode, self.session.workspace)
