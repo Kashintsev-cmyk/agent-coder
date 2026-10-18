@@ -11,6 +11,8 @@ import asyncio
 import json
 import logging
 import re
+import shutil
+import subprocess
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -285,6 +287,39 @@ def _collect_issues(base: Path) -> list[dict[str, Any]]:
                         "ci_matrix_missing_312",
                         'python-version: ["3.12", "3.13"]',
                         f"versions=[{versions.strip()}]",
+                    )
+                )
+
+    # 10. ruff format applied? (F16)
+    #     skip если ruff нет в PATH или нет pyproject — не false-positive.
+    if (base / "pyproject.toml").is_file():
+        ruff = shutil.which("ruff")
+        if ruff is not None:
+            proc: subprocess.CompletedProcess[bytes] | None
+            try:
+                proc = subprocess.run(
+                    [ruff, "format", "--check", "."],
+                    cwd=base,
+                    capture_output=True,
+                    timeout=30,
+                    check=False,
+                )
+            except (subprocess.TimeoutExpired, OSError):
+                proc = None
+            if proc is not None and proc.returncode != 0:
+                out = (proc.stderr or proc.stdout or b"").decode(
+                    "utf-8", errors="replace"
+                )
+                out = out.strip()
+                lines = out.splitlines()
+                first = lines[-1] if lines else "some files need formatting"
+                issues.append(
+                    _issue(
+                        ".",
+                        "minor",
+                        "ruff_format_not_applied",
+                        "ruff format --check passes",
+                        first[:120],
                     )
                 )
 

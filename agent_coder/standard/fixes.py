@@ -84,6 +84,11 @@ FIX_SPECS: dict[str, FixSpec] = {
         "edit_ci",
         'убери 3.10/3.11 из матрицы, оставь ["3.12", "3.13"]',
     ),
+    "ruff_format_not_applied": FixSpec(
+        "ruff_format_not_applied",
+        "manual",
+        "применить `ruff format .` и закоммитить style-only",
+    ),
     "ci_matrix_missing_312": FixSpec(
         "ci_matrix_missing_312",
         "edit_ci",
