@@ -1,0 +1,18 @@
+# ============================================================
+# База dev-зависимостей для Python-проектов
+# Скопировать в новый проект как requirements-dev.in.
+# Требует наличия requirements.in в том же каталоге.
+# Сборка: uv pip compile --universal requirements-dev.in
+# uv устанавливается отдельно (не pip-пакет):
+#   curl -LsSf https://astral.sh/uv/install.sh | sh
+# ============================================================
+
+-r requirements.in
+
+# Линтер
+ruff>=0.6
+
+# Тесты
+pytest>=8.0
+pytest-asyncio>=0.23
+pytest-cov>=5.0

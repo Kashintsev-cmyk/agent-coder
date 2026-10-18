@@ -39,6 +39,15 @@ asyncio_mode = "auto"
 [tool.setuptools.packages.find]
 include = ["agent_coder*"]
 
+[tool.setuptools.package-data]
+"agent_coder.templates" = [
+    "*.md",
+    "*.toml",
+    "*.yml",
+    "*.in",
+    ".gitignore-base",
+]
+
 # mypy настраивается, но НЕ входит в CI (см. README → Известные ограничения):
 # 98 из 105 ошибок — union-attr от aiogram в handlers.py. Запускать вручную,
 # когда захочется; в CI даёт шум и тормозит.
