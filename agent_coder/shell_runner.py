@@ -70,7 +70,7 @@ async def run_shell(
         stdout_b, stderr_b = await asyncio.wait_for(
             proc.communicate(), timeout=timeout,
         )
-    except asyncio.TimeoutError:
+    except TimeoutError:
         _kill_proc_tree(proc, use_group=start_new_session)
         try:
             await proc.wait()

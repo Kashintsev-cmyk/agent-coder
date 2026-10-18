@@ -19,7 +19,7 @@ async def _run_git(ctx: ToolContext, *args: str, timeout: int = GIT_TIMEOUT):
     )
     try:
         stdout_b, stderr_b = await asyncio.wait_for(proc.communicate(), timeout=timeout)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         proc.kill()
         await proc.wait()
         return -1, "", f"git {args[0]}: таймаут {timeout}с"

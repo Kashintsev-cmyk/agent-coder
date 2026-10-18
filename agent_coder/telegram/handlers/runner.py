@@ -229,7 +229,7 @@ class _TaskRunner:
 
         try:
             return await asyncio.wait_for(future, timeout=config.APPROVAL_TIMEOUT)
-        except asyncio.TimeoutError:
+        except TimeoutError:
             if self.approval_msg_id is not None:
                 try:
                     await self.bot.edit_message_text(

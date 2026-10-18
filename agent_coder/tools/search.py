@@ -51,7 +51,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     )
     try:
         out, err = await asyncio.wait_for(proc.communicate(), timeout=TIMEOUT_SEC)
-    except asyncio.TimeoutError:
+    except TimeoutError:
         try:
             proc.kill()
             await proc.wait()

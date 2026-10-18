@@ -5,6 +5,7 @@ import asyncio
 import json
 import logging
 import random
+from datetime import UTC
 from typing import Any
 
 import httpx
@@ -257,12 +258,12 @@ def _parse_retry_after(exc: Exception) -> float | None:
         pass
     # HTTP-date формат: "Wed, 21 Oct 2015 07:28:00 GMT"
     try:
-        from datetime import datetime, timezone
+        from datetime import datetime
         from email.utils import parsedate_to_datetime
         dt = parsedate_to_datetime(raw)
         if dt is None:
             return None
-        delta = (dt - datetime.now(timezone.utc)).total_seconds()
+        delta = (dt - datetime.now(UTC)).total_seconds()
         return max(0.0, delta)
     except Exception:
         return None
