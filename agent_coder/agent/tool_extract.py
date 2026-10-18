@@ -33,6 +33,20 @@ DEFAULT_LIMITS: dict[str, int] = {
 }
 
 # error-строки, которые нельзя терять в run_command-выводе
+# head/tail (в строках) — выбраны по реальным сессиям: средний tool-вывод
+# 30–60 строк, при 8+8 остаётся контекст, но не весь лог. Крупные игроки
+# (Claude Code, Cline) режут ещё агрессивнее, но у нас в паре с
+# history_archive — можно себе позволить сохранять чуть больше.
+RUN_HEAD = 8
+RUN_TAIL = 8
+READ_HEAD = 15
+READ_TAIL = 15
+SEARCH_TOP = 5
+SEARCH_SNIPPET = 120
+HISTORY_TOP = 5
+HISTORY_SNIPPET = 200
+LIST_TOP = 10
+
 _ERROR_RE = re.compile(r"error|Error|FAIL|Traceback|Warning", re.IGNORECASE)
 # определения/импорты в read_file-выводе (после отсечения "NNNNN│ ")
 _DEF_RE = re.compile(r"^(def |class |import |from )")
@@ -88,22 +102,45 @@ def _strip_numbered(line: str) -> str:
 
 
 def _fmt_run_command(result: str, args: dict[str, Any], limit: int) -> str:
-    """Header ($ cmd, exit code) + error-строки + первые/последние 20 строк.
+    """exit code + error-строки + head/tail контекст.
 
-    Приоритет: header и error-строки. head/tail — контекст вокруг них.
-    Если error-строк больше, чем влезает в лимит, хвост режется _cap
-    (best-effort; в реальных сессиях ошибок мало).
+    Особый случай — heredoc (`python3 - <<'PYEOF'`): команда многострочная,
+    «$ cmd» занимает десятки строк, а exit code оказывается далеко внизу.
+    Тело скрипта модели не нужно (она его сама сгенерировала в args),
+    поэтому:
+    - «$ cmd» обрезается до 200 симв. (первая строка);
+    - «exit code: N» ищется regex'ом всегда;
+    - маркеры «--- stdout ---» / «--- stderr ---» сохраняются;
+    - error/Traceback/Warning сохраняются всегда;
+    - head/tail — вокруг stdout-тела (после exit code).
     """
     lines = result.splitlines()
     n = len(lines)
-    keep: set[int] = set(range(min(2, n)))  # "$ cmd", "exit code: N"
+    keep: set[int] = set()
+    exit_idx: int | None = None
     for i, ln in enumerate(lines):
-        if _ERROR_RE.search(ln):
+        if ln.startswith("exit code:"):
+            exit_idx = i
             keep.add(i)
-    body_start = 2 if n >= 2 else 0
-    for i in range(body_start, min(body_start + 20, n)):
+            break
+    # Первая строка ($ cmd) — обрезаем длинный heredoc, чтобы шапка
+    # не съедала весь лимит.
+    if n > 0:
+        if len(lines[0]) > 200:
+            lines[0] = lines[0][:200] + "…[команда сокращена]"
+        keep.add(0)
+    # Маркеры stdout/stderr — полезны для парсинга, стоят 1 строку.
+    for i, ln in enumerate(lines):
+        if ln in ("--- stdout ---", "--- stderr ---"):
+            keep.add(i)
+    # error-строки (и в stdout, и в stderr) — всегда.
+    for i, ln in enumerate(lines):
+        if _ERROR_RE.search(ln) and i != exit_idx:
+            keep.add(i)
+    body_start = (exit_idx + 1) if exit_idx is not None else (2 if n >= 2 else 0)
+    for i in range(body_start, min(body_start + RUN_HEAD, n)):
         keep.add(i)
-    for i in range(max(n - 20, body_start), n):
+    for i in range(max(n - RUN_TAIL, body_start), n):
         keep.add(i)
     return _assemble(lines, keep, limit)
 
@@ -115,9 +152,9 @@ def _fmt_read_file(result: str, args: dict[str, Any], limit: int) -> str:
         return result
     n = len(lines)
     keep: set[int] = {0}
-    for i in range(1, min(1 + 30, n)):
+    for i in range(1, min(1 + READ_HEAD, n)):
         keep.add(i)
-    for i in range(max(n - 30, 1), n):
+    for i in range(max(n - READ_TAIL, 1), n):
         keep.add(i)
     for i, ln in enumerate(lines):
         if i == 0:
@@ -164,18 +201,18 @@ def _fmt_git_diff(result: str, args: dict[str, Any], limit: int) -> str:
 def _fmt_search(result: str, args: dict[str, Any], limit: int) -> str:
     """Топ-10 хитов (rg: 'путь:строка:содержимое'), остальное — «ещё N скрыто»."""
     lines = result.splitlines()
-    kept = [ln[:160] for ln in lines[:10]]
-    if len(lines) > 10:
-        kept.append(f"…ещё {len(lines) - 10} совпадений скрыто…")
+    kept = [ln[:SEARCH_SNIPPET] for ln in lines[:SEARCH_TOP]]
+    if len(lines) > SEARCH_TOP:
+        kept.append(f"…ещё {len(lines) - SEARCH_TOP} совпадений скрыто…")
     return _cap("\n".join(kept), limit)
 
 
 def _fmt_search_history(result: str, args: dict[str, Any], limit: int) -> str:
     """Фрагменты через '\\n\\n'; каждый — '[role] text[:600]'."""
     blocks = [b for b in result.split("\n\n") if b.strip()]
-    kept = [b[:200] for b in blocks[:10]]
-    if len(blocks) > 10:
-        kept.append(f"…ещё {len(blocks) - 10} фрагментов скрыто…")
+    kept = [b[:HISTORY_SNIPPET] for b in blocks[:HISTORY_TOP]]
+    if len(blocks) > HISTORY_TOP:
+        kept.append(f"…ещё {len(blocks) - HISTORY_TOP} фрагментов скрыто…")
     return _cap("\n\n".join(kept), limit)
 
 
@@ -184,9 +221,9 @@ def _fmt_list_files(result: str, args: dict[str, Any], limit: int) -> str:
     lines = result.splitlines()
     if not lines:
         return result
-    kept = lines[:20]
-    if len(lines) > 20:
-        kept.append(f"…ещё {len(lines) - 20} файлов скрыто…")
+    kept = lines[:LIST_TOP]
+    if len(lines) > LIST_TOP:
+        kept.append(f"…ещё {len(lines) - LIST_TOP} файлов скрыто…")
     return _cap("\n".join(kept), limit)
 
 
@@ -200,10 +237,14 @@ EXTRACTORS: dict[str, Extractor] = {
 }
 
 # tools, для которых formatter применяется всегда (не только при превышении):
+# - run_command/read_file: хотим резать даже средние логи (30–60 строк) —
+#   хвост лога почти никогда не несёт новых фактов, а volume копится;
 # - git_diff: тело выкидываем даже для коротких diff'ов;
 # - search/search_history/list_files: лимитируют количество хитов/строк,
 #   а не объём, поэтому применяются всегда.
-_ALWAYS_APPLY = frozenset({"git_diff", "search", "search_history", "list_files"})
+_ALWAYS_APPLY = frozenset(
+    {"run_command", "read_file", "git_diff", "search", "search_history", "list_files"}
+)
 
 
 def _resolve_limit(tool_name: str, default: int) -> int:

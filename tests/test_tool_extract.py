@@ -47,6 +47,39 @@ def test_run_command_keeps_exit_code_and_errors() -> None:
     assert len(out) <= 4096
 
 
+def test_run_command_heredoc_keeps_exit_code() -> None:
+    """Heredoc: '$ cmd' занимает десятки строк, exit code — далеко внизу.
+
+    Регрессия: раньше keep={0,1} сохранял шапку скрипта и терял
+    'exit code: N', который оказывался на строке 50+.
+    """
+    lines = ["$ cd /x && python3 - <<'PYEOF'"]
+    lines += [f"line {i}" for i in range(50)]
+    lines += [
+        "PYEOF",
+        "exit code: 1",
+        "--- stderr ---",
+        "Traceback (most recent call last):",
+        "ValueError: boom",
+    ]
+    result = "\n".join(lines)
+    out = tool_extract.extract("run_command", {}, result, 4096)
+    assert "exit code: 1" in out
+    assert "Traceback" in out
+    assert "ValueError: boom" in out
+    assert "[команда сокращена]" not in out or len(out) <= 4096
+
+
+def test_run_command_long_header_truncated() -> None:
+    """Многострочный '$ cmd' (heredoc) обрезается до 200 симв."""
+    long_cmd = "$ python3 - <<'PYEOF' " + "x" * 5000
+    result = long_cmd + "\nexit code: 0\n--- stdout ---\nok"
+    out = tool_extract.extract("run_command", {}, result, 4096)
+    assert "exit code: 0" in out
+    assert "[команда сокращена]" in out
+    assert len(out) <= 4096
+
+
 def test_read_file_keeps_defs_and_imports() -> None:
     content = ["x"] * 200
     content[5] = "def foo():"
