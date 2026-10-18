@@ -1,5 +1,6 @@
-# Фрагмент для копирования в pyproject.toml нового проекта.
-# ВАЖНО: в [tool.coverage.run] заменить source = ["app"] на имя пакета проекта.
+# Фрагмент для pyproject.toml нового проекта.
+# agent-coder scaffold подставляет source = ["<package>"] автоматически;
+# при ручном копировании замените source = ["app"] на имя пакета.
 
 [tool.pytest.ini_options]
 pythonpath = ["."]

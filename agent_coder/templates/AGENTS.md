@@ -5,7 +5,8 @@
 agent_coder/rules/project_standard.md.
 
 Файлы-шаблоны (pyproject-snippet.toml, ci-template.yml,
-requirements-dev-base.in) — в /home/botuser/bots/_shared-dev/project-template/.
+requirements-dev-base.in) — в пакете agent_coder/templates/.
+Bootstrap нового проекта: `agent-coder scaffold --project <name>`.
 
 ## Если проект ещё не оформлен
 
@@ -15,13 +16,13 @@ requirements-dev-base.in) — в /home/botuser/bots/_shared-dev/project-template
 - pyproject.toml — секции [project], [tool.pytest.ini_options],
   [tool.ruff], [tool.ruff.lint], [tool.coverage.run]
 - requirements.in — прод-зависимости
-- requirements-dev.in — из _shared-dev/project-template/requirements-dev-base.in
+- requirements-dev.in — из agent_coder/templates/requirements-dev-base.in
 - requirements-dev.txt — `uv pip compile --universal requirements-dev.in`
 - .gitignore — базовый (Python + .env + AGENTS.md)
 - tests/ — pytest, asyncio_mode=auto, testpaths=["tests"]
-- .github/workflows/ci.yml — из _shared-dev/project-template/ci-template.yml
+- .github/workflows/ci.yml — из agent_coder/templates/ci-template.yml
 - README.md — запуск, структура, известные ограничения
-- .venv/ + lock-файлы — пересборка через pip-sync
+- .venv/ + lock-файлы — пересборка через `uv pip sync`
 
 Если чего-то нет — предложи план (в PLAN) или создай по шаблону
 (в ACT). Не переписывай существующие файлы без необходимости:
