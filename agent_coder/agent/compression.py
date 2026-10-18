@@ -175,6 +175,9 @@ _SUMMARY_SYSTEM = """Ты — суммаризатор истории диало
 - Если факт не подтверждён транскриптом — не включай его.
 - Не описывай код, которого нет в транскрипте.
 - Не выдумывай номера строк, имена функций, названия коммитов.
+- Если ниже передан блок [ИЗВЕСТНЫЕ ФАКТЫ (work_state)] — считай его
+  подтверждённым. Используй его для секций "Сделано" и "Осталось",
+  НЕ противоречь ему. Narrative пиши только из транскрипта.
 
 ФОРМАТ (строго):
 ### Задача
@@ -204,6 +207,9 @@ _SUMMARY_UPDATE_SYSTEM = """Ты — суммаризатор истории д�
   или убери.
 - Не копируй галлюцинации из предыдущего резюме.
 - Если чего-то нет — пиши "не было" или пропускай.
+- Если ниже передан блок [ИЗВЕСТНЫЕ ФАКТЫ (work_state)] — считай его
+  подтверждённым. Используй его для секций "Сделано" и "Осталось",
+  НЕ противоречь ему. Narrative пиши только из транскрипта.
 
 ФОРМАТ (строго):
 ### Задача
@@ -251,7 +257,7 @@ _SUMMARY_PATH_RE = re.compile(
 _PURE_DIGITS_PATH_RE = re.compile(r"^[\d/.\-]+$")
 
 
-def _validate_summary(summary: str, transcript: str) -> str:
+def _validate_summary(summary: str, transcript: str, extra_known: str = "") -> str:
     """Пометить (не подтверждено) выдуманные SHA и пути в резюме.
 
     Защита независимо от качества модели: SHA-коммиты и пути файлов
@@ -272,6 +278,12 @@ def _validate_summary(summary: str, transcript: str) -> str:
     осознанная строгость: _SUMMARY_UPDATE_SYSTEM сам требует помечать
     факты из предыдущего резюме, не подтверждённые новым транскриптом;
     валидатор ловит то, что модель пропустила.
+
+    extra_known — дополнительный эталон «известных фактов» (work_state
+    и/или prev_summary). Токены, встречающиеся в extra_known, не
+    помечаются: это не галлюцинация, а факт из structured memory.
+    Без этого work_state-факты, которых нет в текущем transcript,
+    получали бы ложное (не подтверждено).
     """
     if not summary or not transcript:
         return summary
@@ -283,9 +295,11 @@ def _validate_summary(summary: str, transcript: str) -> str:
     def _is_path_noise(token: str) -> bool:
         return "/" in token and _PURE_DIGITS_PATH_RE.match(token) is not None
 
+    known = transcript + ("\n" + extra_known if extra_known else "")
+
     def _repl(m: re.Match[str]) -> str:
         token = m.group(0)
-        if token in transcript:
+        if token in known:
             return token
         if _is_path_noise(token):
             return token
@@ -368,14 +382,26 @@ async def compress(session, client) -> CompressionResult | None:
     if not transcript.strip() and not prev_summary:
         return None
 
+    # work_state — детерминированные факты, которые LLM не должна
+    # потерять/пересуммаризировать. Передаём как «известные факты»,
+    # чтобы narrative не противоречил state.
+    from agent_coder.agent.work_state import render_for_prompt
+
+    # getattr: тесты/моки могут не иметь поля; реальный Session — имеет.
+    ws_block = render_for_prompt(getattr(session, "work_state", None))
+
     if prev_summary:
         user_content = (
             f"ПРЕДЫДУЩЕЕ РЕЗЮМЕ:\n{prev_summary}\n\n"
             f"НОВЫЕ СОБЫТИЯ ДИАЛОГА:\n{transcript}"
         )
+        if ws_block:
+            user_content += f"\n\n[ИЗВЕСТНЫЕ ФАКТЫ (work_state)]:\n{ws_block}"
         system = _SUMMARY_UPDATE_SYSTEM
     else:
         user_content = transcript
+        if ws_block:
+            user_content += f"\n\n[ИЗВЕСТНЫЕ ФАКТЫ (work_state)]:\n{ws_block}"
         system = _SUMMARY_SYSTEM
 
     try:
@@ -398,8 +424,19 @@ async def compress(session, client) -> CompressionResult | None:
         logger.warning("compress: пустой ответ модели — пропускаю")
         _register_failure(session.id)
         return None
-    text = _validate_summary(text, transcript)
+    # extra_known: факты из prev_summary и work_state легитимны, даже если
+    # их нет в текущем transcript (структурная память переживает сжатие).
+    text = _validate_summary(
+        text, transcript, extra_known=(prev_summary or "") + "\n" + ws_block
+    )
     _register_success(session.id)
+
+    # Детерминированный suffix: work_state не LLM-генерирован, поэтому
+    # не проходит валидатор и не может быть «галлюцинацией». Гарантия,
+    # что факты из state попадут в резюме, даже если суммаризатор их
+    # проигнорировал.
+    if ws_block:
+        text = text + "\n\n" + ws_block
 
     # Оценку «до» снимаем, пока в messages ещё лежит несжатая история.
     tokens_before = estimate_tokens(messages)
