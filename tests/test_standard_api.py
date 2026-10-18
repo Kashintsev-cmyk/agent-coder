@@ -78,4 +78,4 @@ def test_collect_issues_on_self() -> None:
     assert all(isinstance(i, Issue) for i in issues)
     summary = summarize(issues)
     assert set(summary) == {"score", "majors", "minors", "issues"}
-    assert summary["score"] in {"ok", "warnings", "failures"}
+    assert summary["score"] in {"ok", "warnings", "failures", "skipped"}

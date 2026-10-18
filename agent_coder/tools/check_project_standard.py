@@ -32,6 +32,21 @@ REQUIRED_FILES: tuple[str, ...] = (
 )
 REQUIRED_RUFF_SELECT: frozenset[str] = frozenset({"E", "F", "I"})
 
+# Инструменты и мета-репо: не проекты под стандартом bots/.
+# Проверка в _execute (tool), adapter _collect_issues не исключает —
+# agent-coder-migrate --project <name> может явно проверить.
+EXCLUDED_NAMES: frozenset[str] = frozenset(
+    {
+        "agent-coder",
+        "_shared-dev",
+        "_migrations",
+        "bot_template",
+        "_template",
+        "cline-sdk-sdk-v0.0.87",
+        "futures_3.0_audit",
+    }
+)
+
 
 def _issue(
     path: str, severity: str, issue: str, expected: str, found: str
@@ -343,6 +358,19 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         return f"Ошибка: путь вне workspace: {sub}"
     if not target.is_dir():
         return f"Не директория: {sub}"
+    if target.name in EXCLUDED_NAMES:
+        return json.dumps(
+            {
+                "score": "skipped",
+                "majors": 0,
+                "minors": 0,
+                "issues": [],
+                "reason": f"{target.name} is a tool/meta repo, not a "
+                f"project under bots/ standard",
+            },
+            ensure_ascii=False,
+            indent=2,
+        )
     issues = await asyncio.to_thread(_collect_issues, target)
     return json.dumps(_summarize(issues), ensure_ascii=False, indent=2)
 
