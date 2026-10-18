@@ -1,4 +1,5 @@
 """Типы для LLM-слоя."""
+
 from __future__ import annotations
 
 from dataclasses import dataclass, field
@@ -22,6 +23,7 @@ def format_cost(value: float) -> str:
 @dataclass
 class Usage:
     """Нормализованный usage из ответа RouterAI."""
+
     input_tokens: int = 0
     output_tokens: int = 0
     cache_read_tokens: int = 0

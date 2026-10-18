@@ -1,4 +1,5 @@
 """CLI: одиночный запуск и REPL."""
+
 from __future__ import annotations
 
 import argparse
@@ -27,14 +28,20 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--yolo", action="store_true", help="Без подтверждений")
     p.add_argument("--resume", metavar="ID", help="Возобновить сессию по ID")
     p.add_argument(
-        "--max-iterations", type=int, default=None,
+        "--max-iterations",
+        type=int,
+        default=None,
         help="Переопределить лимит итераций (для всех режимов). "
-             "По умолчанию берётся MAX_ITERATIONS_<MODE> из .env",
+        "По умолчанию берётся MAX_ITERATIONS_<MODE> из .env",
     )
     p.add_argument("--verbose", "-v", action="store_true")
     p.add_argument("--version", action="version", version=f"agent-coder {__version__}")
-    p.add_argument("--continue", dest="continue_last", action="store_true",
-                    help="Продолжить последнюю сессию для этой workspace")
+    p.add_argument(
+        "--continue",
+        dest="continue_last",
+        action="store_true",
+        help="Продолжить последнюю сессию для этой workspace",
+    )
     return p.parse_args()
 
 
@@ -54,8 +61,10 @@ async def run_once(args: argparse.Namespace, session: Session) -> int:
     try:
         await client.start()
         loop = AgentLoop(
-            client=client, registry=build_registry(),
-            session=session, events=_events(),
+            client=client,
+            registry=build_registry(),
+            session=session,
+            events=_events(),
             yolo=args.yolo or session.yolo,
         )
         await loop.run(args.task)
@@ -75,8 +84,10 @@ async def run_repl(args: argparse.Namespace, session: Session) -> int:
         await client.start()
         registry = build_registry()
         ui.print_banner(
-            session_id=session.id, workspace=session.workspace,
-            model=session.model, mode=session.mode.value,
+            session_id=session.id,
+            workspace=session.workspace,
+            model=session.model,
+            mode=session.mode.value,
         )
         ui.print_current_session(session)
         ui.print_info("Напиши задачу или /help для списка команд.")
@@ -97,8 +108,10 @@ async def run_repl(args: argparse.Namespace, session: Session) -> int:
                 continue
 
             loop = AgentLoop(
-                client=client, registry=registry,
-                session=session, events=_events(),
+                client=client,
+                registry=registry,
+                session=session,
+                events=_events(),
                 yolo=args.yolo or session.yolo,
             )
             try:
@@ -137,7 +150,7 @@ async def _handle_slash(line: str, session: Session) -> bool:
     elif cmd == "audit":
         session.mode = Mode.AUDIT
         session.messages = []
-        ui.print_success("Режим: audit (строгий аудитор, только чтение)")        
+        ui.print_success("Режим: audit (строгий аудитор, только чтение)")
     elif cmd == "cost":
         ui.print_total_usage(session.total_usage, session.request_count)
     elif cmd == "session":
@@ -173,9 +186,7 @@ async def _handle_slash(line: str, session: Session) -> bool:
             session.yolo = (arg.strip().lower() == "on") if arg else not session.yolo
             session.save()
             if session.yolo:
-                ui.print_success(
-                    "⚡ YOLO включён: опасные операции без подтверждения."
-                )
+                ui.print_success("⚡ YOLO включён: опасные операции без подтверждения.")
             else:
                 ui.print_success("🔒 YOLO выключен: подтверждения включены.")
     elif cmd == "clear":
@@ -226,8 +237,11 @@ def _print_history(session: Session) -> None:
 def _model_picker(session: Session) -> None:
     from agent_coder.model_catalog import catalog
     from agent_coder.models import get_model_name
+
     models = catalog.all()
-    ui.print_info(f"\nТекущая модель: {get_model_name(session.model)} ({session.model})\n")
+    ui.print_info(
+        f"\nТекущая модель: {get_model_name(session.model)} ({session.model})\n"
+    )
     ui.print_info("Доступные модели:")
     for i, m in enumerate(models, 1):
         mark = "*" if m.id == session.model else " "
@@ -252,6 +266,7 @@ def _model_picker(session: Session) -> None:
 
 def _reasoning_picker(session: Session) -> None:
     from agent_coder.models import REASONING_LEVELS, find_model
+
     m = find_model(session.model)
     if m and not m.reasoning:
         ui.print_error(f"Модель {session.model} не поддерживает reasoning")

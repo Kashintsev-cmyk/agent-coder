@@ -1,4 +1,5 @@
 """Реестр инструментов: схема для LLM + выполнение + режимы."""
+
 from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
@@ -14,6 +15,7 @@ SafeCheck = Callable[[dict[str, Any]], bool]
 @dataclass
 class ToolContext:
     """Что видит инструмент при выполнении."""
+
     workspace: str
     mode: Mode
     yolo: bool = False

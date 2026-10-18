@@ -1,4 +1,5 @@
 """Тесты архива сжатой истории (agent_coder.agent.history_archive)."""
+
 from __future__ import annotations
 
 import json
@@ -50,9 +51,11 @@ def test_load_skips_broken_lines(session_id):
     path = history_archive.archive_path(session_id)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(
-        json.dumps({"role": "user", "content": "ok"}) + "\n"
+        json.dumps({"role": "user", "content": "ok"})
+        + "\n"
         + "НЕ_JSON\n"
-        + json.dumps({"role": "assistant", "content": "ok2"}) + "\n",
+        + json.dumps({"role": "assistant", "content": "ok2"})
+        + "\n",
         encoding="utf-8",
     )
     loaded = history_archive.load(session_id)

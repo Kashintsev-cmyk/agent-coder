@@ -18,6 +18,7 @@
 (as dict) — включая поля, которых в API нет (например, ``tag``). Так кэш
 читается без повторного парсинга.
 """
+
 from __future__ import annotations
 
 import json
@@ -223,7 +224,9 @@ class ModelCatalog:
             logger.info(
                 "Кэш каталога %s имеет версию %r, ожидается %r — игнорирую "
                 "(подтянем из API или fallback)",
-                path, version, _CACHE_VERSION,
+                path,
+                version,
+                _CACHE_VERSION,
             )
             return False
 
@@ -401,9 +404,7 @@ class ModelCatalog:
         reasoning_effort = "reasoning_effort" in params
         verbosity = "verbosity" in params
         description = raw.get("description") or ""
-        web_search_builtin = (
-            "web_search" in pricing or "web_search_options" in params
-        )
+        web_search_builtin = "web_search" in pricing or "web_search_options" in params
 
         # Инвариант ModelInfo: reasoning_effort ⇒ reasoning. Если API даёт
         # аномалию — не падаем, логируем и принудительно включаем reasoning.
@@ -425,10 +426,12 @@ class ModelCatalog:
         else:
             units = {}
         input_price = self._price_per_million(
-            pricing.get("prompt"), units.get("prompt"),
+            pricing.get("prompt"),
+            units.get("prompt"),
         )
         output_price = self._price_per_million(
-            pricing.get("completion"), units.get("completion"),
+            pricing.get("completion"),
+            units.get("completion"),
         )
 
         # tag в API нет — берём из fallback, если есть.

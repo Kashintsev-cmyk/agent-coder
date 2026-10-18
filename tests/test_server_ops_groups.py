@@ -1,4 +1,5 @@
 """Тесты группировки серверных op'ов."""
+
 from __future__ import annotations
 
 from agent_coder.server_ops import (

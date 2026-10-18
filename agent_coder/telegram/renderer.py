@@ -1,4 +1,5 @@
 """Компактный вывод для Telegram. Возвращает HTML-безопасный текст."""
+
 from __future__ import annotations
 
 import html
@@ -48,7 +49,9 @@ def render_usage(usage: Usage) -> str:
     parts = [f"in {usage.input_tokens}", f"out {usage.output_tokens}"]
     if usage.cache_read_tokens:
         parts.append(f"cache {usage.cache_read_tokens}")
-    return f"<blockquote>💰 {' / '.join(parts)} · {format_cost(usage.cost)}</blockquote>"
+    return (
+        f"<blockquote>💰 {' / '.join(parts)} · {format_cost(usage.cost)}</blockquote>"
+    )
 
 
 def render_assistant_text(text: str) -> str:
@@ -58,6 +61,7 @@ def render_assistant_text(text: str) -> str:
 
 def render_compression(comp) -> str:
     """Строка о сжатии истории: «📦 История сжата: 90k → 18k токенов»."""
+
     def _k(n: int) -> str:
         return f"{n // 1000}k" if n >= 1000 else str(n)
 

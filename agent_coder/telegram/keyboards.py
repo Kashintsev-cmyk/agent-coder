@@ -1,4 +1,5 @@
 """Inline-клавиатуры."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -13,19 +14,21 @@ def projects_keyboard(projects: list[Path]) -> InlineKeyboardMarkup:
     # в детерминированно отсортированном списке _list_projects(), а не путь.
     rows = []
     for idx, p in enumerate(projects):
-        rows.append([
-            InlineKeyboardButton(text=f"📁 {p.name}", callback_data=f"new:{idx}")
-        ])
-    rows.append([
-        InlineKeyboardButton(text="➕ Новый",       callback_data="new_project"),
-        InlineKeyboardButton(text="🐙 Клонировать", callback_data="clone_hint"),
-    ])
-    rows.append([
-        InlineKeyboardButton(text="🌐 GitHub-репо", callback_data="ghnew_hint"),
-    ])
-    rows.append([
-        InlineKeyboardButton(text="📚 Все сессии", callback_data="sessions")
-    ])
+        rows.append(
+            [InlineKeyboardButton(text=f"📁 {p.name}", callback_data=f"new:{idx}")]
+        )
+    rows.append(
+        [
+            InlineKeyboardButton(text="➕ Новый", callback_data="new_project"),
+            InlineKeyboardButton(text="🐙 Клонировать", callback_data="clone_hint"),
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(text="🌐 GitHub-репо", callback_data="ghnew_hint"),
+        ]
+    )
+    rows.append([InlineKeyboardButton(text="📚 Все сессии", callback_data="sessions")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
@@ -35,10 +38,14 @@ def confirm_create_project_keyboard(name: str) -> InlineKeyboardMarkup:
     name уже прошёл валидацию по _PROJECT_NAME_RE (до 40 символов,
     без спец-символов кроме _ . -), поэтому безопасно класть в callback_data.
     """
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Создать", callback_data=f"pc:yes:{name}"),
-        InlineKeyboardButton(text="❌ Отмена", callback_data="pc:no"),
-    ]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="✅ Создать", callback_data=f"pc:yes:{name}"),
+                InlineKeyboardButton(text="❌ Отмена", callback_data="pc:no"),
+            ]
+        ]
+    )
 
 
 def sessions_keyboard(sessions: list[Session]) -> InlineKeyboardMarkup:
@@ -47,61 +54,68 @@ def sessions_keyboard(sessions: list[Session]) -> InlineKeyboardMarkup:
         icon = "🟡" if s.mode.value == "plan" else "🟢"
         cost = s.total_usage.cost
         title = (s.title or "(без названия)")[:35]
-        rows.append([
-            InlineKeyboardButton(
-                text=f"{icon} {title} · {cost:.2f}₽",
-                callback_data=f"open:{s.id}",
-            )
-        ])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=f"{icon} {title} · {cost:.2f}₽",
+                    callback_data=f"open:{s.id}",
+                )
+            ]
+        )
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def gh_offer_keyboard(name: str) -> InlineKeyboardMarkup:
     """Предложение создать GitHub-репо после /new."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="🔓 Публичный",
-                callback_data=f"gh:pub_new:{name}",
-            ),
-            InlineKeyboardButton(
-                text="🔒 Приватный",
-                callback_data=f"gh:priv_new:{name}",
-            ),
-        ],
-        [
-            InlineKeyboardButton(
-                text="⏭ Только локально",
-                callback_data=f"gh:skip_new:{name}",
-            ),
-        ],
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔓 Публичный",
+                    callback_data=f"gh:pub_new:{name}",
+                ),
+                InlineKeyboardButton(
+                    text="🔒 Приватный",
+                    callback_data=f"gh:priv_new:{name}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⏭ Только локально",
+                    callback_data=f"gh:skip_new:{name}",
+                ),
+            ],
+        ]
+    )
 
 
 def gh_private_keyboard(name: str) -> InlineKeyboardMarkup:
     """Выбор приватности при создании репо на GitHub."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [
-            InlineKeyboardButton(
-                text="🔓 Публичный",
-                callback_data=f"gh:pub:{name}",
-            ),
-            InlineKeyboardButton(
-                text="🔒 Приватный",
-                callback_data=f"gh:priv:{name}",
-            ),
-        ],
-        [
-            InlineKeyboardButton(text="⏭ Отмена", callback_data="gh:skip"),
-        ],
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="🔓 Публичный",
+                    callback_data=f"gh:pub:{name}",
+                ),
+                InlineKeyboardButton(
+                    text="🔒 Приватный",
+                    callback_data=f"gh:priv:{name}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(text="⏭ Отмена", callback_data="gh:skip"),
+            ],
+        ]
+    )
 
 
 def models_keyboard(current_model: str) -> InlineKeyboardMarkup:
     """Список кураторских моделей для выбора."""
     from agent_coder.model_catalog import catalog
     from agent_coder.models import feature_badges
+
     rows = []
     for m in catalog.all():
         mark = "✅" if m.id == current_model else "▫️"
@@ -117,23 +131,28 @@ def models_keyboard(current_model: str) -> InlineKeyboardMarkup:
 def reasoning_keyboard(current: str) -> InlineKeyboardMarkup:
     """Уровни reasoning, которые принимает routerai."""
     from agent_coder.models import REASONING_LEVELS
+
     labels = {
-        "none":    "⚪ none — без раздумий",
+        "none": "⚪ none — без раздумий",
         "minimal": "🟢 minimal — быстро",
-        "low":     "🟢 low — быстро",
-        "medium":  "🟡 medium — баланс",
-        "high":    "🟠 high — глубоко",
-        "xhigh":   "🔴 xhigh — очень глубоко",
-        "max":     "🔴 max — максимум",
-        "ultra":   "🔥 ultra — экстрим",
+        "low": "🟢 low — быстро",
+        "medium": "🟡 medium — баланс",
+        "high": "🟠 high — глубоко",
+        "xhigh": "🔴 xhigh — очень глубоко",
+        "max": "🔴 max — максимум",
+        "ultra": "🔥 ultra — экстрим",
     }
     rows = []
     for level in REASONING_LEVELS:
         mark = "✅ " if level == current else "▫️ "
-        rows.append([InlineKeyboardButton(
-            text=mark + labels.get(level, level),
-            callback_data=f"setreason:{level}",
-        )])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=mark + labels.get(level, level),
+                    callback_data=f"setreason:{level}",
+                )
+            ]
+        )
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="session_back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -141,20 +160,25 @@ def reasoning_keyboard(current: str) -> InlineKeyboardMarkup:
 def verbosity_keyboard(current: str) -> InlineKeyboardMarkup:
     """Уровни verbosity (длина ответа)."""
     from agent_coder.models import VERBOSITY_LEVELS
+
     labels = {
-        "low":    "🟢 low — коротко",
+        "low": "🟢 low — коротко",
         "medium": "🟡 medium — баланс",
-        "high":   "🟠 high — подробно",
-        "xhigh":  "🔴 xhigh — очень подробно",
-        "max":    "🔥 max — максимум",
+        "high": "🟠 high — подробно",
+        "xhigh": "🔴 xhigh — очень подробно",
+        "max": "🔥 max — максимум",
     }
     rows = []
     for level in VERBOSITY_LEVELS:
         mark = "✅ " if level == current else "▫️ "
-        rows.append([InlineKeyboardButton(
-            text=mark + labels.get(level, level),
-            callback_data=f"setverbosity:{level}",
-        )])
+        rows.append(
+            [
+                InlineKeyboardButton(
+                    text=mark + labels.get(level, level),
+                    callback_data=f"setverbosity:{level}",
+                )
+            ]
+        )
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="session_back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
@@ -166,14 +190,18 @@ def model_card_keyboard(model_id: str, is_current: bool) -> InlineKeyboardMarkup
     """Карточка модели: описание + метрики + выбор/назад."""
     row: list[InlineKeyboardButton] = []
     if not is_current:
-        row.append(InlineKeyboardButton(
-            text="✅ Выбрать",
-            callback_data=f"setmodel:{model_id}",
-        ))
-    row.append(InlineKeyboardButton(
-        text="⬅️ К списку",
-        callback_data="menu_model",
-    ))
+        row.append(
+            InlineKeyboardButton(
+                text="✅ Выбрать",
+                callback_data=f"setmodel:{model_id}",
+            )
+        )
+    row.append(
+        InlineKeyboardButton(
+            text="⬅️ К списку",
+            callback_data="menu_model",
+        )
+    )
     return InlineKeyboardMarkup(inline_keyboard=[row])
 
 
@@ -203,33 +231,44 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
     # Адаптивно — только применимые к модели; раскладка 1/2/3/2+2.
     quick: list[InlineKeyboardButton] = []
     if m and m.reasoning:
-        quick.append(InlineKeyboardButton(
-            text=f"💭 {session.reasoning_effort}",
-            callback_data="menu_reasoning",
-        ))
+        quick.append(
+            InlineKeyboardButton(
+                text=f"💭 {session.reasoning_effort}",
+                callback_data="menu_reasoning",
+            )
+        )
     if m and m.web_search_builtin:
         ws = "вкл" if session.web_search else "выкл"
-        quick.append(InlineKeyboardButton(
-            text=f"🌐 {ws}",
-            callback_data="web_toggle",
-        ))
+        quick.append(
+            InlineKeyboardButton(
+                text=f"🌐 {ws}",
+                callback_data="web_toggle",
+            )
+        )
     from agent_coder.config import config as _cfg
+
     cur_tier = session.service_tier or _cfg.SERVICE_TIER
-    quick.append(InlineKeyboardButton(
-        text=f"⚡ {cur_tier}",
-        callback_data="tier_toggle",
-    ))
+    quick.append(
+        InlineKeyboardButton(
+            text=f"⚡ {cur_tier}",
+            callback_data="tier_toggle",
+        )
+    )
     if m and m.verbosity:
         v = session.verbosity or "medium"
-        quick.append(InlineKeyboardButton(
-            text=f"📏 {v}",
-            callback_data="menu_verbosity",
-        ))
+        quick.append(
+            InlineKeyboardButton(
+                text=f"📏 {v}",
+                callback_data="menu_verbosity",
+            )
+        )
     if session.yolo:
-        quick.append(InlineKeyboardButton(
-            text="⚡ YOLO",
-            callback_data="yolo_toggle",
-        ))
+        quick.append(
+            InlineKeyboardButton(
+                text="⚡ YOLO",
+                callback_data="yolo_toggle",
+            )
+        )
 
     # Раскладка: 1 → 1 в ряд; 2 → 2 в ряд; 3 → 3 в ряд; 4 → 2+2.
     if len(quick) <= 3:
@@ -239,54 +278,76 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
         rows.append(quick[2:])
 
     sid = session.id
-    rows.append([
-        InlineKeyboardButton(text="🟡 Plan",  callback_data=f"mode:plan:{sid}"),
-        InlineKeyboardButton(text="🟢 Act",   callback_data=f"mode:act:{sid}"),
-    ])
-    rows.append([
-        InlineKeyboardButton(text="🔒 Audit", callback_data=f"mode:audit:{sid}"),
-        InlineKeyboardButton(text="💬 Chat",  callback_data=f"mode:chat:{sid}"),
-    ])
-    rows.append([
-        InlineKeyboardButton(text="💰 Стоимость", callback_data=f"cost:{sid}"),
-        InlineKeyboardButton(text="🔄 Новая",     callback_data="sessions"),
-    ])
-    rows.append([
-        InlineKeyboardButton(text="📜 История", callback_data=f"history:{sid}"),
-        InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del:{sid}"),
-    ])
+    rows.append(
+        [
+            InlineKeyboardButton(text="🟡 Plan", callback_data=f"mode:plan:{sid}"),
+            InlineKeyboardButton(text="🟢 Act", callback_data=f"mode:act:{sid}"),
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(text="🔒 Audit", callback_data=f"mode:audit:{sid}"),
+            InlineKeyboardButton(text="💬 Chat", callback_data=f"mode:chat:{sid}"),
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(text="💰 Стоимость", callback_data=f"cost:{sid}"),
+            InlineKeyboardButton(text="🔄 Новая", callback_data="sessions"),
+        ]
+    )
+    rows.append(
+        [
+            InlineKeyboardButton(text="📜 История", callback_data=f"history:{sid}"),
+            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del:{sid}"),
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 def continue_keyboard(session_id: str) -> InlineKeyboardMarkup:
     """Кнопки после достижения лимита итераций: продолжить / сменить режим."""
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="▶️ Продолжить",
-            callback_data=f"continue_task:{session_id}",
-        )],
-        [
-            InlineKeyboardButton(
-                text="💬 Chat",
-                callback_data=f"mode:chat:{session_id}",
-            ),
-            InlineKeyboardButton(
-                text="🟡 Plan",
-                callback_data=f"mode:plan:{session_id}",
-            ),
-        ],
-    ])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="▶️ Продолжить",
+                    callback_data=f"continue_task:{session_id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="💬 Chat",
+                    callback_data=f"mode:chat:{session_id}",
+                ),
+                InlineKeyboardButton(
+                    text="🟡 Plan",
+                    callback_data=f"mode:plan:{session_id}",
+                ),
+            ],
+        ]
+    )
 
 
 def approval_keyboard(request_id: str) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[[
-        InlineKeyboardButton(text="✅ Разрешить", callback_data=f"approve:{request_id}"),
-        InlineKeyboardButton(text="❌ Отклонить", callback_data=f"deny:{request_id}"),
-    ]])
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Разрешить", callback_data=f"approve:{request_id}"
+                ),
+                InlineKeyboardButton(
+                    text="❌ Отклонить", callback_data=f"deny:{request_id}"
+                ),
+            ]
+        ]
+    )
+
 
 def server_menu_keyboard() -> InlineKeyboardMarkup:
     """Верхний уровень серверной диагностики: список групп, 2 в ряд."""
     from agent_coder.server_ops import SERVER_GROUPS
+
     rows: list[list[InlineKeyboardButton]] = []
     row: list[InlineKeyboardButton] = []
     for gid, glabel in SERVER_GROUPS:
@@ -303,6 +364,7 @@ def server_menu_keyboard() -> InlineKeyboardMarkup:
 def server_group_keyboard(group: str) -> InlineKeyboardMarkup:
     """Кнопки одной группы серверных op'ов, 2 в ряд."""
     from agent_coder.server_ops import ops_in_group
+
     rows: list[list[InlineKeyboardButton]] = []
     row: list[InlineKeyboardButton] = []
     for op in ops_in_group(group):
@@ -312,15 +374,19 @@ def server_group_keyboard(group: str) -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
-    rows.append([
-        InlineKeyboardButton(text="⬅️ К группам", callback_data="srv_back"),
-        InlineKeyboardButton(text="⬅️ В сессию", callback_data="session_back"),
-    ])
+    rows.append(
+        [
+            InlineKeyboardButton(text="⬅️ К группам", callback_data="srv_back"),
+            InlineKeyboardButton(text="⬅️ В сессию", callback_data="session_back"),
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
 
 def audit_menu_keyboard() -> InlineKeyboardMarkup:
     """Верхний уровень аудита: список групп, 2 в ряд."""
     from agent_coder.audit_ops import AUDIT_GROUPS
+
     rows: list[list[InlineKeyboardButton]] = []
     row: list[InlineKeyboardButton] = []
     for gid, glabel in AUDIT_GROUPS:
@@ -337,6 +403,7 @@ def audit_menu_keyboard() -> InlineKeyboardMarkup:
 def audit_group_keyboard(group: str) -> InlineKeyboardMarkup:
     """Кнопки одной группы audit-оп'ов, 2 в ряд."""
     from agent_coder.audit_ops import ops_in_group
+
     rows: list[list[InlineKeyboardButton]] = []
     row: list[InlineKeyboardButton] = []
     for op in ops_in_group(group):
@@ -346,8 +413,10 @@ def audit_group_keyboard(group: str) -> InlineKeyboardMarkup:
             row = []
     if row:
         rows.append(row)
-    rows.append([
-        InlineKeyboardButton(text="⬅️ К группам", callback_data="aud_back"),
-        InlineKeyboardButton(text="⬅️ В сессию", callback_data="session_back"),
-    ])
+    rows.append(
+        [
+            InlineKeyboardButton(text="⬅️ К группам", callback_data="aud_back"),
+            InlineKeyboardButton(text="⬅️ В сессию", callback_data="session_back"),
+        ]
+    )
     return InlineKeyboardMarkup(inline_keyboard=rows)

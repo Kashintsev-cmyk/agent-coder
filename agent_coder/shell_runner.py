@@ -5,6 +5,7 @@
 - telegram/handlers.py::cb_server_op
 - telegram/handlers.py::cb_audit_op
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -68,7 +69,8 @@ async def run_shell(
 
     try:
         stdout_b, stderr_b = await asyncio.wait_for(
-            proc.communicate(), timeout=timeout,
+            proc.communicate(),
+            timeout=timeout,
         )
     except TimeoutError:
         _kill_proc_tree(proc, use_group=start_new_session)
@@ -77,8 +79,11 @@ async def run_shell(
         except Exception:
             pass
         return ShellResult(
-            returncode=-1, stdout="", stderr="",
-            timed_out=True, error=f"таймаут {timeout:.0f}с",
+            returncode=-1,
+            stdout="",
+            stderr="",
+            timed_out=True,
+            error=f"таймаут {timeout:.0f}с",
         )
 
     stdout = stdout_b.decode("utf-8", errors="replace")

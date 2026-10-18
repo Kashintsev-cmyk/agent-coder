@@ -1,4 +1,5 @@
 """Тесты разбивки длинного текста и экранирования в telegram-хендлерах."""
+
 from __future__ import annotations
 
 from agent_coder.telegram.handlers import _split_for_telegram

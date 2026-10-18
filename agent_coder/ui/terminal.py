@@ -1,4 +1,5 @@
 """Rich-вывод и диалоги подтверждения."""
+
 from __future__ import annotations
 
 from rich.console import Console
@@ -15,9 +16,12 @@ console = Console()
 
 def print_banner(session_id: str, workspace: str, model: str, mode: str) -> None:
     text = Text()
-    text.append("Session:   ", style="dim"); text.append(f"{session_id}\n", style="cyan")
-    text.append("Workspace: ", style="dim"); text.append(f"{workspace}\n")
-    text.append("Model:     ", style="dim"); text.append(f"{model}\n")
+    text.append("Session:   ", style="dim")
+    text.append(f"{session_id}\n", style="cyan")
+    text.append("Workspace: ", style="dim")
+    text.append(f"{workspace}\n")
+    text.append("Model:     ", style="dim")
+    text.append(f"{model}\n")
     text.append("Mode:      ", style="dim")
     text.append(mode, style="yellow" if mode == "plan" else "green")
     console.print(Panel(text, title="agent-coder", border_style="cyan"))
@@ -52,13 +56,16 @@ def print_usage(usage: Usage) -> None:
 
 
 def print_total_usage(usage: Usage, request_count: int) -> None:
-    console.print(Panel(
-        f"Запросов: {request_count}\n"
-        f"Tokens in:  {usage.input_tokens} (cache {usage.cache_read_tokens})\n"
-        f"Tokens out: {usage.output_tokens}\n"
-        f"[bold]Стоимость: {format_cost(usage.cost)}[/bold]",
-        title="Итого", border_style="green",
-    ))
+    console.print(
+        Panel(
+            f"Запросов: {request_count}\n"
+            f"Tokens in:  {usage.input_tokens} (cache {usage.cache_read_tokens})\n"
+            f"Tokens out: {usage.output_tokens}\n"
+            f"[bold]Стоимость: {format_cost(usage.cost)}[/bold]",
+            title="Итого",
+            border_style="green",
+        )
+    )
 
 
 def print_error(message: str) -> None:
@@ -75,11 +82,13 @@ def print_success(message: str) -> None:
 
 async def ask_approval(tc: ToolCall) -> bool:
     console.print()
-    console.print(Panel(
-        _format_approval(tc),
-        title="[yellow]⚠ Требуется подтверждение[/yellow]",
-        border_style="yellow",
-    ))
+    console.print(
+        Panel(
+            _format_approval(tc),
+            title="[yellow]⚠ Требуется подтверждение[/yellow]",
+            border_style="yellow",
+        )
+    )
     return Confirm.ask("Разрешить?", default=False)
 
 
@@ -90,7 +99,6 @@ def _format_approval(tc: ToolCall) -> str:
     for key, value in tc.arguments.items():
         lines.append(f"  [dim]{key}:[/dim] {_preview(str(value), 300)}")
     return "\n".join(lines)
-
 
 
 def _short_args(args: dict) -> str:

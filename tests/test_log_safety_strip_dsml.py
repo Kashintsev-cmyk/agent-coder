@@ -4,6 +4,7 @@
 вместо ASCII-пайпа, и старая реализация (только `|`) их не видела —
 разметка утекала в Telegram и оставалась в истории сессии.
 """
+
 from __future__ import annotations
 
 from agent_coder.log_safety import strip_dsml
@@ -11,8 +12,8 @@ from agent_coder.log_safety import strip_dsml
 # Реальный фрагмент из сессии 1a9507ff (теги с U+FF5C).
 FULLWIDTH_LEAK = (
     "<\uff5c\uff5cDSML\uff5c\uff5c calls>\n"
-    "<\uff5c\uff5cDSML\uff5c\uff5c invoke name=\"list_files\">\n"
-    "<\uff5c\uff5cDSML\uff5c\uff5c parameter name=\"path\" string=\"true\">."
+    '<\uff5c\uff5cDSML\uff5c\uff5c invoke name="list_files">\n'
+    '<\uff5c\uff5cDSML\uff5c\uff5c parameter name="path" string="true">.'
     "</\uff5c\uff5cDSML\uff5c\uff5c parameter>\n"
     "</\uff5c\uff5cDSML\uff5c\uff5c invoke>\n"
     "</\uff5c\uff5cDSML\uff5c\uff5c calls>"
@@ -21,7 +22,7 @@ FULLWIDTH_LEAK = (
 ASCII_LEAK = (
     '<||DSML||invoke name="read_file">'
     '<||DSML||parameter name="path">a.py</||DSML||parameter>'
-    '</||DSML||invoke>'
+    "</||DSML||invoke>"
 )
 
 
@@ -69,8 +70,8 @@ class TestStripDsml:
         text = (
             "Нашёл баг: strip_dsml не видел теги "
             "<\uff5c\uff5cDSML\uff5c\uff5c calls>\n"
-            "<\uff5c\uff5cDSML\uff5c\uff5c invoke name=\"list_files\">\n"
-            "<\uff5c\uff5cDSML\uff5c\uff5c parameter name=\"path\">.</\uff5c\uff5cDSML\uff5c\uff5c parameter>\n"
+            '<\uff5c\uff5cDSML\uff5c\uff5c invoke name="list_files">\n'
+            '<\uff5c\uff5cDSML\uff5c\uff5c parameter name="path">.</\uff5c\uff5cDSML\uff5c\uff5c parameter>\n'
             "</\uff5c\uff5cDSML\uff5c\uff5c invoke>\n"
             "</\uff5c\uff5cDSML\uff5c\uff5c calls>"
             " — и это утекало в чат."

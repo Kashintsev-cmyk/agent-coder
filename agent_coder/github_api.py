@@ -4,6 +4,7 @@
 - /ghnew   → create_repo()
 - /status  → whoami() (проверка токена)
 """
+
 from __future__ import annotations
 
 import logging

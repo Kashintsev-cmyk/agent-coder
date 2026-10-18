@@ -1,4 +1,5 @@
 """Запуск Telegram-бота."""
+
 from __future__ import annotations
 
 import asyncio
@@ -20,24 +21,24 @@ logger = logging.getLogger(__name__)
 
 # Меню команд (синий значок "/" в Telegram).
 BOT_COMMANDS = [
-    BotCommand(command="start",     description="🏠 Главное меню"),
-    BotCommand(command="server",    description="🖥 Диагностика сервера"),
-    BotCommand(command="audit",     description="🔒 Аудит проекта"),
-    BotCommand(command="balance",   description="💳 Баланс RouterAI"),
-    BotCommand(command="new",       description="➕ Новый проект"),
-    BotCommand(command="chat",      description="💬 Обсуждение"),
-    BotCommand(command="sessions",  description="📚 Все сессии"),
-    BotCommand(command="current",   description="📍 Текущая сессия"),
-    BotCommand(command="history",   description="📜 История сессии"),
-    BotCommand(command="delete",    description="🗑 Удалить сессию"),
-    BotCommand(command="model",     description="🧠 Выбрать модель"),
+    BotCommand(command="start", description="🏠 Главное меню"),
+    BotCommand(command="server", description="🖥 Диагностика сервера"),
+    BotCommand(command="audit", description="🔒 Аудит проекта"),
+    BotCommand(command="balance", description="💳 Баланс RouterAI"),
+    BotCommand(command="new", description="➕ Новый проект"),
+    BotCommand(command="chat", description="💬 Обсуждение"),
+    BotCommand(command="sessions", description="📚 Все сессии"),
+    BotCommand(command="current", description="📍 Текущая сессия"),
+    BotCommand(command="history", description="📜 История сессии"),
+    BotCommand(command="delete", description="🗑 Удалить сессию"),
+    BotCommand(command="model", description="🧠 Выбрать модель"),
     BotCommand(command="reasoning", description="💭 Уровень reasoning"),
-    BotCommand(command="mode",      description="🔄 Plan / Act / Audit / Chat"),
-    BotCommand(command="yolo",      description="⚡ Без подтверждений (вкл/выкл)"),
-    BotCommand(command="cost",      description="💰 Стоимость сессии"),
-    BotCommand(command="projects",  description="📂 Проекты"),
-    BotCommand(command="cancel",    description="⏹ Отменить задачу"),
-    BotCommand(command="help",      description="❓ Справка"),
+    BotCommand(command="mode", description="🔄 Plan / Act / Audit / Chat"),
+    BotCommand(command="yolo", description="⚡ Без подтверждений (вкл/выкл)"),
+    BotCommand(command="cost", description="💰 Стоимость сессии"),
+    BotCommand(command="projects", description="📂 Проекты"),
+    BotCommand(command="cancel", description="⏹ Отменить задачу"),
+    BotCommand(command="help", description="❓ Справка"),
 ]
 
 
@@ -54,7 +55,8 @@ async def _catalog_refresh_once() -> None:
         ok = await catalog.refresh()
         logger.info(
             "model catalog refresh: ok=%s source=%s",
-            ok, catalog.source,
+            ok,
+            catalog.source,
         )
     except Exception:
         logger.exception("model catalog refresh unexpected error")
@@ -64,6 +66,7 @@ async def _media_cleanup_once() -> None:
     """Best-effort очистка медиа старше MEDIA_RETENTION_DAYS."""
     try:
         import asyncio
+
         files, dirs = await asyncio.to_thread(cleanup_old_media)
         if files or dirs:
             logger.info("media retention: удалено %d файлов, %d папок", files, dirs)
@@ -74,6 +77,7 @@ async def _media_cleanup_once() -> None:
 async def _media_cleanup_loop() -> None:
     """Раз в сутки (плюс один раз при старте)."""
     import asyncio
+
     await _media_cleanup_once()
     while True:
         try:
@@ -128,6 +132,7 @@ async def _run() -> None:
         exc = event.exception
         # 429 от Telegram — транзиентная ошибка, юзеру отвечать нечем
         from aiogram.exceptions import TelegramRetryAfter
+
         if isinstance(exc, TelegramRetryAfter):
             logger.warning("Telegram 429, retry_after=%s", exc.retry_after)
             return True
@@ -142,7 +147,8 @@ async def _run() -> None:
                 )
             elif event.update.callback_query:
                 await event.update.callback_query.answer(
-                    "❌ Ошибка — попробуй ещё раз", show_alert=True,
+                    "❌ Ошибка — попробуй ещё раз",
+                    show_alert=True,
                 )
         except Exception:
             pass  # не даём упасть внутри обработчика ошибок

@@ -24,6 +24,7 @@ Fallback срабатывает на 429 (RateLimitError) и timeout (APITimeout
 клиент (`llm.client`) уже делает retry с backoff — роутер подключается,
 когда retry исчерпан или ошибка не ретраибельна.
 """
+
 from __future__ import annotations
 
 import logging
@@ -38,9 +39,9 @@ logger = logging.getLogger(__name__)
 
 # Ошибки, по которым имеет смысл пробовать следующую модель цепочки.
 FALLBACK_ERRORS: tuple[type[Exception], ...] = (
-    RateLimitError,       # 429
-    APITimeoutError,      # таймаут запроса
-    APIConnectionError,   # сеть недоступна (включает APITimeoutError)
+    RateLimitError,  # 429
+    APITimeoutError,  # таймаут запроса
+    APIConnectionError,  # сеть недоступна (включает APITimeoutError)
 )
 
 
@@ -117,7 +118,9 @@ class ModelRouter:
             else:
                 logger.info(
                     "Модель %s пропущена: ~%d токенов > лимит %s",
-                    mid, input_tokens, self.max_input_tokens(mid),
+                    mid,
+                    input_tokens,
+                    self.max_input_tokens(mid),
                 )
         return kept
 
@@ -163,9 +166,7 @@ class ModelRouter:
         group = self._audit if model_id in self._audit else self._coding
         if model_id not in group:
             return [model_id]
-        rest = self.filter_by_context(
-            [m for m in group if m != model_id], input_tokens
-        )
+        rest = self.filter_by_context([m for m in group if m != model_id], input_tokens)
         return [model_id, *rest]
 
     # --- fallback при ошибке ---

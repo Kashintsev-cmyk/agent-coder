@@ -1,4 +1,5 @@
 """Тесты группировки audit-оп'ов."""
+
 from __future__ import annotations
 
 from agent_coder.audit_ops import (
@@ -40,6 +41,7 @@ def test_op_group_unknown_defaults():
 def test_keyboards_expose_group_api():
     """handlers.py рассчитывает на эти функции — они должны быть."""
     from agent_coder.telegram import keyboards
+
     assert hasattr(keyboards, "audit_menu_keyboard")
     assert hasattr(keyboards, "audit_group_keyboard")
     # верхний уровень — только группы (aud_grp:), не оп'ы (aud:)
@@ -52,6 +54,7 @@ def test_keyboards_expose_group_api():
 def test_server_keyboards_expose_group_api():
     """Симметрично для /server."""
     from agent_coder.telegram import keyboards
+
     assert hasattr(keyboards, "server_menu_keyboard")
     assert hasattr(keyboards, "server_group_keyboard")
     top = keyboards.server_menu_keyboard().inline_keyboard

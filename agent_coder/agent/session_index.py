@@ -22,6 +22,7 @@
   }
 }
 """
+
 from __future__ import annotations
 
 import json
@@ -40,6 +41,7 @@ INDEX_FILENAME = "index.json"
 
 class _HasMeta(Protocol):
     """Минимальный интерфейс, который нужен индексу от сессии."""
+
     id: str
     title: str
     workspace: str
@@ -54,6 +56,7 @@ class _HasMeta(Protocol):
 @dataclass(frozen=True)
 class SessionMeta:
     """Лёгкая мета-запись о сессии (без messages)."""
+
     id: str
     title: str
     workspace: str
@@ -105,6 +108,7 @@ class SessionIndex:
     @staticmethod
     def _default_path() -> Path:
         from agent_coder.config import config
+
         return config.SESSIONS_DIR / INDEX_FILENAME
 
     @property
@@ -127,15 +131,13 @@ class SessionIndex:
         try:
             raw = self._path.read_text(encoding="utf-8")
         except OSError as exc:
-            logger.warning("Не удалось прочитать индекс сессий %s: %s",
-                           self._path, exc)
+            logger.warning("Не удалось прочитать индекс сессий %s: %s", self._path, exc)
             return False
 
         try:
             payload = json.loads(raw)
         except (ValueError, TypeError) as exc:
-            logger.warning("Битый JSON в индексе сессий %s: %s",
-                           self._path, exc)
+            logger.warning("Битый JSON в индексе сессий %s: %s", self._path, exc)
             self._sessions = {}
             self._loaded = False
             return False
@@ -149,7 +151,9 @@ class SessionIndex:
         if payload.get("_version") != INDEX_VERSION:
             logger.info(
                 "Индекс сессий %s имеет версию %r, ожидается %r — пересоберу",
-                self._path, payload.get("_version"), INDEX_VERSION,
+                self._path,
+                payload.get("_version"),
+                INDEX_VERSION,
             )
             self._sessions = {}
             self._loaded = False
@@ -201,8 +205,7 @@ class SessionIndex:
             )
             os.replace(tmp, self._path)
         except OSError as exc:
-            logger.warning("Не удалось записать индекс сессий %s: %s",
-                           self._path, exc)
+            logger.warning("Не удалось записать индекс сессий %s: %s", self._path, exc)
             try:
                 tmp.unlink(missing_ok=True)
             except OSError:

@@ -1,4 +1,5 @@
 """Тесты безопасности search: path внутри workspace."""
+
 from __future__ import annotations
 
 import pytest

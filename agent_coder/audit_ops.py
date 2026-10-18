@@ -3,6 +3,7 @@
 Все команды безопасны (read-only) и работают на сервере. Если инструмент
 не установлен — вернётся понятное сообщение.
 """
+
 from __future__ import annotations
 
 from dataclasses import dataclass
@@ -112,25 +113,25 @@ AUDIT_OPS: list[AuditOp] = [
 
 
 AUDIT_GROUPS: list[tuple[str, str]] = [
-    ("codetypes",   "🎨 Код и типы"),
-    ("security",    "🔒 Безопасность"),
-    ("deps",        "📦 Зависимости"),
-    ("testsmetr",   "🧪 Тесты и метрики"),
+    ("codetypes", "🎨 Код и типы"),
+    ("security", "🔒 Безопасность"),
+    ("deps", "📦 Зависимости"),
+    ("testsmetr", "🧪 Тесты и метрики"),
 ]
 
 _GROUP_BY_ID: dict[str, str] = {
-    "ruff":        "codetypes",
+    "ruff": "codetypes",
     "ruff_format": "codetypes",
-    "mypy":        "codetypes",
-    "vulture":     "codetypes",
-    "bandit":      "security",
-    "secrets":     "security",
-    "git_env":     "security",
-    "pip_audit":   "deps",
-    "outdated":    "deps",
-    "tests":       "testsmetr",
-    "tree":        "testsmetr",
-    "loc":         "testsmetr",
+    "mypy": "codetypes",
+    "vulture": "codetypes",
+    "bandit": "security",
+    "secrets": "security",
+    "git_env": "security",
+    "pip_audit": "deps",
+    "outdated": "deps",
+    "tests": "testsmetr",
+    "tree": "testsmetr",
+    "loc": "testsmetr",
 }
 
 

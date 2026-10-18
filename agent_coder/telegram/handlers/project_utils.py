@@ -2,6 +2,7 @@
 
 Используется из /new, /clone, /ghnew и gh_offer-callback'ов.
 """
+
 from __future__ import annotations
 
 import logging
@@ -83,8 +84,10 @@ def _validate_project_name(name: str) -> str | None:
     if not name:
         return "пустое имя"
     if not _PROJECT_NAME_RE.match(name):
-        return ("недопустимое имя (буквы/цифры/подчёркивания/дефисы/точки, "
-                "до 40 символов, не начинается с точки или дефиса)")
+        return (
+            "недопустимое имя (буквы/цифры/подчёркивания/дефисы/точки, "
+            "до 40 символов, не начинается с точки или дефиса)"
+        )
     return None
 
 
@@ -128,7 +131,9 @@ async def _create_project_on_disk(name: str) -> Path:
 
 
 async def _create_session(
-    chat_id: int, message: Message, path_str: str,
+    chat_id: int,
+    message: Message,
+    path_str: str,
     *,
     mode: Mode = Mode.ACT,
     title: str | None = None,
@@ -140,8 +145,9 @@ async def _create_session(
     """
     workspace = Path(path_str).resolve()
     if not workspace.is_dir():
-        await message.answer(f"❌ Директория не найдена: <code>{workspace}</code>",
-                            parse_mode="HTML")
+        await message.answer(
+            f"❌ Директория не найдена: <code>{workspace}</code>", parse_mode="HTML"
+        )
         return
 
     session = Session.new(

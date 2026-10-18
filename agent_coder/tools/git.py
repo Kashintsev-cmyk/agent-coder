@@ -1,4 +1,5 @@
 """Инструменты для git: status, diff, log, commit."""
+
 from __future__ import annotations
 
 import asyncio
@@ -12,7 +13,8 @@ GIT_TIMEOUT = 30
 
 async def _run_git(ctx: ToolContext, *args: str, timeout: int = GIT_TIMEOUT):
     proc = await asyncio.create_subprocess_exec(
-        "git", *args,
+        "git",
+        *args,
         cwd=ctx.workspace,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
@@ -23,7 +25,11 @@ async def _run_git(ctx: ToolContext, *args: str, timeout: int = GIT_TIMEOUT):
         proc.kill()
         await proc.wait()
         return -1, "", f"git {args[0]}: таймаут {timeout}с"
-    return proc.returncode, stdout_b.decode("utf-8", errors="replace"), stderr_b.decode("utf-8", errors="replace")
+    return (
+        proc.returncode,
+        stdout_b.decode("utf-8", errors="replace"),
+        stderr_b.decode("utf-8", errors="replace"),
+    )
 
 
 def _truncate(text: str, limit: int = MAX_OUTPUT) -> str:
@@ -33,6 +39,7 @@ def _truncate(text: str, limit: int = MAX_OUTPUT) -> str:
 
 
 # ---------- git_status ----------
+
 
 async def _status(args: dict[str, Any], ctx: ToolContext) -> str:
     code, out, err = await _run_git(ctx, "status", "--porcelain=v1", "--branch")
@@ -55,6 +62,7 @@ git_status_tool = Tool(
 
 
 # ---------- git_diff ----------
+
 
 async def _diff(args: dict[str, Any], ctx: ToolContext) -> str:
     cmd = ["diff"]
@@ -91,12 +99,18 @@ git_diff_tool = Tool(
 
 # ---------- git_log ----------
 
+
 async def _log(args: dict[str, Any], ctx: ToolContext) -> str:
     n = int(args.get("count") or 10)
     n = max(1, min(n, 50))
-    code, out, err = await _run_git(ctx, "log", f"-{n}", "--pretty=format:%h %ad %an: %s", "--date=short")
+    code, out, err = await _run_git(
+        ctx, "log", f"-{n}", "--pretty=format:%h %ad %an: %s", "--date=short"
+    )
     if code != 0:
-        if "does not have any commits" in err.lower() or "not a git repository" in err.lower():
+        if (
+            "does not have any commits" in err.lower()
+            or "not a git repository" in err.lower()
+        ):
             return "Нет коммитов или это не git-репозиторий"
         return f"git log упал (код {code}): {err.strip()}"
     return _truncate(out)
@@ -117,6 +131,7 @@ git_log_tool = Tool(
 
 
 # ---------- git_commit ----------
+
 
 async def _commit(args: dict[str, Any], ctx: ToolContext) -> str:
     message = (args.get("message") or "").strip()
@@ -139,7 +154,10 @@ async def _commit(args: dict[str, Any], ctx: ToolContext) -> str:
 
     # 2. Коммит
     code, out, err = await _run_git(
-        ctx, "commit", "-m", message,
+        ctx,
+        "commit",
+        "-m",
+        message,
         timeout=60,
     )
     if code != 0:

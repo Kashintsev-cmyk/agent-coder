@@ -1,4 +1,5 @@
 """Тесты сборки kwargs для chat.completions.create (_build_request_kwargs)."""
+
 from __future__ import annotations
 
 from agent_coder.llm.client import _build_request_kwargs
@@ -11,7 +12,10 @@ def test_minimal():
 
 def test_with_tools_and_tool_choice():
     kw = _build_request_kwargs(
-        "m", [], tools=[{"type": "function"}], tool_choice="auto",
+        "m",
+        [],
+        tools=[{"type": "function"}],
+        tool_choice="auto",
     )
     assert kw["tools"] == [{"type": "function"}]
     assert kw["tool_choice"] == "auto"
@@ -40,9 +44,7 @@ def test_reasoning_effort_empty_skipped():
 
 def test_web_search_on():
     kw = _build_request_kwargs("m", [], web_search=True)
-    assert kw["plugins"] == [
-        {"id": "web", "engine": "native", "max_results": 5}
-    ]
+    assert kw["plugins"] == [{"id": "web", "engine": "native", "max_results": 5}]
 
 
 def test_web_search_off_no_plugins():
@@ -54,7 +56,8 @@ def test_web_search_off_no_plugins():
 
 def test_all_options_together():
     kw = _build_request_kwargs(
-        "m", [],
+        "m",
+        [],
         tools=[{"type": "function"}],
         tool_choice="required",
         temperature=0.2,
@@ -96,7 +99,8 @@ def test_service_tier_priority_passed():
 
 def test_all_with_service_tier():
     kw = _build_request_kwargs(
-        "m", [],
+        "m",
+        [],
         reasoning_effort="medium",
         web_search=True,
         service_tier="flex",
@@ -130,6 +134,7 @@ def test_temperature_default_passed_by_loop():
     проверяется интеграционно через loop.run.
     """
     from agent_coder.config import config
+
     kw = _build_request_kwargs("m", [], temperature=config.TEMPERATURE)
     assert kw["temperature"] == config.TEMPERATURE
     assert 0.0 <= kw["temperature"] <= 2.0

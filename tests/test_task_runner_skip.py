@@ -1,4 +1,5 @@
 """Тест: _TaskRunner не редактирует части, которые не менялись."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -10,8 +11,8 @@ from agent_coder.telegram.handlers import _TaskRunner
 
 class _FakeBot:
     def __init__(self) -> None:
-        self.edit_calls: list[int] = []   # message_id, которые редактировались
-        self.send_calls: list[str] = []   # тексты, отправленные как новые
+        self.edit_calls: list[int] = []  # message_id, которые редактировались
+        self.send_calls: list[str] = []  # тексты, отправленные как новые
         self.deleted: list[int] = []
         self._next_id = 100
 

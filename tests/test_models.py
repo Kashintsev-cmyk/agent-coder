@@ -1,4 +1,5 @@
 """Тесты capability-флагов ModelInfo, каталога и хелперов supports/capabilities."""
+
 from __future__ import annotations
 
 import pytest
@@ -16,6 +17,7 @@ from agent_coder.models import (
 )
 
 # --- ModelInfo: дефолты и инварианты ---
+
 
 def test_modelinfo_defaults():
     m = ModelInfo(
@@ -45,6 +47,7 @@ def test_reasoning_effort_requires_reasoning():
 
 
 # --- Каталог и сборка списка моделей из config ---
+
 
 def test_catalog_all_matches_config_ids():
     assert [m.id for m in catalog.all()] == config.CURATED_MODEL_IDS
@@ -76,6 +79,7 @@ def test_placeholder_for_unknown_id():
 
 
 # --- supports / capabilities ---
+
 
 def test_supports_known_reasoning():
     reasoning_model = next(m for m in catalog.all() if m.reasoning)
@@ -114,6 +118,7 @@ def test_capabilities_web_search_builtin():
 
 # --- find_model ---
 
+
 def test_find_model_known():
     first = catalog.all()[0]
     assert find_model(first.id) == first
@@ -137,11 +142,11 @@ def test_supports_delegates_to_catalog(monkeypatch):
     assert supports("test/x", "vision") is True
     assert supports("test/x", "tools") is True
     assert supports("test/x", "web_search_builtin") is False
-    assert capabilities("test/x") == sorted(
-        ["vision", "tools", "reasoning"]
-    )
+    assert capabilities("test/x") == sorted(["vision", "tools", "reasoning"])
+
 
 # --- feature_badges ---
+
 
 def test_feature_badges_none():
     assert feature_badges(None) == ""
@@ -149,8 +154,13 @@ def test_feature_badges_none():
 
 def test_feature_badges_full():
     m = ModelInfo(
-        id="test/full", name="Full", context=1000, reasoning=True,
-        vision=True, tools=True, reasoning_effort=True,
+        id="test/full",
+        name="Full",
+        context=1000,
+        reasoning=True,
+        vision=True,
+        tools=True,
+        reasoning_effort=True,
         web_search_builtin=True,
     )
     assert feature_badges(m) == "👁🌐⚙🔧"
@@ -158,16 +168,26 @@ def test_feature_badges_full():
 
 def test_feature_badges_minimal():
     m = ModelInfo(
-        id="test/min", name="Min", context=1000, reasoning=False,
-        vision=False, tools=True, web_search_builtin=False,
+        id="test/min",
+        name="Min",
+        context=1000,
+        reasoning=False,
+        vision=False,
+        tools=True,
+        web_search_builtin=False,
     )
     assert feature_badges(m) == "🔧"
 
 
 def test_feature_badges_reasoning_only():
     m = ModelInfo(
-        id="test/r", name="R", context=1000, reasoning=True,
-        vision=False, tools=False, reasoning_effort=False,
+        id="test/r",
+        name="R",
+        context=1000,
+        reasoning=True,
+        vision=False,
+        tools=False,
+        reasoning_effort=False,
         web_search_builtin=False,
     )
     assert feature_badges(m) == "🧠"
@@ -175,12 +195,16 @@ def test_feature_badges_reasoning_only():
 
 def test_feature_badges_order():
     m = ModelInfo(
-        id="test/ord", name="Ord", context=1000, reasoning=True,
-        vision=True, tools=True, reasoning_effort=True,
+        id="test/ord",
+        name="Ord",
+        context=1000,
+        reasoning=True,
+        vision=True,
+        tools=True,
+        reasoning_effort=True,
         web_search_builtin=True,
     )
     b = feature_badges(m)
     assert b.index("👁") < b.index("🌐")
     assert b.index("🌐") < b.index("⚙")
     assert b.index("⚙") < b.index("🔧")
-

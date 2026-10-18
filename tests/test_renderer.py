@@ -1,4 +1,5 @@
 """Тесты HTML-рендера сообщений для Telegram."""
+
 from __future__ import annotations
 
 from agent_coder.llm.types import ToolCall, Usage
@@ -65,9 +66,13 @@ class TestRenderAssistantText:
 class TestRenderCompression:
     def _comp(self, before=90000, after=18000, mb=40, ma=10, n=1):
         from agent_coder.agent.compression import CompressionResult
+
         return CompressionResult(
-            messages_before=mb, messages_after=ma,
-            tokens_before=before, tokens_after=after, summary_count=n,
+            messages_before=mb,
+            messages_after=ma,
+            tokens_before=before,
+            tokens_after=after,
+            summary_count=n,
         )
 
     def test_shows_token_flow(self):
@@ -91,6 +96,7 @@ class TestRenderCompression:
 
 def test_tool_icon_known_and_fallback():
     from agent_coder.telegram.renderer import tool_icon
+
     assert tool_icon("read_file") == "📖"
     assert tool_icon("run_command") == "⚡"
     assert tool_icon("totally-made-up") == "🔧"

@@ -7,6 +7,7 @@ sessions/archive/<session_id>.jsonl (одна строка JSON = одно со�
 
 Формат JSONL выбран, чтобы дописывать без перечитывания всего файла.
 """
+
 from __future__ import annotations
 
 import json

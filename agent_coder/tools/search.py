@@ -1,4 +1,5 @@
 """Инструмент: поиск по проекту через ripgrep."""
+
 from __future__ import annotations
 
 import asyncio
@@ -31,8 +32,12 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         return f"Ошибка: путь {raw_path!r} вне workspace"
 
     cmd = [
-        rg, "--line-number", "--no-heading", "--color=never",
-        "--max-count", str(MAX_MATCHES),
+        rg,
+        "--line-number",
+        "--no-heading",
+        "--color=never",
+        "--max-count",
+        str(MAX_MATCHES),
     ]
     if args.get("fixed_strings", True):
         cmd.append("--fixed-strings")
@@ -62,7 +67,9 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     if not stdout:
         if proc.returncode == 1:
             return f"Ничего не найдено по запросу: {query!r}"
-        return f"rg завершился с кодом {proc.returncode}: {err.decode(errors='replace')}"
+        return (
+            f"rg завершился с кодом {proc.returncode}: {err.decode(errors='replace')}"
+        )
 
     lines = stdout.splitlines()
     if len(lines) > MAX_MATCHES:
@@ -81,7 +88,10 @@ search_tool = Tool(
         "properties": {
             "query": {"type": "string", "description": "Что искать"},
             "path": {"type": "string", "description": "Где искать (по умолчанию '.')"},
-            "glob": {"type": "string", "description": "Glob-фильтр файлов, напр. '*.py'"},
+            "glob": {
+                "type": "string",
+                "description": "Glob-фильтр файлов, напр. '*.py'",
+            },
             "fixed_strings": {
                 "type": "boolean",
                 "description": "Считать query буквальной строкой (по умолчанию true)",

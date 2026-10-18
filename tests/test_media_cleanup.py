@@ -1,4 +1,5 @@
 """Тесты retention медиа-сессий."""
+
 from __future__ import annotations
 
 import os
@@ -71,6 +72,8 @@ def test_now_parameter(tmp_path):
     # «Сейчас» сильно в будущем — файл станет «старым»
     future = time.time() + 100 * 86400
     files, _ = cleanup_old_media(
-        sessions_dir=tmp_path, retention_days=30, now=future,
+        sessions_dir=tmp_path,
+        retention_days=30,
+        now=future,
     )
     assert files == 1

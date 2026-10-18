@@ -1,4 +1,5 @@
 """Общие фикстуры для тестов agent-coder."""
+
 from __future__ import annotations
 
 import pytest

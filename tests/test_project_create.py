@@ -1,4 +1,5 @@
 """Тесты создания проекта (/new <name>)."""
+
 from __future__ import annotations
 
 import pytest
@@ -8,19 +9,38 @@ from agent_coder.telegram.handlers import project_utils as _pu
 
 # --- validate ---
 
+
 def test_validate_name_ok():
-    for n in ("my-project", "my_project", "myproject", "my.project",
-              "abc123", "a", "x" * 40):
+    for n in (
+        "my-project",
+        "my_project",
+        "myproject",
+        "my.project",
+        "abc123",
+        "a",
+        "x" * 40,
+    ):
         assert handlers._validate_project_name(n) is None, n
 
 
 def test_validate_name_bad():
-    for n in ("", ".hidden", "-dash", "my/proj", "my proj",
-              "x" * 41, "y!", "имя", "..", "."):
+    for n in (
+        "",
+        ".hidden",
+        "-dash",
+        "my/proj",
+        "my proj",
+        "x" * 41,
+        "y!",
+        "имя",
+        "..",
+        ".",
+    ):
         assert handlers._validate_project_name(n) is not None, n
 
 
 # --- create on disk ---
+
 
 @pytest.mark.asyncio
 async def test_create_project_structure(tmp_path, monkeypatch):
@@ -60,6 +80,7 @@ async def test_create_project_initial_commit(tmp_path, monkeypatch):
     path = await handlers._create_project_on_disk("with-git")
 
     from agent_coder.shell_runner import run_shell
+
     r = await run_shell("git log --oneline", cwd=path, timeout=10)
     assert (path / ".git").is_dir()
     if r.ok and r.stdout.strip():

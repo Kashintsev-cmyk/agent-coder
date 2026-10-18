@@ -1,4 +1,5 @@
 """Инструмент: список файлов."""
+
 from __future__ import annotations
 
 import asyncio
@@ -7,7 +8,16 @@ from typing import Any
 
 from agent_coder.tools.registry import Tool, ToolContext
 
-SKIP_DIRS = {".git", "node_modules", "__pycache__", ".venv", "venv", ".next", "dist", "build"}
+SKIP_DIRS = {
+    ".git",
+    "node_modules",
+    "__pycache__",
+    ".venv",
+    "venv",
+    ".next",
+    "dist",
+    "build",
+}
 MAX_ENTRIES = 500
 
 
@@ -27,7 +37,10 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
 
     pattern = args.get("pattern") or "*"
     entries = await asyncio.to_thread(
-        _collect_entries, target, base, pattern,
+        _collect_entries,
+        target,
+        base,
+        pattern,
     )
 
     if not entries:
@@ -60,7 +73,10 @@ list_files_tool = Tool(
         "type": "object",
         "properties": {
             "path": {"type": "string", "description": "Подпапка (по умолчанию '.')"},
-            "pattern": {"type": "string", "description": "Glob-шаблон (например '*.py')"},
+            "pattern": {
+                "type": "string",
+                "description": "Glob-шаблон (например '*.py')",
+            },
         },
     },
     executor=_execute,

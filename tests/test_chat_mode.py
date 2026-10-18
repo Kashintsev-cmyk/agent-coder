@@ -1,4 +1,5 @@
 """Тесты режима CHAT и правил истории."""
+
 from __future__ import annotations
 
 from agent_coder.agent.prompts import Mode
@@ -44,6 +45,7 @@ def test_chat_call_allowed_nothing():
 
 # --- preserve history ---
 
+
 def test_history_preserved_around_chat():
     assert _should_preserve_history(Mode.ACT, Mode.CHAT) is True
     assert _should_preserve_history(Mode.CHAT, Mode.ACT) is True
@@ -58,6 +60,7 @@ def test_history_cleared_between_non_chat():
 
 
 # --- cmd_chat: создание сессии ---
+
 
 def test_create_session_accepts_mode_and_title(tmp_path, monkeypatch):
     """Проверяем сигнатуру _create_session — поддерживает mode и title."""
@@ -75,8 +78,10 @@ def test_create_session_accepts_mode_and_title(tmp_path, monkeypatch):
 
 # --- continue_keyboard ---
 
+
 def test_continue_keyboard_structure():
     from agent_coder.telegram import keyboards
+
     kb = keyboards.continue_keyboard("abc12345")
     cbs = [b.callback_data for row in kb.inline_keyboard for b in row]
     assert any(cb.startswith("continue_task:abc12345") for cb in cbs)
@@ -86,8 +91,10 @@ def test_continue_keyboard_structure():
 
 # --- loop result contract ---
 
+
 def test_loop_result_defaults():
     from agent_coder.agent.loop import LoopResult
+
     r = LoopResult()
     assert r.iterations_used == 0
     assert r.limit_reached is False
@@ -97,15 +104,18 @@ def test_loop_result_defaults():
 
 def test_auto_continue_config_exists():
     from agent_coder.config import config
+
     assert config.MAX_AUTO_CONTINUE >= 1
     assert config.MAX_CONSECUTIVE_ERRORS >= 1
 
 
 # --- YOLO ---
 
+
 def test_session_yolo_default_false():
     from agent_coder.agent.prompts import Mode
     from agent_coder.agent.session import Session
+
     s = Session.new(workspace="/tmp", model="x", mode=Mode.ACT)
     assert s.yolo is False
 
@@ -113,6 +123,7 @@ def test_session_yolo_default_false():
 def test_session_yolo_roundtrip():
     from agent_coder.agent.prompts import Mode
     from agent_coder.agent.session import Session
+
     s = Session.new(workspace="/tmp", model="x", mode=Mode.ACT)
     s.yolo = True
     s2 = Session.from_dict(s.to_dict())
@@ -122,6 +133,7 @@ def test_session_yolo_roundtrip():
 def test_session_yolo_backward_compat():
     from agent_coder.agent.prompts import Mode
     from agent_coder.agent.session import Session
+
     s = Session.new(workspace="/tmp", model="x", mode=Mode.ACT)
     d = s.to_dict()
     d.pop("yolo", None)
@@ -131,6 +143,7 @@ def test_session_yolo_backward_compat():
 
 def test_hard_block_catches_destructive():
     from agent_coder.tools.run_command import _HARD_BLOCK
+
     for cmd in [
         "rm -rf /",
         "rm -rf /*",
@@ -145,6 +158,7 @@ def test_hard_block_catches_destructive():
 
 def test_hard_block_allows_safe():
     from agent_coder.tools.run_command import _HARD_BLOCK
+
     for cmd in [
         "ls -la",
         "rm /tmp/mytest",

@@ -3,6 +3,7 @@
 Выполняют shell-команды напрямую, минуя LLM. Сгруппированы по категориям
 через server_ops.SERVER_GROUPS и audit_ops.AUDIT_GROUPS.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 # ---------- Server menu ----------
 
+
 @router.message(Command("server"))
 async def cmd_server(message: Message) -> None:
     """Открывает меню серверной диагностики."""
@@ -41,6 +43,7 @@ async def cb_server_group(query: CallbackQuery) -> None:
     """Открывает подменю группы серверных команд."""
     group = query.data.split(":", 1)[1]
     from agent_coder.server_ops import ops_in_group
+
     if not ops_in_group(group):
         await query.answer("Пустая группа", show_alert=True)
         return
@@ -109,8 +112,7 @@ async def cb_server_op(query: CallbackQuery) -> None:
         output = output[:3500] + "\n... (обрезано)"
 
     await query.message.edit_text(
-        f"🖥 <b>{op.label}</b> — {op.description}\n\n"
-        f"<pre>{html_escape(output)}</pre>",
+        f"🖥 <b>{op.label}</b> — {op.description}\n\n<pre>{html_escape(output)}</pre>",
         reply_markup=op_kb,
         parse_mode="HTML",
     )
@@ -141,6 +143,7 @@ async def cb_audit_group(query: CallbackQuery) -> None:
     """Открывает подменю группы audit-команд."""
     group = query.data.split(":", 1)[1]
     from agent_coder.audit_ops import ops_in_group
+
     if not ops_in_group(group):
         await query.answer("Пустая группа", show_alert=True)
         return
@@ -187,8 +190,7 @@ async def cb_audit_op(query: CallbackQuery) -> None:
 
     await query.answer(f"Выполняю: {op.label}")
     await query.message.edit_text(
-        f"🔒 <b>{op.label}</b> — {op.description}\n\n"
-        f"⏳ Выполняю...",
+        f"🔒 <b>{op.label}</b> — {op.description}\n\n⏳ Выполняю...",
         parse_mode="HTML",
     )
 
@@ -213,8 +215,7 @@ async def cb_audit_op(query: CallbackQuery) -> None:
         output = output[:3500] + "\n... (обрезано)"
 
     await query.message.edit_text(
-        f"🔒 <b>{op.label}</b> — {op.description}\n\n"
-        f"<pre>{html_escape(output)}</pre>",
+        f"🔒 <b>{op.label}</b> — {op.description}\n\n<pre>{html_escape(output)}</pre>",
         reply_markup=op_kb,
         parse_mode="HTML",
     )

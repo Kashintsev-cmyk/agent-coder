@@ -1,4 +1,5 @@
 """Агентный цикл: LLM → tool_call → выполнить → результат → LLM."""
+
 from __future__ import annotations
 
 import base64
@@ -26,6 +27,7 @@ logger = logging.getLogger(__name__)
 @dataclass
 class LoopEvents:
     """Колбэки для UI. Могут быть и sync, и async — loop сам разберётся."""
+
     on_assistant_text: Callable[[str], Any]
     on_tool_call: Callable[[ToolCall], Any]
     on_tool_result: Callable[[ToolCall, str], Any]
@@ -37,15 +39,14 @@ class LoopEvents:
     on_compression: Callable[[Any], Any] | None = None
 
 
-
 @dataclass
 class LoopResult:
     """Итог одного запуска agent-loop."""
-    iterations_used: int = 0
-    limit_reached: bool = False        # вышли по max_iter
-    watchdog_triggered: bool = False   # вышли по MAX_CONSECUTIVE_ERRORS
-    consecutive_errors: int = 0        # сколько ошибок было подряд на выходе
 
+    iterations_used: int = 0
+    limit_reached: bool = False  # вышли по max_iter
+    watchdog_triggered: bool = False  # вышли по MAX_CONSECUTIVE_ERRORS
+    consecutive_errors: int = 0  # сколько ошибок было подряд на выходе
 
 
 async def _maybe_await(fn, *args) -> None:
@@ -59,7 +60,9 @@ async def _maybe_await(fn, *args) -> None:
         try:
             await result
         except Exception:
-            logger.exception("async event callback %s failed", getattr(fn, "__name__", fn))
+            logger.exception(
+                "async event callback %s failed", getattr(fn, "__name__", fn)
+            )
 
 
 class AgentLoop:
@@ -104,7 +107,9 @@ class AgentLoop:
             if routed and routed != self.session.model:
                 logger.info(
                     "Роутер: %s → %s (режим %s, ~%d токенов)",
-                    self.session.model, routed, self.session.mode.value,
+                    self.session.model,
+                    routed,
+                    self.session.mode.value,
                     self._router_state.input_tokens,
                 )
                 self.session.model = routed
@@ -156,7 +161,9 @@ class AgentLoop:
                 if nxt is not None:
                     logger.warning(
                         "Модель %s недоступна (%s) — переключаюсь на %s",
-                        self.session.model, type(e).__name__, nxt,
+                        self.session.model,
+                        type(e).__name__,
+                        nxt,
                     )
                     self.session.model = nxt
                     await _maybe_await(
@@ -219,7 +226,9 @@ class AgentLoop:
                 last_msg = self.session.messages[-1]
                 if last_msg.get("role") == "tool":
                     last_content = last_msg.get("content", "")
-                    if isinstance(last_content, str) and last_content.lstrip().startswith("Ошибка"):
+                    if isinstance(
+                        last_content, str
+                    ) and last_content.lstrip().startswith("Ошибка"):
                         consecutive_errors += 1
                     else:
                         consecutive_errors = 0
@@ -262,7 +271,7 @@ class AgentLoop:
             result = (
                 f"Ошибка: инструмент '{tc.name}' недоступен в {mode_name}-режиме "
                 f"с такими аргументами. "
-                f"{'В Plan/Audit разрешены только read-only команды.' if mode_name in ('plan','audit') else ''}"
+                f"{'В Plan/Audit разрешены только read-only команды.' if mode_name in ('plan', 'audit') else ''}"
             )
             self._append_tool_result(tc.id, result)
             await _maybe_await(self.events.on_tool_result, tc, result)
@@ -293,15 +302,20 @@ class AgentLoop:
         self.session.save()
 
     def _append_tool_result(self, tool_call_id: str, result: str) -> None:
-        self.session.add_message({
-            "role": "tool",
-            "tool_call_id": tool_call_id,
-            "content": result,
-        })
+        self.session.add_message(
+            {
+                "role": "tool",
+                "tool_call_id": tool_call_id,
+                "content": result,
+            }
+        )
 
     def _refresh_system_prompt(self) -> None:
         prompt = system_prompt(self.session.mode, self.session.workspace)
-        if not self.session.messages or self.session.messages[0].get("role") != "system":
+        if (
+            not self.session.messages
+            or self.session.messages[0].get("role") != "system"
+        ):
             self.session.messages.insert(0, {"role": "system", "content": prompt})
         else:
             self.session.messages[0] = {"role": "system", "content": prompt}
@@ -325,9 +339,10 @@ def _build_user_content(task: str, images: list | None) -> str | list[dict[str, 
         mime, _ = mimetypes.guess_type(str(path))
         mime = mime or "image/jpeg"
         b64 = base64.b64encode(raw).decode("ascii")
-        blocks.append({
-            "type": "image_url",
-            "image_url": {"url": f"data:{mime};base64,{b64}"},
-        })
+        blocks.append(
+            {
+                "type": "image_url",
+                "image_url": {"url": f"data:{mime};base64,{b64}"},
+            }
+        )
     return blocks
-

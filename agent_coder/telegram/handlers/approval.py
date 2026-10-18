@@ -3,6 +3,7 @@
 Работают с _pending из shared — там живут Future'ы, которые ждёт
 _TaskRunner в момент approval-запроса.
 """
+
 from __future__ import annotations
 
 import logging

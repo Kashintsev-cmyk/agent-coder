@@ -1,4 +1,5 @@
 """Тесты типов LLM-слоя: format_cost, Usage."""
+
 from __future__ import annotations
 
 from agent_coder.llm.types import Usage, format_cost
@@ -43,4 +44,3 @@ class TestUsage:
         assert c.cache_read_tokens == 2
         assert c.cache_write_tokens == 3
         assert c.cost == 0.75
-

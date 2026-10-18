@@ -8,6 +8,7 @@
 Глобальное состояние (_running, _pending, _shutting_down, shutdown)
 живёт здесь, чтобы быть доступным всем подмодулям (task.py, commands.py).
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -94,6 +95,7 @@ def _list_projects() -> list[Path]:
 
 def _fmt_cost(value: float) -> str:
     from agent_coder.llm.types import format_cost
+
     return format_cost(value)
 
 
@@ -120,6 +122,7 @@ def _audit_reasoning_warning(session: Session) -> str:
     reasoning-способная — только явное отсутствие reasoning даёт warning.
     """
     from agent_coder.model_catalog import catalog
+
     m = catalog.get(session.model)
     if m is not None and m.reasoning:
         return ""

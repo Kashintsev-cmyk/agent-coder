@@ -1,4 +1,5 @@
 """Тесты инструмента search_history (поиск по архиву сжатой истории)."""
+
 from __future__ import annotations
 
 import pytest
@@ -29,10 +30,13 @@ async def test_empty_archive_message(ctx):
 
 @pytest.mark.asyncio
 async def test_finds_in_archive(ctx):
-    _seed("s1", [
-        {"role": "user", "content": "исправь функцию calculate_total в billing.py"},
-        {"role": "assistant", "content": "готово, поправил calculate_total"},
-    ])
+    _seed(
+        "s1",
+        [
+            {"role": "user", "content": "исправь функцию calculate_total в billing.py"},
+            {"role": "assistant", "content": "готово, поправил calculate_total"},
+        ],
+    )
     out = await search_history_tool.executor({"query": "calculate_total"}, ctx)
     assert "billing.py" in out
     assert "[user]" in out
@@ -54,30 +58,41 @@ async def test_empty_query(ctx):
 
 @pytest.mark.asyncio
 async def test_tool_call_rendered(ctx):
-    _seed("s1", [{
-        "role": "assistant",
-        "content": "",
-        "tool_calls": [{"function": {"name": "read_file"}}],
-    }])
+    _seed(
+        "s1",
+        [
+            {
+                "role": "assistant",
+                "content": "",
+                "tool_calls": [{"function": {"name": "read_file"}}],
+            }
+        ],
+    )
     out = await search_history_tool.executor({"query": "read_file"}, ctx)
     assert "вызвал: read_file" in out
 
 
 @pytest.mark.asyncio
 async def test_multimodal_content(ctx):
-    _seed("s1", [{
-        "role": "user",
-        "content": [
-            {"type": "text", "text": "секретный_маркер"},
-            {"type": "image_url", "image_url": {"url": "data:..."}},
+    _seed(
+        "s1",
+        [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "секретный_маркер"},
+                    {"type": "image_url", "image_url": {"url": "data:..."}},
+                ],
+            }
         ],
-    }])
+    )
     out = await search_history_tool.executor({"query": "секретный_маркер"}, ctx)
     assert "секретный_маркер" in out
 
 
 def test_registered_and_read_only():
     from agent_coder.tools import build_registry
+
     reg = build_registry()
     tool = reg.get("search_history")
     assert tool is not None

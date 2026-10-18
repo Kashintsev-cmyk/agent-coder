@@ -1,4 +1,5 @@
 """Инструмент: выполнение команды в терминале с whitelist безопасных команд."""
+
 from __future__ import annotations
 
 import re
@@ -34,13 +35,13 @@ _FORBIDDEN_PATHS = re.compile(
 # никакая автономность не оправдывает их выполнение агентом.
 _HARD_BLOCK = re.compile(
     r"(?:"
-    r"\brm\s+-[a-z]*[rf][a-z]*\s+/(?:\s|$)"   # rm -rf /
-    r"|\brm\s+-[a-z]*[rf][a-z]*\s+/\*"        # rm -rf /*
+    r"\brm\s+-[a-z]*[rf][a-z]*\s+/(?:\s|$)"  # rm -rf /
+    r"|\brm\s+-[a-z]*[rf][a-z]*\s+/\*"  # rm -rf /*
     r"|\brm\s+-[a-z]*[rf][a-z]*\s+/(?:bin|boot|dev|etc|home|lib|proc|root|sbin|sys|usr|var)\b"
-    r"|\bmkfs(?:\.\w+)?\b"                    # mkfs, mkfs.ext4, ...
+    r"|\bmkfs(?:\.\w+)?\b"  # mkfs, mkfs.ext4, ...
     r"|\bdd\s+.*of=/dev/(?:sd|nvme|hd|vd)"
     r"|\bdd\s+.*of=/dev/mmcblk"
-    r"|:\s*\(\s*\)\s*\{"                     # fork bomb :(){ :|:& };:
+    r"|:\s*\(\s*\)\s*\{"  # fork bomb :(){ :|:& };:
     r"|\bshred\s+/dev/"
     r"|\bwipefs\b"
     r"|\b>\s*/dev/(?:sd|nvme|hd)"
@@ -66,7 +67,6 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^file\s+\S+$"),
     re.compile(r"^readlink\s+\S+$"),
     re.compile(r"^realpath\s+\S+$"),
-
     # --- Система ---
     re.compile(r"^whoami$"),
     re.compile(r"^id(\s+\S+)*$"),
@@ -75,23 +75,24 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^date(\s+[+\-\d\s:%A-Za-z]+)?$"),
     re.compile(r"^timedatectl(\s+status)?$"),
     re.compile(r"^locale(\s+-\w+)?$"),
-
     # --- /proc: глобальные ---
-    re.compile(r"^cat\s+/proc/(loadavg|meminfo|cpuinfo|uptime|version|swaps|vmstat|"
-               r"zoneinfo|filesystems|mounts|diskstats|interrupts|softirqs|buddyinfo|"
-               r"slabinfo|pagetypeinfo|modules|partitions)$"),
+    re.compile(
+        r"^cat\s+/proc/(loadavg|meminfo|cpuinfo|uptime|version|swaps|vmstat|"
+        r"zoneinfo|filesystems|mounts|diskstats|interrupts|softirqs|buddyinfo|"
+        r"slabinfo|pagetypeinfo|modules|partitions)$"
+    ),
     re.compile(r"^cat\s+/proc/pressure/(cpu|memory|io)$"),
-
     # --- /proc: процесс ---
-    re.compile(r"^cat\s+/proc/\d+/(status|smaps|smaps_rollup|statm|stat|cmdline|comm|"
-               r"io|limits|maps|numa_maps|wchan|oom_score|oom_adj|oom_score_adj|"
-               r"cgroup|mountinfo|net/dev|sched|schedstat|stack|syscall|timers|"
-               r"uid_map|gid_map|autogroup)$"),
+    re.compile(
+        r"^cat\s+/proc/\d+/(status|smaps|smaps_rollup|statm|stat|cmdline|comm|"
+        r"io|limits|maps|numa_maps|wchan|oom_score|oom_adj|oom_score_adj|"
+        r"cgroup|mountinfo|net/dev|sched|schedstat|stack|syscall|timers|"
+        r"uid_map|gid_map|autogroup)$"
+    ),
     re.compile(r"^cat\s+/sys/fs/cgroup/[^\s]+$"),
     re.compile(r"^ls\s+/proc/\d+/$"),
     re.compile(r"^ls(\s+-\w+)*\s+/proc/\d+/(fd|cwd|exe|root|task)/$"),
     re.compile(r"^ls(\s+-\w+)*\s+/sys/fs/cgroup/[^\s]+$"),
-
     # --- Процессы ---
     re.compile(r"^ps\s+aux(\s+--sort=\S+)?$"),
     re.compile(r"^ps\s+-ef$"),
@@ -101,10 +102,11 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^pgrep(\s+-\w+)*\s+\S+$"),
     re.compile(r"^pstree(\s+-\w+)*(\s+\d+)?$"),
     re.compile(r"^top\s+-bn1(\s+-o\s+\S+)?$"),
-
     # --- Systemd ---
-    re.compile(r"^systemctl\s+status\s+[\w@.\-]+"
-               r"(\s+--no-pager|\s+--lines=\d+|\s+-n\s*\d+|\s+-l)*$"),
+    re.compile(
+        r"^systemctl\s+status\s+[\w@.\-]+"
+        r"(\s+--no-pager|\s+--lines=\d+|\s+-n\s*\d+|\s+-l)*$"
+    ),
     re.compile(r"^systemctl\s+is-active\s+[\w@.\-]+$"),
     re.compile(r"^systemctl\s+is-enabled\s+[\w@.\-]+$"),
     re.compile(r"^systemctl\s+show\s+[\w@.\-]+$"),
@@ -114,25 +116,23 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^systemctl\s+list-timers(\s+--\S+)*$"),
     re.compile(r"^systemctl\s+--failed(\s+--no-pager)?$"),
     re.compile(r"^systemd-cgtop(\s+-\w+)*$"),
-
     # --- Docker ---
     re.compile(r"^docker\s+ps(\s+-\w+)*$"),
     re.compile(r"^docker\s+images(\s+-\w+)*$"),
     re.compile(r"^docker\s+stats\s+--no-stream$"),
     re.compile(r"^docker\s+inspect\s+\S+$"),
     re.compile(r"^docker\s+logs(\s+--tail\s+\d+)?\s+\S+$"),
-
     # --- Сеть ---
     re.compile(r"^ss(\s+-\w+)*$"),
     re.compile(r"^netstat\s+-t\w*$"),
     re.compile(r"^ip\s+(-br\s+)?(a|addr|route|link|neigh)(\s+\S+)*$"),
     re.compile(r"^ping\s+-c\s+\d+\s+\S+$"),
-
     # --- Логи ---
-    re.compile(r"^journalctl(\s+-u\s+[\w@.\-]+)?(\s+-n\s+\d+)?"
-               r"(\s+--since\s+\S+)?(\s+--no-pager)?(\s+-p\s+\w+)?$"),
+    re.compile(
+        r"^journalctl(\s+-u\s+[\w@.\-]+)?(\s+-n\s+\d+)?"
+        r"(\s+--since\s+\S+)?(\s+--no-pager)?(\s+-p\s+\w+)?$"
+    ),
     re.compile(r"^dmesg(\s+\S+)*$"),
-
     # --- Файлы (read-only) ---
     re.compile(r"^ls(\s+-\w+)*(\s+\S+)*$"),
     re.compile(r"^pwd$"),
@@ -142,7 +142,6 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^wc\s+(-\w+\s+)?\S+$"),
     re.compile(r"^find\s+\S+(\s+-name\s+\S+)?(\s+-type\s+\w+)?(\s+-maxdepth\s+\d+)?$"),
     re.compile(r"^tree(\s+-\w+)*(\s+\S+)?$"),
-
     # --- Утилиты ---
     re.compile(r"^which\s+\S+$"),
     re.compile(r"^nvidia-smi(\s+\S+)*$"),
@@ -239,8 +238,6 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
     if _FORBIDDEN.search(cmd):
         return False
     return any(p.match(cmd) for p in _SAFE_PATTERNS)
-
-
 
 
 async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:

@@ -2,6 +2,7 @@
 
 Использует github_api (создание репо) + project_utils (локальный проект).
 """
+
 from __future__ import annotations
 
 import logging
@@ -80,7 +81,8 @@ async def _gh_create_and_push(
 
     r = await run_shell(
         "git push -u origin HEAD",
-        cwd=path, timeout=120,
+        cwd=path,
+        timeout=120,
     )
     if not r.ok:
         raise RuntimeError(f"git push: {r.output[:300]}")
@@ -131,8 +133,7 @@ async def cmd_ghnew(message: Message) -> None:
         return
 
     await message.answer(
-        f"🐙 Создаём <b>{html_escape(name)}</b>…\n\n"
-        "Выбери приватность репозитория:",
+        f"🐙 Создаём <b>{html_escape(name)}</b>…\n\nВыбери приватность репозитория:",
         reply_markup=keyboards.gh_private_keyboard(name),
         parse_mode="HTML",
     )
@@ -142,11 +143,11 @@ async def cmd_ghnew(message: Message) -> None:
 async def cb_ghnew_create(query: CallbackQuery) -> None:
     data = query.data
     if data.startswith("gh:pub:"):
-        name = data[len("gh:pub:"):]
+        name = data[len("gh:pub:") :]
         private = False
         label = "публичный"
     else:
-        name = data[len("gh:priv:"):]
+        name = data[len("gh:priv:") :]
         private = True
         label = "приватный"
 
@@ -341,16 +342,18 @@ async def cb_clone_hint(query: CallbackQuery) -> None:
     await query.answer()
 
 
-@router.callback_query(F.data.startswith("gh:pub_new:") | F.data.startswith("gh:priv_new:"))
+@router.callback_query(
+    F.data.startswith("gh:pub_new:") | F.data.startswith("gh:priv_new:")
+)
 async def cb_gh_offer_create(query: CallbackQuery) -> None:
     """Создание GitHub-репо после локального /new."""
     data = query.data
     if data.startswith("gh:pub_new:"):
-        name = data[len("gh:pub_new:"):]
+        name = data[len("gh:pub_new:") :]
         private = False
         label = "публичный"
     else:
-        name = data[len("gh:priv_new:"):]
+        name = data[len("gh:priv_new:") :]
         private = True
         label = "приватный"
 
@@ -389,7 +392,7 @@ async def cb_gh_offer_create(query: CallbackQuery) -> None:
 @router.callback_query(F.data.startswith("gh:skip_new:"))
 async def cb_gh_offer_skip(query: CallbackQuery) -> None:
     """Пропустить создание GitHub-репо — просто открыть сессию."""
-    name = query.data[len("gh:skip_new:"):]
+    name = query.data[len("gh:skip_new:") :]
     path = (_PROJECTS_DEFAULT_DIR / name).resolve()
     if not path.is_dir():
         await query.answer("Проект не найден", show_alert=True)

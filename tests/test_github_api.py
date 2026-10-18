@@ -1,4 +1,5 @@
 """Тесты github_api: create_repo, whoami (через httpx.MockTransport)."""
+
 from __future__ import annotations
 
 import httpx
@@ -43,12 +44,15 @@ async def test_create_repo_private():
         captured["method"] = req.method
         captured["path"] = req.url.path
         captured["body"] = req.read().decode()
-        return httpx.Response(201, json={
-            "name": "my-proj",
-            "ssh_url": "git@github.com:me/my-proj.git",
-            "html_url": "https://github.com/me/my-proj",
-            "private": True,
-        })
+        return httpx.Response(
+            201,
+            json={
+                "name": "my-proj",
+                "ssh_url": "git@github.com:me/my-proj.git",
+                "html_url": "https://github.com/me/my-proj",
+                "private": True,
+            },
+        )
 
     async with _client(handler) as c:
         repo = await create_repo("my-proj", private=True, token="tok", client=c)
@@ -80,17 +84,21 @@ async def test_create_repo_with_description():
         return httpx.Response(201, json={"ssh_url": "x", "html_url": "y"})
 
     async with _client(handler) as c:
-        await create_repo("p", private=False, token="tok",
-                          description="my desc", client=c)
+        await create_repo(
+            "p", private=False, token="tok", description="my desc", client=c
+        )
 
 
 @pytest.mark.asyncio
 async def test_create_repo_422_name_taken():
     def handler(req: httpx.Request) -> httpx.Response:
-        return httpx.Response(422, json={
-            "message": "Repository creation failed.",
-            "errors": [{"message": "name already exists"}],
-        })
+        return httpx.Response(
+            422,
+            json={
+                "message": "Repository creation failed.",
+                "errors": [{"message": "name already exists"}],
+            },
+        )
 
     async with _client(handler) as c:
         with pytest.raises(GitHubError) as ei:

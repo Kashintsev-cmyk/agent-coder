@@ -5,6 +5,7 @@
 
 Срок хранения — config.MEDIA_RETENTION_DAYS (по умолчанию 30).
 """
+
 from __future__ import annotations
 
 import logging
@@ -62,14 +63,17 @@ def cleanup_old_media(
                     session_dir.rmdir()
                     removed_dirs += 1
             except OSError as e:
-                logger.warning("media cleanup: не удалось удалить папку %s: %s",
-                               session_dir, e)
+                logger.warning(
+                    "media cleanup: не удалось удалить папку %s: %s", session_dir, e
+                )
         except OSError as e:
             logger.warning("media cleanup: ошибка обхода %s: %s", session_dir, e)
 
     if removed_files or removed_dirs:
         logger.info(
             "media cleanup: удалено %d файлов и %d папок (старше %d дн.)",
-            removed_files, removed_dirs, days,
+            removed_files,
+            removed_dirs,
+            days,
         )
     return (removed_files, removed_dirs)

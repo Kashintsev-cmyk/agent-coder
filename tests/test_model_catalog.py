@@ -1,4 +1,5 @@
 """Тесты ModelCatalog: refresh из API, дисковый кэш, fallback, парсинг."""
+
 from __future__ import annotations
 
 import json
@@ -96,6 +97,7 @@ def _new_catalog() -> ModelCatalog:
 
 # --- init/конфиг ---
 
+
 def test_init_overrides_params(tmp_path):
     c = ModelCatalog()
     c.init(
@@ -111,6 +113,7 @@ def test_init_overrides_params(tmp_path):
 
 
 # --- fallback ---
+
 
 def test_load_from_fallback_source_and_order(curated_ids):
     c = _new_catalog()
@@ -138,6 +141,7 @@ def test_global_singleton_ready_at_import():
 
 
 # --- API ---
+
 
 async def test_refresh_parses_and_sets_source(fake_api_response):
     c = _new_catalog()
@@ -289,6 +293,7 @@ async def test_refresh_survives_bad_json():
 
 # --- дисковый кэш ---
 
+
 async def test_refresh_writes_cache(fake_api_response, isolated_cache_dir):
     c = _new_catalog()
     client = _make_client(fake_api_response)
@@ -385,6 +390,7 @@ def test_load_from_cache_unknown_fields_ignored(isolated_cache_dir):
 
 # --- get / default ---
 
+
 async def test_get_unknown_returns_none(fake_api_response):
     c = _new_catalog()
     client = _make_client(fake_api_response)
@@ -403,6 +409,7 @@ def test_all_order_matches_config(curated_ids):
     c = _new_catalog()
     assert [m.id for m in c.all()] == curated_ids
 
+
 def test_cache_version_mismatch_ignored(tmp_path):
     """Кэш с другой _version игнорируется — берётся fallback/placeholder."""
     from agent_coder.model_catalog import _CACHE_FILENAME, ModelCatalog
@@ -417,15 +424,23 @@ def test_cache_version_mismatch_ignored(tmp_path):
         "_source": "api",
         "models": {
             "dummy/x": {
-                "id": "dummy/x", "name": "X", "context": 1,
-                "reasoning": False, "vision": False, "tools": True,
-                "reasoning_effort": False, "web_search_builtin": False,
-                "input_price": 0.0, "output_price": 0.0, "tag": "",
+                "id": "dummy/x",
+                "name": "X",
+                "context": 1,
+                "reasoning": False,
+                "vision": False,
+                "tools": True,
+                "reasoning_effort": False,
+                "web_search_builtin": False,
+                "input_price": 0.0,
+                "output_price": 0.0,
+                "tag": "",
             },
         },
     }
     (cache_dir / _CACHE_FILENAME).write_text(
-        json.dumps(payload), encoding="utf-8",
+        json.dumps(payload),
+        encoding="utf-8",
     )
 
     c = ModelCatalog()
@@ -434,10 +449,10 @@ def test_cache_version_mismatch_ignored(tmp_path):
     assert c.source == "fallback"  # не "cache"
 
 
-
 def test_parse_one_description(fake_api_response):
     """description попадает в ModelInfo из ответа API."""
     from agent_coder.model_catalog import ModelCatalog
+
     # используем первую модель из fake_api_response, у неё должно быть description
     # если его нет — добавляем искусственно
     item = fake_api_response["data"][0]
@@ -460,14 +475,16 @@ def test_parse_one_no_description():
 
     mid = config.CURATED_MODEL_IDS[0]
     fake = {
-        "data": [{
-            "id": mid,
-            "name": "X",
-            "context_length": 1000,
-            "architecture": {"input_modalities": ["text"]},
-            "pricing": {"prompt": 1e-5, "completion": 2e-5},
-            "supported_parameters": [],
-        }]
+        "data": [
+            {
+                "id": mid,
+                "name": "X",
+                "context_length": 1000,
+                "architecture": {"input_modalities": ["text"]},
+                "pricing": {"prompt": 1e-5, "completion": 2e-5},
+                "supported_parameters": [],
+            }
+        ]
     }
     c = ModelCatalog()
     c.init(api_key="x")
@@ -478,27 +495,32 @@ def test_parse_one_no_description():
 def test_price_token_unit_multiplies():
     """unit='token' → умножаем на 1e6."""
     from agent_coder.model_catalog import ModelCatalog
+
     assert ModelCatalog._price_per_million(2.5e-5, "token") == 25.0
 
 
 def test_price_1m_unit_not_multiplied():
     """unit='1m' → не умножаем."""
     from agent_coder.model_catalog import ModelCatalog
+
     assert ModelCatalog._price_per_million(25.0, "1m") == 25.0
 
 
 def test_price_unknown_unit_returns_zero():
     from agent_coder.model_catalog import ModelCatalog
+
     assert ModelCatalog._price_per_million(25.0, "banana") == 0.0
 
 
 def test_price_none_unit_defaults_to_token():
     from agent_coder.model_catalog import ModelCatalog
+
     assert ModelCatalog._price_per_million(2.5e-5, None) == 25.0
 
 
 def test_price_zero_or_negative_zero():
     from agent_coder.model_catalog import ModelCatalog
+
     assert ModelCatalog._price_per_million(0, "token") == 0.0
     assert ModelCatalog._price_per_million(-1, "token") == 0.0
     assert ModelCatalog._price_per_million(None, "token") == 0.0
@@ -519,14 +541,16 @@ def test_context_falls_back_when_api_zero():
     assert mid is not None, "нет модели с context>0 в fallback"
 
     fake = {
-        "data": [{
-            "id": mid,
-            "name": "X",
-            "context_length": 0,
-            "architecture": {"input_modalities": ["text"]},
-            "pricing": {"prompt": 1e-5, "completion": 2e-5},
-            "supported_parameters": [],
-        }]
+        "data": [
+            {
+                "id": mid,
+                "name": "X",
+                "context_length": 0,
+                "architecture": {"input_modalities": ["text"]},
+                "pricing": {"prompt": 1e-5, "completion": 2e-5},
+                "supported_parameters": [],
+            }
+        ]
     }
     # подменим config.CURATED_MODEL_IDS на [mid] для парсера
     old_ids = config.CURATED_MODEL_IDS

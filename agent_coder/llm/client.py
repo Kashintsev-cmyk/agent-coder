@@ -1,4 +1,5 @@
 """LLM-клиент с поддержкой tool calls и точной стоимости от RouterAI."""
+
 from __future__ import annotations
 
 import asyncio
@@ -23,8 +24,6 @@ from agent_coder.log_safety import SecretFilter, strip_dsml
 
 logger = logging.getLogger(__name__)
 logger.addFilter(SecretFilter())
-
-
 
 
 def _build_request_kwargs(
@@ -53,11 +52,13 @@ def _build_request_kwargs(
     if reasoning_effort and reasoning_effort not in ("none", ""):
         kwargs["reasoning_effort"] = reasoning_effort
     if web_search:
-        kwargs["plugins"] = [{
-            "id": "web",
-            "engine": config.WEB_SEARCH_ENGINE,
-            "max_results": config.WEB_SEARCH_MAX_RESULTS,
-        }]
+        kwargs["plugins"] = [
+            {
+                "id": "web",
+                "engine": config.WEB_SEARCH_ENGINE,
+                "max_results": config.WEB_SEARCH_MAX_RESULTS,
+            }
+        ]
     if service_tier and service_tier not in ("default", ""):
         kwargs["service_tier"] = service_tier
     if verbosity:
@@ -130,7 +131,8 @@ class LLMClient:
 
         logger.info(
             "LLM → model=%s msgs=%d tools=%d reasoning=%s",
-            model, len(messages),
+            model,
+            len(messages),
             len(tools) if tools else 0,
             reasoning_effort or "-",
         )
@@ -156,17 +158,21 @@ class LLMClient:
         usage = _extract_usage(response)
         logger.info(
             "LLM ← in=%d out=%d cache=%d cost=%.4f",
-            usage.input_tokens, usage.output_tokens,
-            usage.cache_read_tokens, usage.cost,
+            usage.input_tokens,
+            usage.output_tokens,
+            usage.cache_read_tokens,
+            usage.cost,
         )
 
         choice = response.choices[0]
         msg = choice.message
 
         tool_calls: list[ToolCall] = []
-        for tc in (msg.tool_calls or []):
+        for tc in msg.tool_calls or []:
             try:
-                args = json.loads(tc.function.arguments) if tc.function.arguments else {}
+                args = (
+                    json.loads(tc.function.arguments) if tc.function.arguments else {}
+                )
             except json.JSONDecodeError as e:
                 logger.warning("Плохой JSON в tool_call %s: %s", tc.function.name, e)
                 args = {"_raw": tc.function.arguments, "_error": str(e)}
@@ -205,7 +211,7 @@ class LLMClient:
                 wait = retry_after
                 src = " [Retry-After]"
             else:
-                base = backoff ** i
+                base = backoff**i
                 # Jitter: 0..25% сверху, чтобы клиенты не били в одну точку
                 wait = base + random.uniform(0, base * 0.25)
                 src = ""
@@ -214,7 +220,12 @@ class LLMClient:
 
             logger.warning(
                 "%s: попытка %d/%d провалена (%s), ждём %.2fs%s",
-                op_name, i + 1, attempts, type(last).__name__, wait, src,
+                op_name,
+                i + 1,
+                attempts,
+                type(last).__name__,
+                wait,
+                src,
             )
             if i < attempts - 1:
                 await asyncio.sleep(wait)
@@ -239,6 +250,7 @@ class LLMClient:
         resp.raise_for_status()
         return resp.json()
 
+
 def _parse_retry_after(exc: Exception) -> float | None:
     """Retry-After из HTTP-ответа (секунды или HTTP-дата). None если нет.
 
@@ -260,6 +272,7 @@ def _parse_retry_after(exc: Exception) -> float | None:
     try:
         from datetime import datetime
         from email.utils import parsedate_to_datetime
+
         dt = parsedate_to_datetime(raw)
         if dt is None:
             return None

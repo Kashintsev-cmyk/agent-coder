@@ -1,4 +1,5 @@
 """Тесты shell_runner.run_shell."""
+
 from __future__ import annotations
 
 import pytest
@@ -58,7 +59,9 @@ async def test_mask_disabled():
 
 @pytest.mark.asyncio
 async def test_max_bytes_truncates():
-    r = await run_shell("head -c 1000 /dev/zero | tr '\\0' 'x'", timeout=5, max_bytes=100)
+    r = await run_shell(
+        "head -c 1000 /dev/zero | tr '\\0' 'x'", timeout=5, max_bytes=100
+    )
     assert "(обрезано" in r.stdout
     assert len(r.stdout) < 300
 
@@ -67,7 +70,8 @@ async def test_max_bytes_truncates():
 async def test_max_bytes_zero_no_truncate():
     r = await run_shell(
         "head -c 1000 /dev/zero | tr '\\0' 'x'",
-        timeout=5, max_bytes=0,
+        timeout=5,
+        max_bytes=0,
     )
     assert "(обрезано" not in r.stdout
 

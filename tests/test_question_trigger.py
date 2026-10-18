@@ -1,4 +1,5 @@
 """Тесты ?-триггера: быстрый вопрос без агентного цикла."""
+
 from __future__ import annotations
 
 from agent_coder.telegram.handlers import _is_question

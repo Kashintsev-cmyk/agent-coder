@@ -1,4 +1,5 @@
 """Инструмент: чтение файла."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -69,12 +70,9 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
 
         if not chunk:
             return f"{rel}: пусто (offset={offset}, limit={limit})"
-        numbered = "\n".join(
-            f"{i + offset + 1:5d}│ {ln}" for i, ln in enumerate(chunk)
-        )
+        numbered = "\n".join(f"{i + offset + 1:5d}│ {ln}" for i, ln in enumerate(chunk))
         return (
-            f"{rel} (строки {offset + 1}-{offset + len(chunk)} "
-            f"из {total}):\n{numbered}"
+            f"{rel} (строки {offset + 1}-{offset + len(chunk)} из {total}):\n{numbered}"
         )
 
     try:

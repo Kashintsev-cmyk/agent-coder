@@ -1,4 +1,5 @@
 """Тесты приёма изображений (B6.2)."""
+
 from __future__ import annotations
 
 import base64
@@ -55,6 +56,7 @@ def test_build_user_content_missing_file_skipped(tmp_path):
 
 
 # --- save_media ---
+
 
 def test_save_media_creates_file(tmp_path, monkeypatch):
     from agent_coder.agent.prompts import Mode

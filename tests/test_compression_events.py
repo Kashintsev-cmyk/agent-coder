@@ -3,6 +3,7 @@
 Проверяем, что при срабатывании сжатия агент уведомляет UI
 (в Telegram это сообщение «📦 История сжата: …»).
 """
+
 from __future__ import annotations
 
 import pytest
@@ -80,8 +81,10 @@ async def test_loop_emits_compression_event(monkeypatch):
     session = _mk_session(last_input_tokens=10**9)
 
     loop = AgentLoop(
-        client=_SummaryClient(), registry=_EmptyRegistry(),
-        session=session, events=_events(captured),
+        client=_SummaryClient(),
+        registry=_EmptyRegistry(),
+        session=session,
+        events=_events(captured),
     )
     await loop.run("задача")
 
@@ -99,8 +102,10 @@ async def test_loop_no_event_when_below_threshold(monkeypatch):
     session = _mk_session(last_input_tokens=0)
 
     loop = AgentLoop(
-        client=_SummaryClient(), registry=_EmptyRegistry(),
-        session=session, events=_events(captured),
+        client=_SummaryClient(),
+        registry=_EmptyRegistry(),
+        session=session,
+        events=_events(captured),
     )
     await loop.run("задача")
 
@@ -128,8 +133,10 @@ async def test_loop_works_without_on_compression(monkeypatch):
         request_approval=request_approval,
     )
     loop = AgentLoop(
-        client=_SummaryClient(), registry=_EmptyRegistry(),
-        session=session, events=events,
+        client=_SummaryClient(),
+        registry=_EmptyRegistry(),
+        session=session,
+        events=events,
     )
     await loop.run("задача")
     assert session.summary_count == 1

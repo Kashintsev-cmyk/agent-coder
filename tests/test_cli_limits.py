@@ -1,4 +1,5 @@
 """Тест: --max-iterations не затирает env-лимиты, если не задан явно."""
+
 from __future__ import annotations
 
 import sys
@@ -13,11 +14,17 @@ from agent_coder.config import config
 @pytest.fixture
 def _save_limits():
     """Сохранить/восстановить глобальные лимиты (они мутируются в main)."""
-    old = (config.MAX_ITERATIONS_PLAN, config.MAX_ITERATIONS_ACT,
-           config.MAX_ITERATIONS_AUDIT)
+    old = (
+        config.MAX_ITERATIONS_PLAN,
+        config.MAX_ITERATIONS_ACT,
+        config.MAX_ITERATIONS_AUDIT,
+    )
     yield
-    (config.MAX_ITERATIONS_PLAN, config.MAX_ITERATIONS_ACT,
-     config.MAX_ITERATIONS_AUDIT) = old
+    (
+        config.MAX_ITERATIONS_PLAN,
+        config.MAX_ITERATIONS_ACT,
+        config.MAX_ITERATIONS_AUDIT,
+    ) = old
 
 
 def test_no_flag_keeps_env_limits(_save_limits, monkeypatch):

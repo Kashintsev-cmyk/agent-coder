@@ -2,6 +2,7 @@
 
 Все callbacks, которые меняют per-session настройки.
 """
+
 from __future__ import annotations
 
 import logging
@@ -24,6 +25,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------- Меню сессии: модель, reasoning ----------
+
 
 @router.callback_query(F.data == "menu_model")
 async def cb_menu_model(query: CallbackQuery) -> None:
@@ -183,6 +185,7 @@ async def cb_tier_toggle(query: CallbackQuery) -> None:
         return
     from agent_coder.config import config as _cfg
     from agent_coder.telegram.keyboards import TIER_CYCLE
+
     cur = session.service_tier or _cfg.SERVICE_TIER
     if cur not in TIER_CYCLE:
         cur = "default"
@@ -211,7 +214,9 @@ async def cb_web_toggle(query: CallbackQuery) -> None:
         return
     m = catalog.get(session.model)
     if not (m and m.web_search_builtin):
-        await query.answer("Модель не поддерживает встроенный web search", show_alert=True)
+        await query.answer(
+            "Модель не поддерживает встроенный web search", show_alert=True
+        )
         return
     session.web_search = not session.web_search
     session.save()

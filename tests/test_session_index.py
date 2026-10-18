@@ -1,4 +1,5 @@
 """Тесты SessionIndex — лёгкий индекс метаданных сессий."""
+
 from __future__ import annotations
 
 import json
@@ -25,6 +26,7 @@ def _mk_session(sid: str = "aaaa1111", **kw) -> Session:
 
 
 # ---------- load/save ----------
+
 
 def test_load_missing_ok(tmp_path):
     idx = SessionIndex(path=tmp_path / "index.json")
@@ -70,6 +72,7 @@ def test_load_wrong_version_returns_false(tmp_path):
 
 # ---------- update/remove/list ----------
 
+
 def test_update_overwrites(tmp_path):
     idx = SessionIndex(path=tmp_path / "index.json")
     s = _mk_session(title="v1")
@@ -98,6 +101,7 @@ def test_remove_missing_is_noop(tmp_path):
     mtime = path.stat().st_mtime
 
     import time
+
     time.sleep(0.01)
     idx.remove("no-such-id")
     # файл не перезаписан
@@ -109,6 +113,7 @@ def test_list_sorted_by_updated_at(tmp_path):
     s1 = _mk_session(sid="old", title="old")
     s2 = _mk_session(sid="new", title="new")
     import time
+
     s1.updated_at = 100.0
     idx.update(s1)
     time.sleep(0.01)
@@ -121,8 +126,10 @@ def test_list_sorted_by_updated_at(tmp_path):
 
 # ---------- rebuild ----------
 
+
 def test_rebuild_from_sessions(tmp_path, monkeypatch):
     from agent_coder.config import config
+
     monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
 
     # три сессии на диске
@@ -140,6 +147,7 @@ def test_rebuild_from_sessions(tmp_path, monkeypatch):
 
 def test_rebuild_skips_broken(tmp_path, monkeypatch):
     from agent_coder.config import config
+
     monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
 
     s = _mk_session(sid="good")
@@ -154,6 +162,7 @@ def test_rebuild_skips_broken(tmp_path, monkeypatch):
 
 def test_rebuild_ignores_index_file(tmp_path, monkeypatch):
     from agent_coder.config import config
+
     monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
 
     s = _mk_session(sid="x")
@@ -166,6 +175,7 @@ def test_rebuild_ignores_index_file(tmp_path, monkeypatch):
 
 
 # ---------- SessionMeta ----------
+
 
 def test_session_meta_from_session():
     s = _mk_session()

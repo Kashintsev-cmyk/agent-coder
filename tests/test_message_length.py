@@ -7,6 +7,7 @@
 Ожидание: текст пользователя НЕ обрезается нигде в пайплайне, вплоть до
 жёсткого лимита Telegram Bot API для входящего текста (4096 символов).
 """
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -46,7 +47,9 @@ def _make_message(text: str, chat_id: int = 42):
 def _stub_session(monkeypatch):
     """Подсунуть активную сессию без диска/state-файла."""
     session = Session.new(
-        workspace="/tmp/proj", model="test/model", mode=Mode.ACT,
+        workspace="/tmp/proj",
+        model="test/model",
+        mode=Mode.ACT,
     )
     monkeypatch.setattr(_task, "_get_active_session", lambda chat_id: session)
     return session
@@ -133,4 +136,5 @@ class _NullEvents:
     def on_tool_result(self, *a): ...
     def on_usage(self, *a): ...
     def on_error(self, *a): ...
-    async def request_approval(self, *a): return True
+    async def request_approval(self, *a):
+        return True

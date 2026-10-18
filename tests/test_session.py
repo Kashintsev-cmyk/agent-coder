@@ -1,4 +1,5 @@
 """Тесты сессии: сериализация, заголовок, sanitize_tool_calls, удаление."""
+
 from __future__ import annotations
 
 from agent_coder.agent.prompts import Mode
@@ -17,8 +18,10 @@ def _mk_session(**kw) -> Session:
 
 class TestDefaultTitle:
     def test_uses_first_user_message(self):
-        msgs = [{"role": "assistant", "content": "hi"},
-                {"role": "user", "content": "сделай фичу"}]
+        msgs = [
+            {"role": "assistant", "content": "hi"},
+            {"role": "user", "content": "сделай фичу"},
+        ]
         assert _make_default_title(msgs) == "сделай фичу"
 
     def test_truncates_long_text(self):
@@ -67,6 +70,7 @@ class TestRoundtrip:
         }
         # from_dict ожидает плоский dict для total_usage
         from dataclasses import asdict
+
         data["total_usage"] = asdict(Usage())
         restored = Session.from_dict(data)
         assert restored.reasoning_effort  # подставлен дефолт
@@ -111,9 +115,13 @@ class TestSanitizeToolCalls:
         # Последний assistant с tool_calls, ответов нет вовсе
         s = _mk_session()
         s.messages = [
-            {"role": "assistant", "tool_calls": [
-                {"id": "1", "name": "x"}, {"id": "2", "name": "y"},
-            ]},
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {"id": "1", "name": "x"},
+                    {"id": "2", "name": "y"},
+                ],
+            },
         ]
         assert s.sanitize_tool_calls() == 2
         answered = {m.get("tool_call_id") for m in s.messages if m["role"] == "tool"}
@@ -129,9 +137,13 @@ class TestSanitizeToolCalls:
         """
         s = _mk_session()
         s.messages = [
-            {"role": "assistant", "tool_calls": [
-                {"id": "1", "name": "x"}, {"id": "2", "name": "y"},
-            ]},
+            {
+                "role": "assistant",
+                "tool_calls": [
+                    {"id": "1", "name": "x"},
+                    {"id": "2", "name": "y"},
+                ],
+            },
             {"role": "tool", "tool_call_id": "1", "content": "ok"},
         ]
         added = s.sanitize_tool_calls()
@@ -166,6 +178,7 @@ class TestAddMessage:
         s.add_message({"role": "user", "content": "вторая"})
         assert s.title == "первая"
 
+
 class TestWebSearch:
     def test_default_false(self):
         s = _mk_session()
@@ -186,6 +199,7 @@ class TestWebSearch:
         d.pop("web_search", None)
         s2 = Session.from_dict(d)
         assert s2.web_search is False
+
 
 class TestHistoryStats:
     def test_defaults(self):
@@ -211,10 +225,10 @@ class TestHistoryStats:
         assert s2.summary_count == 0
 
 
-
 class TestDeleteMedia:
     def test_delete_removes_media_dir(self, tmp_path, monkeypatch):
         from agent_coder.config import config
+
         monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
         s = _mk_session()
         s.save()
@@ -230,12 +244,14 @@ class TestDeleteMedia:
 
     def test_delete_no_media_ok(self, tmp_path, monkeypatch):
         from agent_coder.config import config
+
         monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
         s = _mk_session()
         s.save()
         # медиа нет — не падаем
         removed = s.delete()
         assert removed >= 1
+
 
 class TestSanitizePartialAnswers:
     """Регрессия: после рестарта часть tool_calls без ответов — добиваем."""
@@ -255,6 +271,7 @@ class TestSanitizePartialAnswers:
 
     def test_session_atomic_save_no_tmp_left(self, tmp_path, monkeypatch):
         from agent_coder.config import config
+
         monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
         s = _mk_session()
         s.save()
@@ -264,12 +281,12 @@ class TestSanitizePartialAnswers:
         assert (tmp_path / f"{s.id}.json").exists()
 
 
-
 class TestLoadSafety:
     """load() не должен бросать исключения наружу."""
 
     def test_load_broken_json_returns_none(self, tmp_path, monkeypatch):
         from agent_coder.config import config
+
         monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
         (tmp_path / "broken.json").write_text("{ not json")
         assert Session.load("broken") is None
@@ -278,10 +295,14 @@ class TestLoadSafety:
         import json as _json
 
         from agent_coder.config import config
+
         monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
         payload = {
-            "id": "x", "workspace": "/tmp", "model": "m",
-            "mode": "NOT_A_MODE", "total_usage": {},
+            "id": "x",
+            "workspace": "/tmp",
+            "model": "m",
+            "mode": "NOT_A_MODE",
+            "total_usage": {},
         }
         (tmp_path / "x.json").write_text(_json.dumps(payload))
         assert Session.load("x") is None
@@ -290,9 +311,13 @@ class TestLoadSafety:
         import json as _json
 
         from agent_coder.config import config
+
         monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
         payload = {
-            "id": "x", "workspace": "/tmp", "model": "m", "mode": "act",
+            "id": "x",
+            "workspace": "/tmp",
+            "model": "m",
+            "mode": "act",
         }
         (tmp_path / "x.json").write_text(_json.dumps(payload))
         assert Session.load("x") is None

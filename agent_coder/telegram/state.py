@@ -1,4 +1,5 @@
 """Маппинг chat_id → активная сессия."""
+
 from __future__ import annotations
 
 import json
@@ -36,7 +37,5 @@ def _load() -> dict:
 
 def _save(data: dict) -> None:
     tmp = STATE_PATH.with_suffix(STATE_PATH.suffix + ".tmp")
-    tmp.write_text(
-        json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
-    )
+    tmp.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
     os.replace(tmp, STATE_PATH)

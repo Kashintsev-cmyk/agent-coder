@@ -1,4 +1,5 @@
 """Сессия агента: история сообщений, накопленная стоимость, сохранение."""
+
 from __future__ import annotations
 
 import json
@@ -76,7 +77,7 @@ class Session:
     model_manual: bool = False
     # Статистика сжатия истории (B5.1: только собираем)
     last_input_tokens: int = 0  # usage.input_tokens последнего запроса
-    summary_count: int = 0      # сколько раз сжимали историю
+    summary_count: int = 0  # сколько раз сжимали историю
     messages: list[dict[str, Any]] = field(default_factory=list)
     total_usage: Usage = field(default_factory=Usage)
     request_count: int = 0
@@ -84,8 +85,14 @@ class Session:
     updated_at: float = field(default_factory=time.time)
 
     @classmethod
-    def new(cls, workspace: str, model: str, mode: Mode, title: str = "",
-            web_search: bool = False) -> Session:
+    def new(
+        cls,
+        workspace: str,
+        model: str,
+        mode: Mode,
+        title: str = "",
+        web_search: bool = False,
+    ) -> Session:
         return cls(
             id=uuid.uuid4().hex[:8],
             workspace=workspace,
@@ -101,6 +108,7 @@ class Session:
         Возвращает путь к файлу. Директория создаётся лениво.
         """
         import uuid as _uuid
+
         self.media_dir.mkdir(parents=True, exist_ok=True)
         clean_ext = ext.lstrip(".").lower() or "bin"
         path = self.media_dir / f"{_uuid.uuid4().hex}.{clean_ext}"
@@ -122,6 +130,7 @@ class Session:
             content = message.get("content")
             if isinstance(content, str) and "DSML" in content:
                 from agent_coder.log_safety import strip_dsml
+
                 message["content"] = strip_dsml(content)
         self.messages.append(message)
         self.updated_at = time.time()
@@ -196,17 +205,19 @@ class Session:
             tid = tc.get("id")
             if not tid or tid in answered_ids:
                 continue
-            self.messages.append({
-                "role": "tool",
-                "tool_call_id": tid,
-                "content": "Ошибка: выполнение прервано (перезапуск бота/клиента)",
-            })
+            self.messages.append(
+                {
+                    "role": "tool",
+                    "tool_call_id": tid,
+                    "content": "Ошибка: выполнение прервано (перезапуск бота/клиента)",
+                }
+            )
             added += 1
 
         if added:
             self.updated_at = time.time()
         return added
-    
+
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
         d["mode"] = self.mode.value
@@ -242,6 +253,7 @@ class Session:
             for m in msgs
         ):
             from agent_coder.log_safety import strip_dsml
+
             for m in msgs:
                 if m.get("role") == "assistant" and isinstance(m.get("content"), str):
                     m["content"] = strip_dsml(m["content"])
@@ -284,6 +296,7 @@ class Session:
         # Обновить sidecar-индекс (не критично — ошибку логируем, не падаем)
         try:
             from agent_coder.agent.session_index import index as _idx
+
             _idx.update(self)
         except Exception as e:
             logger.warning("session_index.update failed for %s: %s", self.id, e)
@@ -325,7 +338,8 @@ class Session:
         # Защита от рассинхрона: пользователь мог вручную удалить/добавить
         # *.json, а индекс остался старым.
         disk_ids = {
-            p.stem for p in config.SESSIONS_DIR.glob("*.json")
+            p.stem
+            for p in config.SESSIONS_DIR.glob("*.json")
             if p.name != INDEX_FILENAME
         }
         need_rebuild = False
@@ -383,12 +397,14 @@ class Session:
 
         # Архив сжатой истории (RAG-lite)
         from agent_coder.agent import history_archive
+
         if history_archive.delete(self.id):
             removed += 1
 
         # Удалить из sidecar-индекса
         try:
             from agent_coder.agent.session_index import index as _idx
+
             _idx.remove(self.id)
         except Exception as e:
             logger.warning("session_index.remove failed for %s: %s", self.id, e)

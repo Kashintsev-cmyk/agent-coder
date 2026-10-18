@@ -1,4 +1,5 @@
 """Тесты _with_retry и _parse_retry_after."""
+
 from __future__ import annotations
 
 from types import SimpleNamespace
@@ -22,6 +23,7 @@ def _make_client() -> LLMClient:
 
 
 # ---------- _parse_retry_after ----------
+
 
 def test_parse_retry_after_seconds():
     exc = SimpleNamespace(response=SimpleNamespace(headers={"Retry-After": "30"}))
@@ -54,11 +56,14 @@ def test_parse_retry_after_no_response():
 
 
 def test_parse_retry_after_garbage():
-    exc = SimpleNamespace(response=SimpleNamespace(headers={"Retry-After": "not-a-number"}))
+    exc = SimpleNamespace(
+        response=SimpleNamespace(headers={"Retry-After": "not-a-number"})
+    )
     assert _parse_retry_after(exc) is None
 
 
 # ---------- _with_retry ----------
+
 
 @pytest.mark.asyncio
 async def test_retry_success_first_try():
@@ -89,6 +94,7 @@ async def test_retry_eventually_succeeds():
 
     # jitter не должен добавить реального времени — backoff = 0
     import agent_coder.llm.client as c
+
     old = c.config.RETRY_BACKOFF
     c.config.RETRY_BACKOFF = 0.001
     try:
@@ -126,6 +132,7 @@ async def test_retry_exhausted_raises_last():
         raise APIConnectionError(request=SimpleNamespace())
 
     import agent_coder.llm.client as c
+
     old_max, old_backoff = c.config.MAX_RETRIES, c.config.RETRY_BACKOFF
     c.config.MAX_RETRIES = 2
     c.config.RETRY_BACKOFF = 0.001
@@ -163,6 +170,7 @@ async def test_retry_respects_retry_after(monkeypatch):
         return "ok"
 
     import agent_coder.llm.client as c
+
     old = c.config.RETRY_BACKOFF
     c.config.RETRY_BACKOFF = 0.001
     try:
@@ -189,6 +197,7 @@ async def test_retry_jitter_in_range(monkeypatch):
         raise APIConnectionError(request=SimpleNamespace())
 
     import agent_coder.llm.client as c
+
     old_max, old_backoff = c.config.MAX_RETRIES, c.config.RETRY_BACKOFF
     c.config.MAX_RETRIES = 2
     c.config.RETRY_BACKOFF = 1.0

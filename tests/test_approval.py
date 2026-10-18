@@ -4,6 +4,7 @@
 отправляется НОВЫМ сообщением и оказывается под актуальным выводом
 (после сброса буфера), а не редактирует старое подтверждение.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -26,23 +27,28 @@ class FakeBot:
 
     async def send_message(self, chat_id, text, reply_markup=None, parse_mode=None):
         self._next_id += 1
-        self.sent.append({
-            "chat_id": chat_id,
-            "text": text,
-            "reply_markup": reply_markup,
-            "parse_mode": parse_mode,
-            "message_id": self._next_id,
-        })
+        self.sent.append(
+            {
+                "chat_id": chat_id,
+                "text": text,
+                "reply_markup": reply_markup,
+                "parse_mode": parse_mode,
+                "message_id": self._next_id,
+            }
+        )
         return SimpleNamespace(message_id=self._next_id)
 
-    async def edit_message_text(self, chat_id, message_id, text,
-                                reply_markup=None, parse_mode=None):
-        self.edited.append({
-            "chat_id": chat_id,
-            "message_id": message_id,
-            "text": text,
-            "reply_markup": reply_markup,
-        })
+    async def edit_message_text(
+        self, chat_id, message_id, text, reply_markup=None, parse_mode=None
+    ):
+        self.edited.append(
+            {
+                "chat_id": chat_id,
+                "message_id": message_id,
+                "text": text,
+                "reply_markup": reply_markup,
+            }
+        )
         return SimpleNamespace(message_id=message_id)
 
     async def delete_message(self, chat_id, message_id):
@@ -53,7 +59,8 @@ def _make_runner() -> tuple[_TaskRunner, FakeBot]:
     bot = FakeBot()
     runner = _TaskRunner(
         bot,  # type: ignore[arg-type]  # FakeBot — минимальный двойник
-        chat_id=42, message_id=1,
+        chat_id=42,
+        message_id=1,
     )
     return runner, bot
 
@@ -131,6 +138,7 @@ class TestApprovalFlushesBeforeSend:
         runner, bot = _make_runner()
         # Обнуляем таймаут ожидания, чтобы сразу сработала ветка timeout
         import agent_coder.telegram.handlers as h
+
         orig = h.config.APPROVAL_TIMEOUT
         h.config.APPROVAL_TIMEOUT = 0.0
         try:
@@ -141,7 +149,4 @@ class TestApprovalFlushesBeforeSend:
 
         assert result is False
         # Кнопки убраны редактированием сообщения с таймаутом
-        assert any(
-            e["text"] == "⌛ Время ожидания истекло"
-            for e in bot.edited
-        )
+        assert any(e["text"] == "⌛ Время ожидания истекло" for e in bot.edited)

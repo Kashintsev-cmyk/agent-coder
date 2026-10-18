@@ -1,4 +1,5 @@
 """Интеграция SessionIndex в Session: save/delete/list_all."""
+
 from __future__ import annotations
 
 from agent_coder.agent.prompts import Mode
@@ -9,6 +10,7 @@ from agent_coder.agent.session_index import INDEX_FILENAME, SessionIndex
 def _isolate(monkeypatch, tmp_path):
     from agent_coder.agent import session_index as _si
     from agent_coder.config import config
+
     monkeypatch.setattr(config, "SESSIONS_DIR", tmp_path)
     # заменить глобальный index на свежий, привязанный к tmp_path
     fresh = SessionIndex(path=tmp_path / INDEX_FILENAME)
@@ -63,8 +65,10 @@ def test_list_all_rebuild_on_disk_mismatch(tmp_path, monkeypatch):
     other = Session.new(workspace="/tmp/p", model="m", mode=Mode.PLAN)
     other.title = "manual"
     import json as _json
+
     (tmp_path / f"{other.id}.json").write_text(
-        _json.dumps(other.to_dict(), ensure_ascii=False), encoding="utf-8",
+        _json.dumps(other.to_dict(), ensure_ascii=False),
+        encoding="utf-8",
     )
 
     sessions = Session.list_all()
@@ -78,6 +82,7 @@ def test_latest_uses_index(tmp_path, monkeypatch):
     s1 = Session.new(workspace="/tmp/a", model="m", mode=Mode.ACT)
     s1.save()
     import time
+
     time.sleep(0.01)
     s2 = Session.new(workspace="/tmp/b", model="m", mode=Mode.ACT)
     s2.save()

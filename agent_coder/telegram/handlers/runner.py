@@ -3,6 +3,7 @@
 Содержит _TaskRunner (буферизация вывода с троттлингом), split/join
 хелперы для длинных сообщений.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -163,7 +164,9 @@ class _TaskRunner:
                         raise
             else:
                 msg = await self.bot.send_message(
-                    self.chat_id, part, parse_mode="HTML",
+                    self.chat_id,
+                    part,
+                    parse_mode="HTML",
                 )
                 self.extra_msg_ids.append(msg.message_id)
 
@@ -181,8 +184,7 @@ class _TaskRunner:
                 logger.warning("delete continuation failed: %s", e)
         # синхронизировать кэш extras с текущим числом сообщений
         if len(self._rendered_extras) > len(self.extra_msg_ids):
-            self._rendered_extras = self._rendered_extras[:len(self.extra_msg_ids)]
-
+            self._rendered_extras = self._rendered_extras[: len(self.extra_msg_ids)]
 
     async def _request_approval(self, tc) -> bool:
         request_id = uuid.uuid4().hex[:8]
@@ -258,6 +260,7 @@ def _join_buffer(buffer: list[str]) -> str:
 # Теги, внутри которых Telegram HTML «строгий»: разрыв пополам →
 # TelegramBadRequest «Can't find end tag» → сообщение теряется.
 _BLOCK_TAGS = ("pre", "code", "blockquote")
+
 
 # Открывающий/закрывающий тег этих блоков (без учёта атрибутов —
 # у нас они всё равно не используются).

@@ -4,6 +4,7 @@
 истории (см. agent_coder.agent.history_archive). Поиск — через ripgrep
 по JSONL-файлу.
 """
+
 from __future__ import annotations
 
 import asyncio
@@ -30,9 +31,7 @@ def _format_match(line: str) -> str:
     text = content_to_text(m.get("content")).strip()
     tcs = m.get("tool_calls") or []
     if tcs:
-        names = ", ".join(
-            (tc.get("function") or {}).get("name", "?") for tc in tcs
-        )
+        names = ", ".join((tc.get("function") or {}).get("name", "?") for tc in tcs)
         text = (text + f"\n[вызвал: {names}]").strip()
     return f"[{role}] {text[:600]}"
 
@@ -54,10 +53,16 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         return "Ошибка: ripgrep (rg) не найден на сервере"
 
     cmd = [
-        rg, "--no-heading", "--no-line-number", "--color=never",
-        "--max-count", str(MAX_MATCHES),
+        rg,
+        "--no-heading",
+        "--no-line-number",
+        "--color=never",
+        "--max-count",
+        str(MAX_MATCHES),
         "--fixed-strings",
-        "--", query, str(path),
+        "--",
+        query,
+        str(path),
     ]
 
     proc = await asyncio.create_subprocess_exec(
@@ -80,7 +85,9 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     if not stdout:
         if proc.returncode == 1:
             return f"В архиве истории ничего не найдено по запросу: {query!r}"
-        return f"rg завершился с кодом {proc.returncode}: {err.decode(errors='replace')}"
+        return (
+            f"rg завершился с кодом {proc.returncode}: {err.decode(errors='replace')}"
+        )
 
     lines = stdout.splitlines()
     if len(lines) > MAX_MATCHES:

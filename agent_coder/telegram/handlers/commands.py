@@ -4,6 +4,7 @@
 
 Задачи и approval — в task.py / approval.py.
 """
+
 from __future__ import annotations
 
 import logging
@@ -48,6 +49,7 @@ logger = logging.getLogger(__name__)
 
 
 # ---------- /start, /help ----------
+
 
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
@@ -102,6 +104,7 @@ async def cmd_help(message: Message) -> None:
 
 # ---------- /projects ----------
 
+
 @router.message(Command("projects"))
 async def cmd_projects(message: Message) -> None:
     projects = _list_projects()
@@ -116,6 +119,7 @@ async def cmd_projects(message: Message) -> None:
 
 
 # ---------- /new ----------
+
 
 @router.message(Command("chat"))
 async def cmd_chat(message: Message) -> None:
@@ -164,7 +168,9 @@ async def cmd_chat(message: Message) -> None:
 
     # Создаём новую
     await _create_session(
-        chat_id, message, workspace,
+        chat_id,
+        message,
+        workspace,
         mode=Mode.CHAT,
         title="Обсуждение",
     )
@@ -229,6 +235,7 @@ async def cmd_new(message: Message) -> None:
 
 # ---------- /sessions ----------
 
+
 @router.message(Command("sessions"))
 async def cmd_sessions(message: Message) -> None:
     sessions = Session.list_all()
@@ -243,6 +250,7 @@ async def cmd_sessions(message: Message) -> None:
 
 
 # ---------- /current, /cost, /mode ----------
+
 
 @router.message(Command("current"))
 async def cmd_current(message: Message) -> None:
@@ -282,8 +290,10 @@ async def cmd_mode(message: Message) -> None:
         return
     parts = (message.text or "").split(maxsplit=1)
     valid = {
-        "plan": Mode.PLAN, "act": Mode.ACT,
-        "audit": Mode.AUDIT, "chat": Mode.CHAT,
+        "plan": Mode.PLAN,
+        "act": Mode.ACT,
+        "audit": Mode.AUDIT,
+        "chat": Mode.CHAT,
     }
     if len(parts) < 2 or parts[1].strip() not in valid:
         await message.answer(
@@ -312,6 +322,7 @@ async def cmd_mode(message: Message) -> None:
 
 # ---------- /cancel ----------
 
+
 @router.message(Command("yolo"))
 async def cmd_yolo(message: Message) -> None:
     """Переключить режим без подтверждений (per-session).
@@ -334,7 +345,7 @@ async def cmd_yolo(message: Message) -> None:
                 parse_mode="HTML",
             )
             return
-        session.yolo = (val == "on")
+        session.yolo = val == "on"
     else:
         session.yolo = not session.yolo
 
@@ -369,6 +380,7 @@ async def cmd_cancel(message: Message) -> None:
 
 
 # ---------- Callback: выбор проекта / сессии / режима ----------
+
 
 @router.callback_query(F.data.startswith("pc:yes:"))
 async def cb_project_create_yes(query: CallbackQuery, bot: Bot) -> None:
@@ -459,7 +471,9 @@ async def cb_new(query: CallbackQuery, bot: Bot) -> None:
     try:
         idx = int(raw)
     except ValueError:
-        await query.answer("Некорректная кнопка, обнови список: /projects", show_alert=True)
+        await query.answer(
+            "Некорректная кнопка, обнови список: /projects", show_alert=True
+        )
         return
 
     projects = _list_projects()
@@ -566,6 +580,7 @@ async def cb_back(query: CallbackQuery) -> None:
 
 # ---------- Команды /model и /reasoning ----------
 
+
 @router.message(Command("reasoning"))
 async def cmd_reasoning(message: Message) -> None:
     session = _get_active_session(message.chat.id)
@@ -573,6 +588,7 @@ async def cmd_reasoning(message: Message) -> None:
         await message.answer("Нет активной сессии.")
         return
     from agent_coder.model_catalog import catalog
+
     m = catalog.get(session.model)
     if not m or not m.reasoning:
         name = m.name if m else session.model
@@ -650,7 +666,9 @@ async def cmd_balance(message: Message) -> None:
 
     await message.answer("\n".join(lines), parse_mode="HTML")
 
+
 # ---------- /delete ----------
+
 
 @router.message(Command("delete"))
 async def cmd_delete(message: Message) -> None:
@@ -676,10 +694,16 @@ async def cmd_delete(message: Message) -> None:
         f"Заголовок: <b>{html_escape(session.title)}</b>\n"
         f"Запросов: {session.request_count}\n"
         f"Стоимость: {_fmt_cost(session.total_usage.cost)}",
-        reply_markup=InlineKeyboardMarkup(inline_keyboard=[[
-            InlineKeyboardButton(text="🗑 Удалить", callback_data=f"del:{session.id}"),
-            InlineKeyboardButton(text="❌ Отмена", callback_data="del_cancel"),
-        ]]),
+        reply_markup=InlineKeyboardMarkup(
+            inline_keyboard=[
+                [
+                    InlineKeyboardButton(
+                        text="🗑 Удалить", callback_data=f"del:{session.id}"
+                    ),
+                    InlineKeyboardButton(text="❌ Отмена", callback_data="del_cancel"),
+                ]
+            ]
+        ),
         parse_mode="HTML",
     )
 
@@ -716,9 +740,8 @@ async def cb_delete_cancel(query: CallbackQuery) -> None:
     await query.answer()
 
 
-
-
 # ---------- История сессии ----------
+
 
 @router.callback_query(F.data.startswith("history:"))
 async def cb_history(query: CallbackQuery) -> None:
@@ -787,16 +810,22 @@ async def _send_history_preview(source, session: Session) -> None:
         text = "\n".join(lines)
 
     # Кнопки: экспорт + назад
-    kb = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(
-            text="📥 Скачать полную (.md)",
-            callback_data=f"hist_md:{session.id}",
-        )],
-        [InlineKeyboardButton(
-            text="⬅️ Назад",
-            callback_data=f"open:{session.id}",
-        )],
-    ])
+    kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="📥 Скачать полную (.md)",
+                    callback_data=f"hist_md:{session.id}",
+                )
+            ],
+            [
+                InlineKeyboardButton(
+                    text="⬅️ Назад",
+                    callback_data=f"open:{session.id}",
+                )
+            ],
+        ]
+    )
 
     if hasattr(source, "message"):  # callback
         await source.message.edit_text(text, parse_mode="HTML", reply_markup=kb)
@@ -845,7 +874,9 @@ async def cb_history_md(query: CallbackQuery) -> None:
         elif role == "tool":
             # Первые 200 символов каждого tool-результата
             brief = content[:200] + ("…" if len(content) > 200 else "")
-            lines.append(f"<details><summary>🔧 tool</summary>\n\n```\n{brief}\n```\n</details>\n")
+            lines.append(
+                f"<details><summary>🔧 tool</summary>\n\n```\n{brief}\n```\n</details>\n"
+            )
         elif role == "system":
             # Пропускаем (это огромный промпт)
             continue
@@ -874,6 +905,7 @@ async def cmd_model(message: Message) -> None:
         await message.answer("Нет активной сессии. /projects — выбрать проект.")
         return
     from agent_coder.models import get_model_name
+
     await message.answer(
         f"🧠 <b>Модель</b>\n\n"
         f"Текущая: <b>{get_model_name(session.model)}</b>\n"
