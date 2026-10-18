@@ -22,7 +22,7 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 
 | ID | sev | what | fix | status | source |
 |---|---|---|---|---|---|
-| F3 | major | `ruff format` не применялся: ai_image_bot 49/66, agent-coder 74/106 | `ruff format .` отдельным style-коммитом | **done** `07923d8` (ai_image_bot), `bc9af70` (agent-coder) | drift |
+| F3 | major | `ruff format` не применялся: ai_image_bot 49/66, agent-coder 74/106, rectifyme_bot 134, builder_bot 82 | `ruff format .` отдельным style-коммитом | **done**: ai_image_bot `07923d8`, agent-coder `bc9af70`, rectifyme_bot `a8facd4` (134 файла), builder_bot `a8facd4`-серия (82 файла). **open**: futures_3.0 (280, src-layout — отдельно), ai_bot_2.0 (43, deprecated), crypto_bot (11, deprecated) | drift |
 | F3b | major | agent-coder сам дрейфанул на 74 файла — стандарт не поймал | см. F16 | **done** `bc9af70` | drift |
 | F4/D6 | minor | `E501` в lint ignore vs `ruff format line-length=88` | убрать `E501` из ignore; либо документировать зачем | **done (documented)** `257b112` (ai_image_bot): 24 случая, 22 — string-литералы данных; ignore оставлен с обоснованием | ai_image_bot |
 | F6/D1 | major | стандарт требует `license = "<SPDX>"`, про proprietary молчит | правило: closed-source → `LicenseRef-Proprietary` | **done** `b1720c7` | ai_image_bot `705054b` |
@@ -37,7 +37,10 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | F26 | minor | `check_project_standard` применяется к самому agent-coder, но tool — не проект под bots/: 4 major (нет requirements*.in, root AGENTS.md) + 3 minor, шум в PLAN/AUDIT | (a) исключить agent-coder в tool (сейчас только в `_migrations/generate.py`); (b) или документировать "tool не под стандартом" в README/AGENTS | **done** `e998305`: EXCLUDED_NAMES + score="skipped" с reason | self-check 2026-10-18 |
 | F22 | minor | Model 'x-ai/grok-4.20' отсутствует в каталоге: warning при `import config` → placeholder без метаданных (pytest output, 2026-10-18) | (a) добавить модель в `_FALLBACK_CATALOG`; (b) логировать только при первом использовании, не на import; (c) убрать из .env | **done** `c720bee`: grok-4.20 в fallback (реальные данные), `_make_placeholder(warn=...)`, init тихий | pytest |
 | F21 | major | локальный pytest не ловит файлы, отсутствующие в git: `templates/AGENTS.md` был на диске, но gitignored → локально 3 passed, CI 2 failed (2026-10-18) | (a) `test_templates.py` дополнительно проверяет `git ls-files agent_coder/templates/` (skip вне git-репо); (b) pre-push CI-симуляция `git clone /tmp && pytest` | **done** `5966543` (file) + `4562084` (rule) + `00885a1` (test) | CI 2026-10-18 |
-| F20 | minor | `[tool.mypy] python_version = "3.10"` в agent-coder при `requires-python >=3.12` | выровнять до `"3.12"` (отдельно, mypy не в CI) | open | peek pyproject |
+| F20 | minor | `[tool.mypy] python_version = "3.10"` в agent-coder при `requires-python >=3.12` | выровнять до `"3.12"` | **done** (отдельный коммит вместе с этим патчем FINDINGS) | peek pyproject |
+
+| F28 | minor | `builder_bot`: UP046 в `app/calculators/base.py` — `class CalcResult(BaseModel, Generic[ValuesT])` vs PEP 695. ruff fix помечен **unsafe** (меняет runtime generic pydantic) | снять per-file-ignore в `builder_bot/pyproject.toml` после миграции на `class CalcResult[ValuesT: BaseModel](BaseModel)` + прогон 525 тестов. Не блокирует standard | open | builder_bot 2026-10-18 |
+| F29 | major | `futures_3.0`: src-layout (`src/trading/`) без корневых `pyproject.toml`, `README.md`, `tests/`, `requirements*.in`; `D .cursorrules`, `?? .promt` в git status | (a) поднять корневые pyproject/README/tests, код оставить в `src/`; (b) признать особым случаем и не применять стандарт. Решение владельца — структурный ACT | open | 2026-10-18 |
 
 ## Per-project (историческое, `_migrations/<project>.md`)
 
@@ -48,8 +51,10 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 
 ## Порядок работ (рекомендация)
 
-Закрыто в этой сессии: F1/S2, F6, F11/S6, F13, F16, F21, F24 (см. статусы выше).
+Закрыто в этой сессии: F1/S2, F4/D6, F6, F7/D2, F11/S6, F13, F16, F21, F22, F23, F24, F26, F27; D8 (см. статусы выше).
 
 Остаётся (не блокирует restart ботов):
-1. **F3** — `ruff format` для 8 проектов (теперь видно через F16).
+1. **F29** — `futures_3.0`: src-layout, нет корневых pyproject/README/tests. Решение: поднять корень или особый случай (структурный ACT).
 2. **F17** — канон шаблонов (`_shared-dev` vs `agent_coder/templates`).
+3. **F3** — `ruff format`: futures_3.0 (280), ai_bot_2.0 (43, deprecated), crypto_bot (11, deprecated).
+4. **F28** — UP046 в `builder_bot` (PEP 695 generics + pydantic, unsafe fix).

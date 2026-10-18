@@ -54,7 +54,7 @@ include = ["agent_coder*"]
 # 98 из 105 ошибок — union-attr от aiogram в handlers.py. Запускать вручную,
 # когда захочется; в CI даёт шум и тормозит.
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 ignore_missing_imports = true
 warn_unused_ignores = true
 warn_unused_configs = true
