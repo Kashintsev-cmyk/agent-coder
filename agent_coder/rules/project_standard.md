@@ -24,8 +24,8 @@ requirements-dev-base.in, .gitignore-base) —
 
 ## Конвенции
 
-- Python 3.10+
-- ruff line-length=88, target-version="py310",
+- Python 3.12+
+- ruff line-length=88, target-version="py312",
   select=["E","F","W","I","UP","B","C4","SIM"]
 - Пакет = snake_case от имени проекта
 - coverage source = имя пакета проекта (не "app")

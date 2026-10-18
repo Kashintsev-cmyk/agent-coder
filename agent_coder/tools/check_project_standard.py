@@ -10,13 +10,9 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import tomllib
 from pathlib import Path
 from typing import Any
-
-try:
-    import tomllib
-except ImportError:  # Python 3.10
-    import tomli as tomllib
 
 from agent_coder.tools.registry import Tool, ToolContext
 
