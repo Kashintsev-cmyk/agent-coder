@@ -14,6 +14,7 @@ from agent_coder.tools.registry import Tool, ToolContext, ToolRegistry
 from agent_coder.tools.run_command import run_command_tool
 from agent_coder.tools.search import search_tool
 from agent_coder.tools.search_history import search_history_tool
+from agent_coder.tools.work_state import update_work_state_tool
 from agent_coder.tools.write_file import write_file_tool
 
 
@@ -35,6 +36,8 @@ def build_registry() -> ToolRegistry:
     registry.register(git_diff_tool)
     registry.register(git_log_tool)
     registry.register(git_commit_tool)
+    # Рабочая память (structured memory, переживает compress)
+    registry.register(update_work_state_tool)
     return registry
 
 

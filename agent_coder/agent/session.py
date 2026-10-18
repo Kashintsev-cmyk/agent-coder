@@ -75,6 +75,10 @@ class Session:
     # Модель выбрана пользователем вручную (/model или меню сессии).
     # True — роутер не меняет модель, работает только fallback-цепочка.
     model_manual: bool = False
+    # Структурированная рабочая память (см. agent/work_state.py).
+    # Не пересуммаризуется LLM при compress(): детерминированный набор
+    # фактов, инжектится в system prompt и служит скелетом резюме.
+    work_state: dict[str, list[str]] = field(default_factory=dict)
     # Статистика сжатия истории (B5.1: только собираем)
     last_input_tokens: int = 0  # usage.input_tokens последнего запроса
     summary_count: int = 0  # сколько раз сжимали историю
@@ -244,6 +248,8 @@ class Session:
             data["summary_count"] = 0
         if "model_manual" not in data:
             data["model_manual"] = False
+        if "work_state" not in data:
+            data["work_state"] = {}
 
         # Разовая чистка: если в истории есть DSML-мусор (старые версии
         # кода не фильтровали) — убираем при загрузке.

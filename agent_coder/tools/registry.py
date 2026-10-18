@@ -14,12 +14,18 @@ SafeCheck = Callable[[dict[str, Any]], bool]
 
 @dataclass
 class ToolContext:
-    """Что видит инструмент при выполнении."""
+    """Что видит инструмент при выполнении.
+
+    work_state — узкий handle над Session.work_state (не вся Session),
+    по образцу Cline TaskState / Codex ToolInvocation. None — для tools,
+    которым state не нужен (все, кроме update_work_state).
+    """
 
     workspace: str
     mode: Mode
     yolo: bool = False
     session_id: str = ""  # для search_history (архив сжатой истории)
+    work_state: Any | None = None  # WorkStateHandle; Any — без цикла импортов
 
 
 @dataclass

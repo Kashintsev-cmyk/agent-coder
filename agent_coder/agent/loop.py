@@ -15,6 +15,7 @@ from typing import Any
 from agent_coder.agent import compression, history_archive, tool_extract
 from agent_coder.agent.prompts import Mode, system_prompt
 from agent_coder.agent.session import Session
+from agent_coder.agent.work_state import WorkStateHandle
 from agent_coder.config import config
 from agent_coder.llm.client import LLMClient
 from agent_coder.llm.router import RouterState, router
@@ -139,6 +140,11 @@ class AgentLoop:
                     self.session.save()
                     if self.events.on_compression is not None:
                         await _maybe_await(self.events.on_compression, comp)
+
+            # Пересобрать system prompt: work_state мог измениться
+            # (update_work_state в прошлой итерации) — модель должна видеть
+            # актуальные факты, иначе смысл structured memory теряется.
+            self._refresh_system_prompt()
 
             try:
                 response = await self.client.chat(
@@ -290,6 +296,7 @@ class AgentLoop:
             mode=self.session.mode,
             yolo=self.yolo,
             session_id=self.session.id,
+            work_state=self._work_state_handle(),
         )
         try:
             result = await tool.executor(tc.arguments, ctx)
@@ -324,8 +331,20 @@ class AgentLoop:
         )
         self.session.save()
 
+    def _work_state_handle(self) -> WorkStateHandle:
+        """Узкий handle над живым session.work_state (не копия).
+
+        Создаётся на месте — обёртка дешёвая, а ссылка на живой dict
+        гарантирует, что tool и system prompt видят один и тот же state.
+        """
+        return WorkStateHandle(self.session.work_state)
+
     def _refresh_system_prompt(self) -> None:
-        prompt = system_prompt(self.session.mode, self.session.workspace)
+        prompt = system_prompt(
+            self.session.mode,
+            self.session.workspace,
+            self._work_state_handle(),
+        )
         if (
             not self.session.messages
             or self.session.messages[0].get("role") != "system"

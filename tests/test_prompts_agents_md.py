@@ -143,3 +143,13 @@ def test_failure_falls_back_to_base(
     ws = str(tmp_path)
     out = system_prompt(mode, ws)
     assert out == template.format(workspace=ws)
+
+
+def test_system_act_has_work_state_rule() -> None:
+    """Правило 14 — про structured memory, не меняя формат SYSTEM_*."""
+    from agent_coder.agent.prompts import SYSTEM_ACT
+
+    assert "update_work_state" in SYSTEM_ACT
+    assert (
+        "structured memory" in SYSTEM_ACT.lower() or "Structured memory" in SYSTEM_ACT
+    )
