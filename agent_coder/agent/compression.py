@@ -23,6 +23,7 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
+from agent_coder.agent import tool_extract
 from agent_coder.agent.session import content_to_text
 from agent_coder.config import config
 
@@ -123,10 +124,20 @@ def _is_summary(msg: dict[str, Any]) -> bool:
 
 
 def format_for_summary(messages: list[dict[str, Any]]) -> str:
-    """Плоский транскрипт для суммаризации. Обрезает длинные куски.
+    """Плоский транскрипт для суммаризации.
 
-    Предыдущие резюме пропускаются — они передаются отдельно (см. compress).
+    Tool-результаты прогоняются через tool_extract (per-tool, 2048) — то же
+    сжатие, что и в session.messages, но с меньшим лимитом (резюме нужны
+    факты, не полный вывод). Предыдущие резюме пропускаются — они
+    передаются отдельно (см. compress).
     """
+    tool_names: dict[str, str] = {}
+    for m in messages:
+        for tc in m.get("tool_calls") or []:
+            tc_id = tc.get("id")
+            fn = tc.get("function") or {}
+            if tc_id and fn.get("name"):
+                tool_names[tc_id] = fn["name"]
     parts: list[str] = []
     for m in messages:
         if _is_summary(m):
@@ -146,7 +157,10 @@ def format_for_summary(messages: list[dict[str, Any]]) -> str:
             elif text:
                 parts.append(f"АССИСТЕНТ:\n{text}")
         elif role == "tool":
-            parts.append(f"[TOOL]: {content[:500]}")
+            name = tool_names.get(m.get("tool_call_id"), "")
+            label = f"[TOOL {name}]" if name else "[TOOL]"
+            extracted = tool_extract.extract(name or "", {}, content, 2048)
+            parts.append(f"{label}: {extracted}")
     return "\n\n".join(parts)
 
 

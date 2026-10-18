@@ -103,8 +103,9 @@ def test_format_for_summary_basic():
 def test_format_for_summary_truncates_tool():
     msgs = [{"role": "tool", "content": "x" * 5000}]
     out = format_for_summary(msgs)
-    # [TOOL]: + 500 символов + обвязка
-    assert len(out) < 600
+    # [TOOL]: + extracted(2048) — fallback head/tail с маркером
+    assert len(out) <= 2100
+    assert "обрезано" in out
 
 
 def test_format_for_summary_assistant_with_tool_calls():
