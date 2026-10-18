@@ -168,12 +168,9 @@ class ModelCatalog:
         if model_id in _FALLBACK_CATALOG:
             return _FALLBACK_CATALOG[model_id]
         if model_id in config.CURATED_MODEL_IDS:
-            if warn:
-                logger.warning(
-                    "Model %r отсутствует в каталоге и fallback — placeholder",
-                    model_id,
-                )
-            return _make_placeholder(model_id)
+            # Один warning — из _make_placeholder (warn=warn).
+            # Дублировать здесь не нужно.
+            return _make_placeholder(model_id, warn=warn)
         return None
 
     def load_from_fallback(self) -> None:
@@ -181,12 +178,30 @@ class ModelCatalog:
 
         Отсутствующие в fallback curated-id добираются placeholder'ами, чтобы
         ``all()`` не был пустым даже до ``refresh()``.
+
+        Placeholder здесь — ожидаемое поведение (комплектация snapshot'а),
+        не «модель потерялась»: warning на import config был бы шумом.
+        Если curated-id нет в fallback — одна строка ``logger.info`` с
+        полным списком (F22). Реальный warning — в ``all()``/``get()`` при
+        фактическом запросе.
         """
         snapshot: dict[str, ModelInfo] = {}
+        placeholders: list[str] = []
         for mid in config.CURATED_MODEL_IDS:
-            snapshot[mid] = self._fallback_for(mid, warn=True)  # type: ignore[assignment]
+            model = self._fallback_for(mid, warn=False)
+            if model is None:
+                model = _make_placeholder(mid)
+                placeholders.append(mid)
+            snapshot[mid] = model
         self._models = snapshot
         self._source = "fallback"
+        if placeholders:
+            logger.info(
+                "Catalog fallback: %d curated id(s) без записи в snapshot, "
+                "использован placeholder: %s",
+                len(placeholders),
+                ", ".join(placeholders),
+            )
 
     # ------------------------------------------------------------------
     # Дисковый кэш

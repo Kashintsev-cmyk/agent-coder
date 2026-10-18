@@ -232,17 +232,21 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         output_price=1088.88,
         tag="аудит, файлы",
     ),
-    "x-ai/grok-4.7": ModelInfo(
-        id="x-ai/grok-4.7",
-        name="Grok 4.7",  # TODO(meta): сверить с дампом
-        context=0,
+    "x-ai/grok-4.20": ModelInfo(
+        id="x-ai/grok-4.20",
+        name="SpaceXAI: Grok 4.20",
+        context=2_000_000,
         reasoning=True,
         vision=True,
         tools=True,
-        reasoning_effort=True,
+        reasoning_effort=False,
         web_search_builtin=True,
-        input_price=0.0,
-        output_price=0.0,
+        description=(
+            "Grok 4.20 — новая флагманская модель xAI: высокая скорость, "
+            "агентский вызов инструментов, низкий уровень галлюцинаций."
+        ),
+        input_price=135.8787625,
+        output_price=271.757525,
         tag="grok",
     ),
     "deepseek/deepseek-v4-pro": ModelInfo(
@@ -352,18 +356,19 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
 }
 
 
-def _make_placeholder(model_id: str) -> ModelInfo:
+def _make_placeholder(model_id: str, *, warn: bool = True) -> ModelInfo:
     """Заглушка для id, которого нет в `_FALLBACK_CATALOG`.
 
     Нужна, чтобы CURATED_MODEL_IDS из .env не роняло импорт при опечатке:
     модель попадёт в список с нулевыми метаданными и «безопасными» флагами.
     Используется `model_catalog.ModelCatalog`.
     """
-    logger.warning(
-        "Model %r не найдена в _FALLBACK_CATALOG — подставлен placeholder "
-        "(нет метаданных и capability-флагов)",
-        model_id,
-    )
+    if warn:
+        logger.warning(
+            "Model %r не найдена в _FALLBACK_CATALOG — подставлен placeholder "
+            "(нет метаданных и capability-флагов)",
+            model_id,
+        )
     return ModelInfo(
         id=model_id,
         name=model_id,
