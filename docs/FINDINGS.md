@@ -18,6 +18,17 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | S6/F11 | major | bootstrap с 0 отсутствует как tool | `tools/scaffold_project.py` + CLI `scaffold` | **done** `d95afd7` (core) + `3e88e4f` (CLI) + `f7f6ce4` (/new, B) | arch review |
 | S7/F14 | minor | `MANUAL_NOTES` в коде `generate.py` — второй источник | убрать, notes в `notes.md` | open | arch review |
 
+## Агентный цикл и память
+
+| ID | sev | what | fix | status | source |
+|---|---|---|---|---|---|
+| A1 | major | tool-выводы 85–95% контента; худший случай — 3 062 201 симв. в одной сессии (search/grep), модель зависала; всё уезжало в LLM каждый запрос и оплачивалось | per-tool extraction (без LLM: regex + head/tail + счётчики) + полный текст в `history_archive` (search_history) + `format_for_summary` через `extract(2048)` | **done** `ff28184` (extract+loop) + `af226b5` (compression) + `5974e69` (фикстуры, агрессивные дефолты; 93.5% взвешенно, 71–79% per-fixture) | session 2026-10-19 |
+| A2 | major | error-path `_append_tool_result` (`tool is None` / `not allowed` / `rejected`) не сохранял сессию на диск — только success-path | `save()` внутрь `_append_tool_result` (одна точка, покрывает все 4 call-site) | **done** `ff28184` | session 2026-10-19 |
+| A3 | major | `run_command` с heredoc (`python3 - <<'PYEOF'`): `exit code: N` на строке 50+, форматер сохранял только первые 2 строки → терялся. Найдено на реальных фикстурах, синтетика не ловила | `exit code` regex всегда; `$ cmd` обрезается до 200 симв. (`[команда сокращена]`); stdout/stderr маркеры сохраняются | **done** `5974e69` | session 2026-10-19 |
+| A4 | minor | `git_diff` режет тело через `_truncate(MAX_OUTPUT)` **до** extract → `+N -M` недосчитывает на огромных diff'ах | точные числа в `history_archive` (search_history); docstring предупреждает | **open** (приемлемо) | session 2026-10-19 |
+| A5 | major | модель «искала заново» после compress: детали теряются LLM-суммаризацией, structured memory нет. Подтверждено на реальных сессиях (галлюцинации, повторный поиск) | `Session.work_state` (user_requests/findings/done/todo/open_questions) + tool `update_work_state` (точечный patch: set/+/−) + `[WORK_STATE]` в system prompt **каждую итерацию** + правило 14 в `SYSTEM_ACT` | **done** `f3e879e` | session 2026-10-19 |
+| A6 | major | `compress()` терял факты: LLM-narrative + нет детерминированного скелета; work_state-факты, которых нет в transcript, ложно помечались `(не подтверждено)` | work_state как скелет: `[ИЗВЕСТНЫЕ ФАКТЫ]` для LLM + детерминированный suffix после валидатора (не LLM-генерирован); `_validate_summary(extra_known=...)` | **done** `d102286` | session 2026-10-19 |
+
 ## Стандарт и проверки
 
 | ID | sev | what | fix | status | source |
@@ -58,3 +69,5 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 2. **F17** — канон шаблонов (`_shared-dev` vs `agent_coder/templates`).
 3. **F3** — `ruff format`: futures_3.0 (280), ai_bot_2.0 (43, deprecated), crypto_bot (11, deprecated).
 4. **F28** — UP046 в `builder_bot` (PEP 695 generics + pydantic, unsafe fix).
+
+Закрыто в сессии 2026-10-19 (агентный цикл и память): A1 (extraction), A2 (save в error-path), A3 (heredoc exit code), A5 (work_state), A6 (work_state как скелет compress). Открыто: A4 (git_diff truncation, приемлемо — точные числа в history_archive).
