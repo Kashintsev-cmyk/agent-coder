@@ -32,7 +32,7 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | F17 | minor | два источника шаблонов: `_shared-dev/project-template` + `agent_coder/templates` | (a) канон — `agent_coder/templates`, `_shared-dev` ссылается; или (b) `sync_templates.py` + CI diff | open | step 2 |
 | F18 | minor | `ci-template.yml` — `pip install`, не `uv` | обновить шаблон на `uv pip compile --universal` (связано с F7) | **done** `6409403` | step 2 |
 | F19 | minor | `pyproject-snippet.toml` содержит `source = ["app"]` placeholder | `scaffold_project` обязан заменить на имя пакета; тест scaffold проверяет отсутствие `app` | **done** `d95afd7` (scaffold заменяет; `test_pyproject_no_app_placeholder`) | step 2 |
-| F23 | major | `_migrations` без git remote: трекер миграций и `notes.md` (история ручных решений) только локально | создать remote-репо (GitHub, приватный) + `git remote add` + push; либо влить `_migrations/` в agent-coder как `state/` и пушить с ним | open | 2026-10-18 |
+| F23 | major | `_migrations` без git remote: трекер миграций и `notes.md` (история ручных решений) только локально | создать remote-репо (GitHub, приватный) + `git remote add` + push; либо влить `_migrations/` в agent-coder как `state/` и пушить с ним | **done** `git@github.com:Kashintsev-cmyk/migrations.git` (private), push `d500b07` | 2026-10-18 |
 | F24 | minor | `_migrations/README.md` описывает старый `generate.py`; новый путь — `agent-coder-migrate --project X`, `.md` = view, `.notes.md` = manual | переписать README: usage, layout (state в ~/.agent-coder, notes в _migrations), откат | **done** `436fe91` (_migrations) | 2026-10-18 |
 | F26 | minor | `check_project_standard` применяется к самому agent-coder, но tool — не проект под bots/: 4 major (нет requirements*.in, root AGENTS.md) + 3 minor, шум в PLAN/AUDIT | (a) исключить agent-coder в tool (сейчас только в `_migrations/generate.py`); (b) или документировать "tool не под стандартом" в README/AGENTS | open | self-check 2026-10-18 |
 | F22 | minor | Model 'x-ai/grok-4.20' отсутствует в каталоге: warning при `import config` → placeholder без метаданных (pytest output, 2026-10-18) | (a) добавить модель в `_FALLBACK_CATALOG`; (b) логировать только при первом использовании, не на import; (c) убрать из .env | open | pytest |
@@ -51,10 +51,9 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 Закрыто в этой сессии: F1/S2, F6, F11/S6, F13, F16, F21, F24 (см. статусы выше).
 
 Остаётся (не блокирует restart ботов):
-1. **F23** — remote для `_migrations` (риск потери данных; нужно создать репо на GitHub).
-2. **F3** — `ruff format` для 8 проектов (теперь видно через F16).
-3. **F17** — канон шаблонов (`_shared-dev` vs `agent_coder/templates`).
-4. **F22** — warning про неизвестную модель на `import config`.
-5. **F26** — agent-coder как исключение в `check_project_standard`.
-6. **F4/D6** — `E501` в ignore vs `ruff format`.
-7. **D2/D8** — решения владельца (uv-lock, README badge).
+1. **F3** — `ruff format` для 8 проектов (теперь видно через F16).
+2. **F17** — канон шаблонов (`_shared-dev` vs `agent_coder/templates`).
+3. **F22** — warning про неизвестную модель на `import config`.
+4. **F26** — agent-coder как исключение в `check_project_standard`.
+5. **F4/D6** — `E501` в ignore vs `ruff format`.
+6. **D2/D8** — решения владельца (uv-lock, README badge).
