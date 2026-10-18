@@ -31,3 +31,6 @@ AGENTS.md
 build/
 dist/
 *.egg-info/
+
+# Шаблоны проекта (templates/) — исключение из AGENTS.md-ignore
+!agent_coder/templates/AGENTS.md
