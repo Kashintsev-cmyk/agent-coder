@@ -26,7 +26,7 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | F3b | major | agent-coder сам дрейфанул на 74 файла — стандарт не поймал | см. F16 | **done** `bc9af70` | drift |
 | F4/D6 | minor | `E501` в lint ignore vs `ruff format line-length=88` | убрать `E501` из ignore; либо документировать зачем | **done (documented)** `257b112` (ai_image_bot): 24 случая, 22 — string-литералы данных; ignore оставлен с обоснованием | ai_image_bot |
 | F6/D1 | major | стандарт требует `license = "<SPDX>"`, про proprietary молчит | правило: closed-source → `LicenseRef-Proprietary` | **done** `b1720c7` | ai_image_bot `705054b` |
-| F7/D2 | major | `_shared-dev` требует `uv`, ai_image_bot на `pip-tools`; «aiogram приватный» — неверно | `requirements-dev.in` без pip-tools, `uv pip compile --universal`, CI на uv | open | ai_image_bot |
+| F7/D2 | major | `_shared-dev` требует `uv`, ai_image_bot на `pip-tools`; «aiogram приватный» — неверно | `requirements-dev.in` без pip-tools, `uv pip compile --universal`, CI на uv | **done** `1a35b9c` (lock) + `badbf65` (CI) | ai_image_bot |
 | F8/D3 | major | `coverage source = ["."]` для flat layout; стандарт требует `["<pkg>"]` | разрешить явный список пакетов (как в `packages.find`) | open | ai_image_bot |
 | F16 | major | `check_project_standard` не проверяет `ruff format --check` | новый issue id `ruff_format_not_applied`: subprocess `ruff format --check .` в base | **done** `944e30f` | agent-coder drift |
 | F17 | minor | два источника шаблонов: `_shared-dev/project-template` + `agent_coder/templates` | (a) канон — `agent_coder/templates`, `_shared-dev` ссылается; или (b) `sync_templates.py` + CI diff | open | step 2 |
@@ -44,7 +44,7 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | ID | project | what | status |
 |---|---|---|---|
 | D4 | ai_image_bot | `aiogram==3.31.0` — проверить 3.32+ breaking | open (решение владельца) |
-| D8 | ai_image_bot | `README.md:7` бейдж `license-MIT` vs pyproject `LicenseRef-Proprietary` | open (решение владельца) |
+| D8 | ai_image_bot | `README.md:7` бейдж `license-MIT` vs pyproject `LicenseRef-Proprietary` | **done** `c73ffb5` (owner: proprietary) |
 
 ## Порядок работ (рекомендация)
 
@@ -53,4 +53,3 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 Остаётся (не блокирует restart ботов):
 1. **F3** — `ruff format` для 8 проектов (теперь видно через F16).
 2. **F17** — канон шаблонов (`_shared-dev` vs `agent_coder/templates`).
-3. **D2/D8** — решения владельца (uv-lock, README badge).
