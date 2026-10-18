@@ -35,7 +35,7 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | F23 | major | `_migrations` без git remote: трекер миграций и `notes.md` (история ручных решений) только локально | создать remote-репо (GitHub, приватный) + `git remote add` + push; либо влить `_migrations/` в agent-coder как `state/` и пушить с ним | **done** `git@github.com:Kashintsev-cmyk/migrations.git` (private), push `d500b07` | 2026-10-18 |
 | F24 | minor | `_migrations/README.md` описывает старый `generate.py`; новый путь — `agent-coder-migrate --project X`, `.md` = view, `.notes.md` = manual | переписать README: usage, layout (state в ~/.agent-coder, notes в _migrations), откат | **done** `436fe91` (_migrations) | 2026-10-18 |
 | F26 | minor | `check_project_standard` применяется к самому agent-coder, но tool — не проект под bots/: 4 major (нет requirements*.in, root AGENTS.md) + 3 minor, шум в PLAN/AUDIT | (a) исключить agent-coder в tool (сейчас только в `_migrations/generate.py`); (b) или документировать "tool не под стандартом" в README/AGENTS | **done** `e998305`: EXCLUDED_NAMES + score="skipped" с reason | self-check 2026-10-18 |
-| F22 | minor | Model 'x-ai/grok-4.20' отсутствует в каталоге: warning при `import config` → placeholder без метаданных (pytest output, 2026-10-18) | (a) добавить модель в `_FALLBACK_CATALOG`; (b) логировать только при первом использовании, не на import; (c) убрать из .env | open | pytest |
+| F22 | minor | Model 'x-ai/grok-4.20' отсутствует в каталоге: warning при `import config` → placeholder без метаданных (pytest output, 2026-10-18) | (a) добавить модель в `_FALLBACK_CATALOG`; (b) логировать только при первом использовании, не на import; (c) убрать из .env | **done** `c720bee`: grok-4.20 в fallback (реальные данные), `_make_placeholder(warn=...)`, init тихий | pytest |
 | F21 | major | локальный pytest не ловит файлы, отсутствующие в git: `templates/AGENTS.md` был на диске, но gitignored → локально 3 passed, CI 2 failed (2026-10-18) | (a) `test_templates.py` дополнительно проверяет `git ls-files agent_coder/templates/` (skip вне git-репо); (b) pre-push CI-симуляция `git clone /tmp && pytest` | **done** `5966543` (file) + `4562084` (rule) + `00885a1` (test) | CI 2026-10-18 |
 | F20 | minor | `[tool.mypy] python_version = "3.10"` в agent-coder при `requires-python >=3.12` | выровнять до `"3.12"` (отдельно, mypy не в CI) | open | peek pyproject |
 
@@ -53,5 +53,4 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 Остаётся (не блокирует restart ботов):
 1. **F3** — `ruff format` для 8 проектов (теперь видно через F16).
 2. **F17** — канон шаблонов (`_shared-dev` vs `agent_coder/templates`).
-3. **F22** — warning про неизвестную модель на `import config` (делаем сейчас).
-4. **D2/D8** — решения владельца (uv-lock, README badge).
+3. **D2/D8** — решения владельца (uv-lock, README badge).
