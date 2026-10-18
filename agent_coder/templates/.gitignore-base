@@ -36,4 +36,4 @@ htmlcov/
 .DS_Store
 
 # NOTE: AGENTS.md is intentionally NOT ignored — it is a template file
-# copied from _shared-dev and must be tracked in new projects.
+# shipped in agent_coder/templates/ and must be tracked in new projects.
