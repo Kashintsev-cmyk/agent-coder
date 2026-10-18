@@ -16,6 +16,7 @@ dependencies = [
 [project.scripts]
 agent-coder = "agent_coder.__main__:main"
 agent-coder-bot = "agent_coder.telegram.bot:main"
+agent-coder-migrate = "agent_coder.migrate:main"
 
 [project.optional-dependencies]
 dev = [
