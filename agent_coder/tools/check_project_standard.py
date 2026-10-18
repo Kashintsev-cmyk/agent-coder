@@ -104,8 +104,19 @@ def _find_ruff() -> str | None:
 def _collect_issues(base: Path) -> list[dict[str, Any]]:
     issues: list[dict[str, Any]] = []
 
+    # Ранний парс pyproject: нужен, чтобы решить про requirements.in
+    # (стандарт: [project] dependencies ИЛИ requirements.in — одно).
+    pp_early, _pp_err = _read_pyproject(base)
+    project_early = pp_early.get("project", {}) if isinstance(pp_early, dict) else {}
+    if not isinstance(project_early, dict):
+        project_early = {}
+    deps_early = project_early.get("dependencies")
+    has_project_deps = isinstance(deps_early, list) and bool(deps_early)
+
     # 1. Обязательные файлы и tests/
     for name in REQUIRED_FILES:
+        if name == "requirements.in" and has_project_deps:
+            continue
         if not (base / name).is_file():
             issues.append(
                 _issue(name, "major", "missing_file", "file present", "not found")
@@ -195,7 +206,9 @@ def _collect_issues(base: Path) -> list[dict[str, Any]]:
         if not isinstance(cov_run, dict):
             cov_run = {}
         source = cov_run.get("source")
-        if isinstance(source, list) and "app" in source:
+        # "app" — placeholder из шаблона, но у проекта может быть
+        # реальный пакет app/ (builder_bot). Тогда это не placeholder.
+        if isinstance(source, list) and "app" in source and not (base / "app").is_dir():
             issues.append(
                 _issue(
                     "pyproject.toml",
@@ -257,12 +270,14 @@ def _collect_issues(base: Path) -> list[dict[str, Any]]:
                 st = tool.get("setuptools", {}) if isinstance(tool, dict) else {}
                 if not isinstance(st, dict):
                     st = {}
-                pkgs = st.get("packages", {})
-                if not isinstance(pkgs, dict):
-                    pkgs = {}
+                raw_pkgs = st.get("packages")
+                pkgs = raw_pkgs if isinstance(raw_pkgs, dict) else {}
                 has_find = isinstance(pkgs.get("find"), dict)
                 has_py_modules = bool(st.get("py-modules"))
-                if not (has_find or has_py_modules):
+                # packages = ["app"] — валидная альтернатива
+                # packages.find (явный список пакетов).
+                has_packages_list = isinstance(raw_pkgs, list) and bool(raw_pkgs)
+                if not (has_find or has_py_modules or has_packages_list):
                     issues.append(
                         _issue(
                             "pyproject.toml",

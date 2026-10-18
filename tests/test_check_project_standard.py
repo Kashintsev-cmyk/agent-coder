@@ -320,3 +320,77 @@ def test_ci_matrix_missing_312_flagged(tmp_path: Path) -> None:
     data = asyncio.run(_run(tmp_path))
     issues = [i for i in data["issues"] if i["issue"] == "ci_matrix_missing_312"]
     assert len(issues) == 1
+
+
+# --- 2026-10-18: false-positive fixes (builder_bot) ---
+
+
+def test_coverage_source_app_not_flagged_when_package_exists(
+    tmp_path: Path,
+) -> None:
+    """source = ["app"] — placeholder, только если пакета app/ нет."""
+    import asyncio
+
+    _write_complete_skeleton(tmp_path)
+    (tmp_path / "app").mkdir()
+    (tmp_path / "app" / "__init__.py").write_text("", encoding="utf-8")
+    (tmp_path / "pyproject.toml").write_text(
+        COMPLETE_PYPROJECT.replace('source = ["demo"]', 'source = ["app"]'),
+        encoding="utf-8",
+    )
+    data = asyncio.run(_run(tmp_path))
+    issues = [
+        i for i in data["issues"] if i["issue"] == "coverage_source_placeholder_app"
+    ]
+    assert issues == [], "app/ exists — not a placeholder"
+
+
+def test_setuptools_packages_list_not_flagged(tmp_path: Path) -> None:
+    """packages = ["app"] — валидная альтернатива packages.find."""
+    import asyncio
+
+    _write_complete_skeleton(tmp_path)
+    (tmp_path / "pyproject.toml").write_text(
+        '[build-system]\nrequires = ["setuptools>=68"]\n'
+        'build-backend = "setuptools.build_meta"\n'
+        "[tool.setuptools]\n"
+        'packages = ["app"]\n',
+        encoding="utf-8",
+    )
+    data = asyncio.run(_run(tmp_path))
+    issues = [
+        i for i in data["issues"] if i["issue"] == "setuptools_packages_find_missing"
+    ]
+    assert issues == [], "packages list is valid"
+
+
+def test_requirements_in_not_required_with_project_dependencies(
+    tmp_path: Path,
+) -> None:
+    """[project] dependencies — альтернатива requirements.in."""
+    import asyncio
+
+    (tmp_path / "pyproject.toml").write_text(
+        "[project]\n"
+        'name = "x"\n'
+        'version = "0.1.0"\n'
+        'requires-python = ">=3.12"\n'
+        'license = "MIT"\n'
+        'dependencies = ["requests>=2.0"]\n'
+        "\n"
+        "[build-system]\n"
+        'requires = ["setuptools>=68"]\n'
+        'build-backend = "setuptools.build_meta"\n'
+        "\n"
+        "[tool.setuptools.packages.find]\n"
+        'include = ["x*"]\n',
+        encoding="utf-8",
+    )
+    (tmp_path / "tests").mkdir()
+    data = asyncio.run(_run(tmp_path))
+    req_issues = [
+        i
+        for i in data["issues"]
+        if i["issue"] == "missing_file" and i["path"] == "requirements.in"
+    ]
+    assert req_issues == [], "project.dependencies is a valid alternative"
