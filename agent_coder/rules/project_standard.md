@@ -14,7 +14,8 @@ requirements-dev-base.in, .gitignore-base) —
   [tool.ruff.lint], [tool.coverage.run]
 - requirements.in — прод-зависимости
 - requirements-dev.in — из _shared-dev/project-template/requirements-dev-base.in
-- requirements-dev.txt — pip-compile --no-index requirements-dev.in
+- requirements-dev.txt — `uv pip compile --universal requirements-dev.in`
+  (pip-tools архивирован; uv читает `requires-python` из pyproject.toml)
 - .gitignore — из _shared-dev/project-template/.gitignore-base
 - tests/ — pytest
 - README.md — запуск, структура, известные ограничения
@@ -44,7 +45,7 @@ requirements-dev-base.in, .gitignore-base) —
   select=["E","F","W","I","UP","B","C4","SIM"]
 - Пакет = snake_case от имени проекта
 - coverage source = имя пакета проекта (не "app")
-- База dev: ruff, pip-tools, pytest, pytest-asyncio, pytest-cov (5 шт.)
+- База dev: ruff, uv, pytest, pytest-asyncio, pytest-cov (5 шт.)
 - mypy — отдельной миграцией, не в базе
 - CI: ruff check . && pytest -q (без знания имени пакета)
 
@@ -54,7 +55,7 @@ requirements-dev-base.in, .gitignore-base) —
 1. Создать скелет по списку файлов выше.
 2. Скопировать шаблоны из _shared-dev/project-template/.
 3. Заменить плейсхолдеры: имя пакета в coverage, имя проекта.
-4. Сгенерировать lock: pip-compile --no-index requirements-dev.in.
+4. Сгенерировать lock: `uv pip compile --universal requirements-dev.in`.
 5. Перед финальным отчётом вызвать check_project_standard(workspace),
    устранить замечания, вызвать повторно — должно быть 0 отклонений.
 
