@@ -167,15 +167,19 @@ def _fmt_read_file(result: str, args: dict[str, Any], limit: int) -> str:
 def _fmt_git_diff(result: str, args: dict[str, Any], limit: int) -> str:
     """Тело diff выкидываем: список файлов + счётчик '+N -M'.
 
-    NB: tools/git.py уже режет diff через _truncate(MAX_OUTPUT), поэтому
-    для очень больших diff'ов счётчик может недосчитать. Приемлемо —
-    точные числа есть в history_archive (search_history).
+    tools/git.py режет diff через _truncate(MAX_OUTPUT) ДО нас, поэтому
+    для огромных diff'ов тело неполное. Детектим маркер _truncate
+    ('... (обрезано, всего N символов)') и помечаем счётчик как
+    неполный — иначе модель доверится неверному '+N -M'. Точные числа
+    всегда есть в history_archive (search_history).
     """
     if not result.strip():
         return result
+    lines = result.splitlines()
+    truncated = bool(lines) and lines[-1].startswith("... (обрезано, всего ")
     files: list[str] = []
     adds = dels = 0
-    for ln in result.splitlines():
+    for ln in lines:
         if ln.startswith("+++ b/"):
             f = ln[6:].strip()
             if f and f not in files:
@@ -190,7 +194,13 @@ def _fmt_git_diff(result: str, args: dict[str, Any], limit: int) -> str:
             dels += 1
     if not files and adds == 0 and dels == 0:
         return _fallback(result, args, limit)
-    header = f"diff: {len(files)} файл(ов), +{adds} -{dels}"
+    if truncated:
+        header = (
+            f"diff: {len(files)} файл(ов), +{adds} -{dels} "
+            "(неполные: diff усечён до MAX_OUTPUT, точные — search_history)"
+        )
+    else:
+        header = f"diff: {len(files)} файл(ов), +{adds} -{dels}"
     body = [f"  {f}" for f in files[:50]]
     if len(files) > 50:
         body.append(f"  …ещё {len(files) - 50} файлов…")

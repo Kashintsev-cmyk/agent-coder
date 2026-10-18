@@ -180,3 +180,23 @@ def test_per_tool_env_wins_over_global(monkeypatch: pytest.MonkeyPatch) -> None:
     result = "\n".join(f"file{i}.py" for i in range(1000))
     out = tool_extract.extract("list_files", {}, result, 1024)
     assert len(out) <= 700
+
+
+def test_git_diff_truncated_marks_counts_incomplete() -> None:
+    """git_diff уже усечён tools/git.py — счётчик помечается 'неполные'."""
+    result = (
+        "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new\n"
+        "... (обрезано, всего 999999 символов)"
+    )
+    out = tool_extract.extract("git_diff", {}, result, 2048)
+    assert "x.py" in out
+    assert "неполные" in out
+    assert "search_history" in out
+
+
+def test_git_diff_not_truncated_no_marker() -> None:
+    """Целый diff — без пометки 'неполные'."""
+    result = "--- a/x.py\n+++ b/x.py\n@@ -1 +1 @@\n-old\n+new"
+    out = tool_extract.extract("git_diff", {}, result, 2048)
+    assert "x.py" in out
+    assert "неполные" not in out
