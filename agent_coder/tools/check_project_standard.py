@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import re
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -170,6 +171,73 @@ def _collect_issues(base: Path) -> list[dict[str, Any]]:
                 )
             )
 
+        # 4. requires-python: стандарт — 3.12+
+        project = pp.get("project", {}) if isinstance(pp, dict) else {}
+        if not isinstance(project, dict):
+            project = {}
+        rp = project.get("requires-python")
+        if not (isinstance(rp, str) and "3.12" in rp):
+            issues.append(
+                _issue(
+                    "pyproject.toml",
+                    "major",
+                    "requires_python_below_312",
+                    'requires-python = ">=3.12"',
+                    f"requires-python = {rp!r}",
+                )
+            )
+
+        # 5. license: PEP 639 — строка, не {text=...}
+        lic = project.get("license")
+        if isinstance(lic, dict):
+            issues.append(
+                _issue(
+                    "pyproject.toml",
+                    "major",
+                    "license_legacy_dict",
+                    'license = "<SPDX>"',
+                    f"license = {lic!r} (legacy PEP 621; setuptools>=77 with license-files rejects it)",
+                )
+            )
+
+        # 6. ruff target-version: py312
+        tv = ruff.get("target-version") if isinstance(ruff, dict) else None
+        if tv != "py312":
+            issues.append(
+                _issue(
+                    "pyproject.toml",
+                    "minor",
+                    "ruff_target_version_not_py312",
+                    'target-version = "py312"',
+                    f"target-version = {tv!r}",
+                )
+            )
+
+        # 7. setuptools: package discovery (иначе pip install -e . падает)
+        bs = pp.get("build-system", {}) if isinstance(pp, dict) else {}
+        if isinstance(bs, dict):
+            requires = bs.get("requires", [])
+            uses_setuptools = any("setuptools" in str(r) for r in requires)
+            if uses_setuptools:
+                st = tool.get("setuptools", {}) if isinstance(tool, dict) else {}
+                if not isinstance(st, dict):
+                    st = {}
+                pkgs = st.get("packages", {})
+                if not isinstance(pkgs, dict):
+                    pkgs = {}
+                has_find = isinstance(pkgs.get("find"), dict)
+                has_py_modules = bool(st.get("py-modules"))
+                if not (has_find or has_py_modules):
+                    issues.append(
+                        _issue(
+                            "pyproject.toml",
+                            "major",
+                            "setuptools_packages_find_missing",
+                            "[tool.setuptools.packages.find] или py-modules",
+                            "не найдено; `pip install -e .` упадёт на package discovery",
+                        )
+                    )
+
     # 3. CI — только если у проекта есть remote
     if _has_remote(base) and not (base / ".github" / "workflows" / "ci.yml").is_file():
         issues.append(
@@ -181,6 +249,44 @@ def _collect_issues(base: Path) -> list[dict[str, Any]]:
                 "not found",
             )
         )
+
+    # 9. CI matrix: только 3.12+ (3.10/3.11 — EOL)
+    ci_path = base / ".github" / "workflows" / "ci.yml"
+    if ci_path.is_file():
+        try:
+            ci_text = ci_path.read_text(encoding="utf-8")
+        except OSError:
+            ci_text = ""
+        m = re.search(r"python-version:\s*\[([^\]]+)\]", ci_text)
+        if m:
+            versions = m.group(1)
+            has_new = any(
+                f'"{v}"' in versions or f"'{v}'" in versions
+                for v in ("3.12", "3.13", "3.14")
+            )
+            has_eol = any(
+                f'"{v}"' in versions or f"'{v}'" in versions for v in ("3.10", "3.11")
+            )
+            if has_eol:
+                issues.append(
+                    _issue(
+                        ".github/workflows/ci.yml",
+                        "major",
+                        "ci_matrix_has_eol_python",
+                        'python-version: ["3.12", "3.13"]',
+                        f"versions=[{versions.strip()}]",
+                    )
+                )
+            if not has_new:
+                issues.append(
+                    _issue(
+                        ".github/workflows/ci.yml",
+                        "major",
+                        "ci_matrix_missing_312",
+                        'python-version: ["3.12", "3.13"]',
+                        f"versions=[{versions.strip()}]",
+                    )
+                )
 
     return issues
 

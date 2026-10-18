@@ -22,6 +22,21 @@ requirements-dev-base.in, .gitignore-base) —
 - .github/workflows/ci.yml — если есть git remote;
   из _shared-dev/project-template/ci-template.yml
 
+## Обязательные секции pyproject.toml
+
+- `[project]`:
+  - `requires-python = ">=3.12"`
+  - `license = "<SPDX>"` — строка, не `{ text = "..." }`
+    (PEP 639; setuptools>=77 с license-files отвергает старую форму)
+  - `dependencies` (или зависимости в `requirements.in` — выбрать одно и следовать)
+- `[build-system]`: `requires = ["setuptools>=68"]`, `build-backend = "setuptools.build_meta"`
+- `[tool.setuptools.packages.find]` (или `py-modules`) — иначе `pip install -e .`
+  падает на package discovery
+- `[tool.ruff]`: `line-length = 88`, `target-version = "py312"`
+- `[tool.ruff.lint]`: `select ⊇ {E, F, W, I}`
+- `[tool.coverage.run]`: `source = [<package>]` (не `"app"`)
+- `[tool.pytest.ini_options]`: `testpaths = ["tests"]`
+
 ## Конвенции
 
 - Python 3.12+

@@ -14,19 +14,28 @@ COMPLETE_PYPROJECT = """\
 [project]
 name = "demo"
 version = "0.1.0"
-requires-python = ">=3.10"
+license = "MIT"
+requires-python = ">=3.12"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 
 [tool.ruff]
 line-length = 88
+target-version = "py312"
 
 [tool.ruff.lint]
 select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
 
 [tool.coverage.run]
 source = ["demo"]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["demo*"]
 """
 
 
@@ -221,3 +230,93 @@ def test_tool_registered_and_read_only() -> None:
     assert "check_project_standard" in names_audit
     names_chat = {t.name for t in reg.for_mode(Mode.CHAT)}
     assert "check_project_standard" not in names_chat
+
+
+# --- расширение: новые проверки (3.12 / license / target-version / packages / CI) ---
+
+
+def test_requires_python_below_312_flagged(tmp_path: Path) -> None:
+    import asyncio
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "x"\nrequires-python = ">=3.10"\n',
+        encoding="utf-8",
+    )
+    data = asyncio.run(_run(tmp_path))
+    issues = [i for i in data["issues"] if i["issue"] == "requires_python_below_312"]
+    assert len(issues) == 1
+    assert issues[0]["severity"] == "major"
+
+
+def test_license_dict_flagged(tmp_path: Path) -> None:
+    import asyncio
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[project]\nname = "x"\nlicense = { text = "MIT" }\n',
+        encoding="utf-8",
+    )
+    data = asyncio.run(_run(tmp_path))
+    issues = [i for i in data["issues"] if i["issue"] == "license_legacy_dict"]
+    assert len(issues) == 1
+    assert issues[0]["severity"] == "major"
+
+
+def test_ruff_target_version_not_py312_flagged(tmp_path: Path) -> None:
+    import asyncio
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[tool.ruff]\ntarget-version = "py310"\n',
+        encoding="utf-8",
+    )
+    data = asyncio.run(_run(tmp_path))
+    issues = [
+        i for i in data["issues"] if i["issue"] == "ruff_target_version_not_py312"
+    ]
+    assert len(issues) == 1
+
+
+def test_setuptools_packages_find_missing_flagged(tmp_path: Path) -> None:
+    import asyncio
+
+    (tmp_path / "pyproject.toml").write_text(
+        '[build-system]\nrequires = ["setuptools>=68"]\n'
+        'build-backend = "setuptools.build_meta"\n',
+        encoding="utf-8",
+    )
+    data = asyncio.run(_run(tmp_path))
+    issues = [
+        i for i in data["issues"] if i["issue"] == "setuptools_packages_find_missing"
+    ]
+    assert len(issues) == 1
+    assert issues[0]["severity"] == "major"
+
+
+def test_ci_matrix_has_eol_python_flagged(tmp_path: Path) -> None:
+    import asyncio
+
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "ci.yml").write_text(
+        "jobs:\n  test:\n    strategy:\n      matrix:\n"
+        '        python-version: ["3.10", "3.11"]\n',
+        encoding="utf-8",
+    )
+    data = asyncio.run(_run(tmp_path))
+    issues = [i for i in data["issues"] if i["issue"] == "ci_matrix_has_eol_python"]
+    assert len(issues) == 1
+    assert issues[0]["severity"] == "major"
+
+
+def test_ci_matrix_missing_312_flagged(tmp_path: Path) -> None:
+    import asyncio
+
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "ci.yml").write_text(
+        "jobs:\n  test:\n    strategy:\n      matrix:\n"
+        '        python-version: ["3.10", "3.11"]\n',
+        encoding="utf-8",
+    )
+    data = asyncio.run(_run(tmp_path))
+    issues = [i for i in data["issues"] if i["issue"] == "ci_matrix_missing_312"]
+    assert len(issues) == 1
