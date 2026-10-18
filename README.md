@@ -356,10 +356,17 @@ RouterAI и кэшируются на диск.
 
     agent-coder-bot
 
+**Полная справка:** [`docs/TELEGRAM.md`](docs/TELEGRAM.md) — команды,
+режимы, approval, меню, env, где данные.
+
 **Команды:** `/start`, `/help`, `/projects`, `/new <name>`, `/clone <url>`,
-`/ghnew <name>`, `/sessions`, `/current`, `/history`, `/delete [id]`,
-`/model`, `/reasoning`, `/mode plan|act|audit|chat`, `/cost`, `/balance`,
-`/server`, `/audit`, `/cancel`, `/yolo [on|off]`.
+`/ghnew <name>`, `/migrate <name>`, `/sessions`, `/current`, `/history`,
+`/delete [id]`, `/model`, `/reasoning`, `/mode plan|act|audit|chat`,
+`/cost`, `/balance`, `/server`, `/audit`, `/cancel`, `/yolo [on|off]`.
+
+> `/new <name>` создаёт проект **по стандарту** (scaffold: pyproject,
+> AGENTS.md, CI, tests, git init). `/migrate <name>` — dry-run отчёт
+> миграции, затем «Применить» / «diff» / «откат».
 
 > **⚡ YOLO** (`/yolo`) — per-session режим без подтверждений опасных
 > операций. Переключается командой или кнопкой ⚡ в меню сессии.
