@@ -37,6 +37,7 @@ BOT_COMMANDS = [
     BotCommand(command="yolo", description="⚡ Без подтверждений (вкл/выкл)"),
     BotCommand(command="cost", description="💰 Стоимость сессии"),
     BotCommand(command="projects", description="📂 Проекты"),
+    BotCommand(command="migrate", description="🔧 Миграция проекта"),
     BotCommand(command="cancel", description="⏹ Отменить задачу"),
     BotCommand(command="help", description="❓ Справка"),
 ]

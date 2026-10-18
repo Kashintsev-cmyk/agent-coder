@@ -420,3 +420,43 @@ def audit_group_keyboard(group: str) -> InlineKeyboardMarkup:
         ]
     )
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def migrate_projects_keyboard(projects: list[str]) -> InlineKeyboardMarkup:
+    """Список проектов для /migrate. callback_data = mig:dry:<name>."""
+    rows: list[list[InlineKeyboardButton]] = []
+    for name in projects[:15]:
+        rows.append(
+            [InlineKeyboardButton(text=f"📁 {name}", callback_data=f"mig:dry:{name}")]
+        )
+    rows.append([InlineKeyboardButton(text="⬅️ Отмена", callback_data="mig:no")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+def migrate_confirm_keyboard(name: str) -> InlineKeyboardMarkup:
+    """Подтверждение миграции: dry-run уже показан."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text="✅ Применить", callback_data=f"mig:apply:{name}"
+                ),
+                InlineKeyboardButton(text="❌ Отмена", callback_data="mig:no"),
+            ]
+        ]
+    )
+
+
+def migrate_report_keyboard(name: str) -> InlineKeyboardMarkup:
+    """После apply: diff / откат / ok."""
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(text="📊 diff", callback_data=f"mig:diff:{name}"),
+                InlineKeyboardButton(
+                    text="↩️ откат", callback_data=f"mig:revert:{name}"
+                ),
+                InlineKeyboardButton(text="ok", callback_data="mig:no"),
+            ]
+        ]
+    )
