@@ -189,7 +189,7 @@ async def cmd_new(message: Message) -> None:
         await message.answer(
             "Укажи имя проекта: <code>/new weather-bot</code>\n\n"
             f"Проект создастся в <code>{_PROJECTS_DEFAULT_DIR}/</code>\n"
-            "Стандарт: git init + README.md + .gitignore + initial commit.\n\n"
+            "Стандарт: scaffold (pyproject · AGENTS.md · CI · tests · git init).\n\n"
             "Или полный путь, если проект уже есть:\n"
             "<code>/new /home/botuser/projects/existing</code>",
             parse_mode="HTML",
@@ -227,7 +227,7 @@ async def cmd_new(message: Message) -> None:
     await message.answer(
         f"📁 Проекта <b>{html_escape(arg)}</b> ещё нет.\n"
         f"Создать <code>{html_escape(str(target))}</code>?\n\n"
-        f"<i>Будет создан: git init · README.md · .gitignore · initial commit.</i>",
+        f"<i>Будет создан: pyproject.toml · AGENTS.md · CI · tests · git init.</i>",
         reply_markup=keyboards.confirm_create_project_keyboard(arg),
         parse_mode="HTML",
     )
@@ -410,7 +410,7 @@ async def cb_project_create_yes(query: CallbackQuery, bot: Bot) -> None:
     if config.GITHUB_TOKEN:
         await query.message.edit_text(
             f"✅ Проект создан: <code>{html_escape(str(path))}</code>\n"
-            f"<i>git init · README.md · .gitignore · initial commit</i>\n\n"
+            f"<i>pyproject.toml · AGENTS.md · CI · tests · git init</i>\n\n"
             f"🐙 Создать репозиторий на GitHub?",
             reply_markup=keyboards.gh_offer_keyboard(name),
             parse_mode="HTML",
@@ -420,7 +420,7 @@ async def cb_project_create_yes(query: CallbackQuery, bot: Bot) -> None:
 
     await query.message.edit_text(
         f"✅ Проект создан: <code>{html_escape(str(path))}</code>\n"
-        f"<i>git init · README.md · .gitignore · initial commit</i>",
+        f"<i>pyproject.toml · AGENTS.md · CI · tests · git init</i>",
         parse_mode="HTML",
     )
     await query.answer("Проект создан")

@@ -35,6 +35,7 @@ def test_scaffold_creates_expected_files(tmp_path: Path) -> None:
         "README.md",
         "requirements.in",
         "requirements-dev.in",
+        "requirements-dev.txt",
         ".github/workflows/ci.yml",
         "demo/__init__.py",
         "demo/__main__.py",
@@ -43,6 +44,13 @@ def test_scaffold_creates_expected_files(tmp_path: Path) -> None:
         "tests/test_smoke.py",
     ):
         assert (base / rel).is_file(), f"missing {rel}"
+
+
+def test_requirements_dev_txt_placeholder(tmp_path: Path) -> None:
+    base = tmp_path / "demo"
+    scaffold_project("demo", target=base, git_init=False)
+    text = (base / "requirements-dev.txt").read_text(encoding="utf-8")
+    assert "-r requirements-dev.in" in text
 
 
 def test_pyproject_valid_and_pkg_substituted(tmp_path: Path) -> None:

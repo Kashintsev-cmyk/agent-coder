@@ -5,6 +5,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from pathlib import Path
@@ -14,7 +15,8 @@ from aiogram.types import Message
 from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
 from agent_coder.config import config
-from agent_coder.shell_runner import run_shell
+from agent_coder.scaffold import scaffold_project
+from agent_coder.standard import bots_dir
 from agent_coder.telegram import keyboards
 from agent_coder.telegram import state as tg_state
 
@@ -22,61 +24,10 @@ logger = logging.getLogger(__name__)
 
 
 # Директория по умолчанию для новых проектов
-_PROJECTS_DEFAULT_DIR: Path = Path.home() / "bots"
+# Единый источник — standard.paths.bots_dir() (env AGENT_CODER_BOTS_DIR)
+_PROJECTS_DEFAULT_DIR: Path = bots_dir()
 # Валидация имени: буква/цифра, затем любые [a-zA-Z0-9_.-], до 40 символов
 _PROJECT_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,39}$")
-
-_GITIGNORE_PY = """\
-# Python
-__pycache__/
-*.py[cod]
-*$py.class
-*.egg-info/
-.venv/
-venv/
-env/
-build/
-dist/
-.pytest_cache/
-.mypy_cache/
-.ruff_cache/
-.coverage
-htmlcov/
-
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
-
-# Env
-.env
-.env.*
-!.env.example
-
-# OS
-.DS_Store
-Thumbs.db
-
-# Project-local
-sessions/
-"""
-
-_README_TEMPLATE = """\
-# {name}
-
-Описание проекта.
-
-## Установка
-
-    python3 -m venv .venv
-    source .venv/bin/activate
-    pip install -r requirements.txt
-
-## Запуск
-
-    python -m {module}
-"""
 
 
 def _validate_project_name(name: str) -> str | None:
@@ -92,41 +43,23 @@ def _validate_project_name(name: str) -> str | None:
 
 
 async def _create_project_on_disk(name: str) -> Path:
-    """Создать проект в _PROJECTS_DEFAULT_DIR/<name> по стандартам.
+    """Создать проект по стандарту bots/ через scaffold_project.
 
-    - git init
-    - README.md, .gitignore
-    - git add + initial commit
-    Возвращает Path. Бросает исключение при ошибке.
+    Единый путь: Telegram /new и GitHub-репо (ghnew) используют scaffold
+    из agent_coder/templates/. Возвращает Path, бросает при ошибке.
     """
-    target = (_PROJECTS_DEFAULT_DIR / name).resolve()
+    default_dir = _PROJECTS_DEFAULT_DIR
+    target = (default_dir / name).resolve()
     try:
-        target.relative_to(_PROJECTS_DEFAULT_DIR.resolve())
+        target.relative_to(default_dir.resolve())
     except ValueError:
-        raise ValueError(f"путь вне {_PROJECTS_DEFAULT_DIR}")
+        raise ValueError(f"путь вне {default_dir}") from None
 
-    if target.exists():
-        raise FileExistsError(f"уже существует: {target}")
-
-    target.mkdir(parents=True)
-    (target / ".gitignore").write_text(_GITIGNORE_PY, encoding="utf-8")
-    (target / "README.md").write_text(
-        _README_TEMPLATE.format(
-            name=name,
-            module=name.replace("-", "_").replace(".", "_"),
-        ),
-        encoding="utf-8",
-    )
-
-    for cmd in (
-        "git init -q",
-        "git add .gitignore README.md",
-        "git -c commit.gpgsign=false commit -q -m 'Initial commit'",
-    ):
-        r = await run_shell(cmd, cwd=target, timeout=30)
-        if not r.ok:
-            logger.warning("create_project %r: %s", cmd, r.output)
-
+    report = await asyncio.to_thread(scaffold_project, name, target=target)
+    if "error" in report:
+        if report["error"] == "target_not_empty":
+            raise FileExistsError(f"уже существует: {target}")
+        raise RuntimeError(f"scaffold {name}: {report['error']} ({report['path']})")
     return target
 
 

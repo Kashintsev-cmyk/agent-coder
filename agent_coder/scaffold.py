@@ -119,6 +119,11 @@ def _build_files(project: str, package: str, description: str) -> dict[str, str]
         "README.md": _render_readme(project, package),
         "requirements.in": "# Прод-зависимости\n",
         "requirements-dev.in": _read_template("requirements-dev-base.in"),
+        "requirements-dev.txt": (
+            "# Lock-файл (placeholder, не пин). Перегенерировать:\n"
+            "#   uv pip compile --universal requirements-dev.in -o requirements-dev.txt\n"
+            "-r requirements-dev.in\n"
+        ),
         ".github/workflows/ci.yml": _read_template("ci-template.yml"),
         f"{package}/__init__.py": f'"""{project} package."""\n',
         f"{package}/__main__.py": _MAIN_PY.format(project=project),
