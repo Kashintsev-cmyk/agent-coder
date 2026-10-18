@@ -75,3 +75,37 @@ def test_fill_does_not_break_on_curly_braces() -> None:
     template = "A={workspace} B={a: 1}"
     out = audit_prompt._fill(template, workspace="/tmp/ws")
     assert out == "A=/tmp/ws B={a: 1}"
+
+
+def test_has_anti_hallucination_block() -> None:
+    text = load_audit_standard()
+    assert "# ГЛАВНОЕ ПРАВИЛО" in text
+    assert "Ложный finding хуже пропущенного" in text
+    assert "не подтверждено" in text
+
+
+def test_has_confidence_column() -> None:
+    text = load_audit_standard()
+    assert "Confidence" in text
+    assert "HIGH (код прочитан" in text
+    assert "MEDIUM (косвенные" in text
+    assert "LOW (эвристика" in text
+
+
+def test_has_executive_summary() -> None:
+    text = load_audit_standard()
+    assert "## 0. EXECUTIVE SUMMARY" in text
+    assert "GO / NO-GO" in text
+    assert "Top-3 блокера" in text
+
+
+def test_mentions_check_project_standard() -> None:
+    text = load_audit_standard()
+    assert "check_project_standard" in text
+    assert "## 1.15. Соответствие стандарту" in text
+
+
+def test_findings_cap_documented() -> None:
+    text = load_audit_standard()
+    assert "30 findings" in text
+    assert "Ниже порога" in text
