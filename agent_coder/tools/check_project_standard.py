@@ -10,9 +10,11 @@ from __future__ import annotations
 import asyncio
 import json
 import logging
+import os
 import re
 import shutil
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -81,6 +83,22 @@ def _has_remote(base: Path) -> bool:
         return "[remote" in cfg.read_text(encoding="utf-8", errors="replace")
     except OSError:
         return False
+
+
+def _find_ruff() -> str | None:
+    """ruff из PATH или из bin текущего интерпретатора (venv).
+
+    Бот под systemd запускается из .venv/bin, но PATH systemd не
+    содержит venv — shutil.which("ruff") вернул бы None, и F16
+    молча не работал бы в production.
+    """
+    found = shutil.which("ruff")
+    if found is not None:
+        return found
+    candidate = Path(sys.executable).parent / "ruff"
+    if candidate.is_file() and os.access(candidate, os.X_OK):
+        return str(candidate)
+    return None
 
 
 def _collect_issues(base: Path) -> list[dict[str, Any]]:
@@ -308,7 +326,7 @@ def _collect_issues(base: Path) -> list[dict[str, Any]]:
     # 10. ruff format applied? (F16)
     #     skip если ruff нет в PATH или нет pyproject — не false-positive.
     if (base / "pyproject.toml").is_file():
-        ruff = shutil.which("ruff")
+        ruff = _find_ruff()
         if ruff is not None:
             proc: subprocess.CompletedProcess[bytes] | None
             try:

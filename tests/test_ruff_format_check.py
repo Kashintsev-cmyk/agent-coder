@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
-import shutil
 from pathlib import Path
 
 import pytest
 
 from agent_coder.standard import collect_issues, summarize
-from agent_coder.tools.check_project_standard import _collect_issues
+from agent_coder.tools.check_project_standard import (
+    _collect_issues,
+    _find_ruff,
+)
 
 
 def _min_project(root: Path) -> Path:
@@ -24,7 +26,7 @@ def _issue_ids(issues: list[dict]) -> set[str]:
     return {i["issue"] for i in issues}
 
 
-@pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff not in PATH")
+@pytest.mark.skipif(_find_ruff() is None, reason="ruff not found")
 def test_unformatted_file_triggers_issue(tmp_path: Path) -> None:
     p = _min_project(tmp_path)
     # Явно неотформатированный код (много пробелов внутри строки)
@@ -33,7 +35,7 @@ def test_unformatted_file_triggers_issue(tmp_path: Path) -> None:
     assert "ruff_format_not_applied" in _issue_ids(issues)
 
 
-@pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff not in PATH")
+@pytest.mark.skipif(_find_ruff() is None, reason="ruff not found")
 def test_formatted_file_no_issue(tmp_path: Path) -> None:
     p = _min_project(tmp_path)
     (p / "clean.py").write_text(
@@ -43,12 +45,12 @@ def test_formatted_file_no_issue(tmp_path: Path) -> None:
     assert "ruff_format_not_applied" not in _issue_ids(issues)
 
 
-def test_no_ruff_in_path_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_no_ruff_found_skips(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     p = _min_project(tmp_path)
     (p / "messy.py").write_text("def f( a,b ):\n    return   a+b\n", encoding="utf-8")
     monkeypatch.setattr(
-        "agent_coder.tools.check_project_standard.shutil.which",
-        lambda _name: None,
+        "agent_coder.tools.check_project_standard._find_ruff",
+        lambda: None,
     )
     issues = _collect_issues(p)
     assert "ruff_format_not_applied" not in _issue_ids(issues)
@@ -61,7 +63,7 @@ def test_no_pyproject_skips(tmp_path: Path) -> None:
     assert "ruff_format_not_applied" not in _issue_ids(issues)
 
 
-@pytest.mark.skipif(shutil.which("ruff") is None, reason="ruff not in PATH")
+@pytest.mark.skipif(_find_ruff() is None, reason="ruff not found")
 def test_adapter_exposes_issue_as_dataclass(tmp_path: Path) -> None:
     """collect_issues (публичный adapter) видит новую проверку."""
     p = _min_project(tmp_path)
