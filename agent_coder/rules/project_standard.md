@@ -29,6 +29,11 @@ requirements-dev-base.in, .gitignore-base) —
   - `requires-python = ">=3.12"`
   - `license = "<SPDX>"` — строка, не `{ text = "..." }`
     (PEP 639; setuptools>=77 с license-files отвергает старую форму)
+    - Open-source: валидный SPDX-id, например `MIT`, `Apache-2.0`.
+    - Closed-source / proprietary: `license = "LicenseRef-Proprietary"`.
+      `LicenseRef-*` — валидный SPDX-expression (SPDX 2.3),
+      `packaging.licenses` его принимает. `license = "Proprietary"` —
+      **не** SPDX, сборка падает.
   - `dependencies` (или зависимости в `requirements.in` — выбрать одно и следовать)
 - `[build-system]`: `requires = ["setuptools>=68"]`, `build-backend = "setuptools.build_meta"`
 - `[tool.setuptools.packages.find]` (или `py-modules`) — иначе `pip install -e .`
