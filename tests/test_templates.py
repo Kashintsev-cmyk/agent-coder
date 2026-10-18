@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import importlib.resources
+import subprocess
 
 EXPECTED = {
     "AGENTS.md",
@@ -35,3 +36,34 @@ def test_snippet_targets_py312_and_uv() -> None:
     assert "3.12" in ci and "3.13" in ci, "ci matrix must be 3.12/3.13"
     reqs = files.joinpath("requirements-dev-base.in").read_text(encoding="utf-8")
     assert "uv" in reqs.lower() or "pip-tools" not in reqs, "reqs must be uv-based"
+
+
+def test_templates_tracked_in_git() -> None:
+    """F21: шаблоны должны быть в git, иначе CI-клон их не увидит.
+
+    Локально файл может быть на диске, но gitignored (как было с
+    templates/AGENTS.md: локально 3 passed, в CI 2 failed).
+    """
+    top = subprocess.run(
+        ["git", "rev-parse", "--show-toplevel"],
+        capture_output=True,
+        text=True,
+        timeout=5,
+        check=False,
+    )
+    if top.returncode != 0:
+        import pytest
+
+        pytest.skip("not a git repo")
+    out = subprocess.run(
+        ["git", "ls-files", "agent_coder/templates/"],
+        cwd=top.stdout.strip(),
+        capture_output=True,
+        text=True,
+        timeout=10,
+        check=False,
+    )
+    assert out.returncode == 0, out.stderr
+    tracked = {line.split("/")[-1] for line in out.stdout.splitlines()}
+    missing = EXPECTED - tracked
+    assert not missing, f"templates missing from git: {missing}"
