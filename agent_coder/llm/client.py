@@ -19,7 +19,13 @@ from openai import (
 )
 
 from agent_coder.config import config
-from agent_coder.llm.types import AssistantMessage, ChatResponse, ToolCall, Usage
+from agent_coder.llm.types import (
+    AssistantMessage,
+    ChatResponse,
+    LLMError,
+    ToolCall,
+    Usage,
+)
 from agent_coder.log_safety import SecretFilter, strip_dsml
 
 logger = logging.getLogger(__name__)
@@ -200,6 +206,14 @@ class LLMClient:
                 last = e
             except APIError as e:
                 status = getattr(e, "status_code", None) or 0
+                if status == 402:
+                    # Финансовое состояние аккаунта — не retryable, не ротация.
+                    raise LLMError(
+                        "Недостаточно средств на балансе LLM-провайдера (402). "
+                        "Пополните счёт или переключитесь на другую модель.",
+                        retryable=False,
+                        code=402,
+                    ) from e
                 if 400 <= status < 500 and status != 429:
                     raise
                 last = e

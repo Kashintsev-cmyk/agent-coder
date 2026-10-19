@@ -169,6 +169,16 @@ class Config:
     # останавливаемся, чтобы не зациклиться и не сжечь баланс.
     MAX_CONSECUTIVE_ERRORS: int = int(os.getenv("MAX_CONSECUTIVE_ERRORS", "5"))
 
+    # Бюджет: жёсткие потолки трат. Ловят любое сжигание токенов
+    # (loop на read_file, длинный аудит с автопродолжениями) — не только 429.
+    MAX_COST_PER_TASK: float = _env_float("MAX_COST_PER_TASK", "200.0")
+    MAX_COST_PER_SESSION: float = _env_float("MAX_COST_PER_SESSION", "300.0")
+
+    # Watchdog прогресса: сколько итераций подряд без изменения work_state
+    # и без успешной мутации (write_file/edit_file/git_commit) считать
+    # «залип». 10 — эмпирически: read_file-loop упирался за 9 перечитываний.
+    MAX_ITERATIONS_NO_PROGRESS: int = int(os.getenv("MAX_ITERATIONS_NO_PROGRESS", "10"))
+
     # Логи
     # Зарезервировано на будущее (не используется в коде)
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

@@ -384,6 +384,12 @@ async def _run_task(
             if result.watchdog_triggered:
                 return
 
+            # Провайдер недоступен / бюджет исчерпан / нет прогресса —
+            # events.on_error уже отправил текст, автопродолжение НЕ делаем
+            # (иначе снова жжём токены на заведомо проблемной задаче).
+            if result.provider_error or result.cost_limit_reached or result.no_progress:
+                return
+
             # Задача завершена нормально
             if not result.limit_reached:
                 if session.mode == Mode.AUDIT:

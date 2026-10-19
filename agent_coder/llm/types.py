@@ -51,6 +51,23 @@ class Usage:
         return " · ".join(parts)
 
 
+class LLMError(Exception):
+    """Доменная ошибка LLM-слоя.
+
+    retryable=False — повтор/ротация не помогут (402 insufficient balance,
+    ошибки конфига). retryable=True — временный сбой (оставлено на будущее;
+    сейчас retry делает client._with_retry на уровне HTTP-исключений).
+    code — HTTP-код, если известен.
+    """
+
+    def __init__(
+        self, message: str, *, retryable: bool = True, code: int | None = None
+    ) -> None:
+        super().__init__(message)
+        self.retryable = retryable
+        self.code = code
+
+
 @dataclass
 class ToolCall:
     id: str

@@ -19,7 +19,7 @@ from agent_coder.agent.work_state import WorkStateHandle
 from agent_coder.config import config
 from agent_coder.llm.client import LLMClient
 from agent_coder.llm.router import RouterState, router
-from agent_coder.llm.types import ToolCall, Usage
+from agent_coder.llm.types import LLMError, ToolCall, Usage
 from agent_coder.tools.registry import ToolContext, ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,11 @@ class LoopResult:
     limit_reached: bool = False  # вышли по max_iter
     watchdog_triggered: bool = False  # вышли по MAX_CONSECUTIVE_ERRORS
     consecutive_errors: int = 0  # сколько ошибок было подряд на выходе
+    cost_limit_reached: bool = False  # вышли по MAX_COST_PER_TASK/SESSION
+    no_progress: bool = False  # вышли по MAX_ITERATIONS_NO_PROGRESS
+    provider_error: bool = False  # LLM-провайдер недоступен (не ротируем)
+    error_message: str = ""  # текст для UI (cost/provider/no_progress)
+    task_cost: float = 0.0  # потрачено на задачу (₽), для UI
 
 
 async def _maybe_await(fn, *args) -> None:
@@ -87,6 +92,23 @@ class AgentLoop:
         )
 
     async def run(self, task: str, images: list | None = None) -> LoopResult:
+        # Бюджет: если сессия уже за потолком — не начинаем (не жжём).
+        if self.session.total_usage.cost > config.MAX_COST_PER_SESSION:
+            msg = (
+                f"Бюджет сессии исчерпан: потрачено "
+                f"{self.session.total_usage.cost:.1f}₽ "
+                f"(лимит {config.MAX_COST_PER_SESSION:.0f}₽). "
+                f"Создай новую сессию или подними MAX_COST_PER_SESSION."
+            )
+            await _maybe_await(self.events.on_error, msg)
+            return LoopResult(
+                cost_limit_reached=True,
+                error_message=msg,
+                task_cost=self.session.total_usage.cost,
+            )
+        start_cost = self.session.total_usage.cost
+        iterations_since_progress = 0
+
         self._refresh_system_prompt()
         content = _build_user_content(task, images)
         self.session.add_message({"role": "user", "content": content})
@@ -157,40 +179,78 @@ class AgentLoop:
                     verbosity=self.session.verbosity or None,
                     temperature=config.TEMPERATURE,
                 )
-            except Exception as e:
-                # Fallback-цепочка: при 429/timeout/сетевой ошибке пробуем
-                # следующую модель группы (ручной выбор уважается — цепочка
-                # строится от текущей модели).
-                nxt = router.next_on_error(
-                    self._router_state, self.session.mode.value, e
+            except LLMError as e:
+                # Доменная ошибка LLM-слоя (402 и т.п.) — не retryable,
+                # ротация моделей не поможет (денег нет у провайдера).
+                logger.warning("LLMError (retryable=%s): %s", e.retryable, e)
+                self.session.save()
+                if not e.retryable:
+                    await _maybe_await(self.events.on_error, str(e))
+                return LoopResult(
+                    iterations_used=iteration,
+                    consecutive_errors=consecutive_errors,
+                    provider_error=True,
+                    error_message=str(e),
+                    task_cost=self.session.total_usage.cost - start_cost,
                 )
-                if nxt is not None:
-                    logger.warning(
-                        "Модель %s недоступна (%s) — переключаюсь на %s",
-                        self.session.model,
-                        type(e).__name__,
-                        nxt,
-                    )
-                    self.session.model = nxt
-                    await _maybe_await(
-                        self.events.on_error,
-                        f"⚠️ Модель недоступна ({type(e).__name__}) — "
-                        f"переключился на {nxt}, продолжаю",
-                    )
-                    # Повторяем ту же итерацию с новой моделью (без записи
-                    # user-сообщения — оно уже в истории).
-                    iteration -= 1
-                    consecutive_errors = 0
-                    continue
-                await _maybe_await(self.events.on_error, f"LLM ошибка: {e}")
+            except Exception as e:
+                # 429/timeout/сеть после client._with_retry (retry той же
+                # модели исчерпан) — ОСТАНАВЛИВАЕМСЯ, не ротируем. Ротация
+                # при loop'е множила расход: каждая итерация × 3 модели.
+                # Сессия сохранена — пользователь продолжит кнопкой.
+                msg_text = (
+                    f"LLM-провайдер недоступен ({type(e).__name__}: {e}). "
+                    f"Сессия сохранена — нажми ▶️ Продолжить, чтобы "
+                    f"попробовать снова."
+                )
+                logger.warning("LLM провайдер: %s", msg_text)
+                await _maybe_await(self.events.on_error, msg_text)
                 self.session.save()
                 return LoopResult(
                     iterations_used=iteration,
                     consecutive_errors=consecutive_errors,
+                    provider_error=True,
+                    error_message=msg_text,
+                    task_cost=self.session.total_usage.cost - start_cost,
                 )
 
             self.session.add_usage(response.usage)
             await _maybe_await(self.events.on_usage, response.usage)
+
+            # Бюджет: жёсткий потолок трат (задача и сессия). Ловит любое
+            # сжигание — loop на чтении, длинный аудит с автопродолжениями.
+            task_cost = self.session.total_usage.cost - start_cost
+            if task_cost > config.MAX_COST_PER_TASK:
+                msg = (
+                    f"Бюджет задачи исчерпан: {task_cost:.1f}₽ "
+                    f"(лимит {config.MAX_COST_PER_TASK:.0f}₽). "
+                    f"Сессия сохранена — задача не завершена."
+                )
+                await _maybe_await(self.events.on_error, msg)
+                self.session.save()
+                return LoopResult(
+                    iterations_used=iteration,
+                    consecutive_errors=consecutive_errors,
+                    cost_limit_reached=True,
+                    error_message=msg,
+                    task_cost=task_cost,
+                )
+            if self.session.total_usage.cost > config.MAX_COST_PER_SESSION:
+                msg = (
+                    f"Бюджет сессии исчерпан: "
+                    f"{self.session.total_usage.cost:.1f}₽ "
+                    f"(лимит {config.MAX_COST_PER_SESSION:.0f}₽). "
+                    f"Создай новую сессию или подними MAX_COST_PER_SESSION."
+                )
+                await _maybe_await(self.events.on_error, msg)
+                self.session.save()
+                return LoopResult(
+                    iterations_used=iteration,
+                    consecutive_errors=consecutive_errors,
+                    cost_limit_reached=True,
+                    error_message=msg,
+                    task_cost=task_cost,
+                )
 
             # B5.1: собираем статистику для будущего сжатия истории.
             self.session.last_input_tokens = response.usage.input_tokens
@@ -224,8 +284,53 @@ class AgentLoop:
                     consecutive_errors=consecutive_errors,
                 )
 
+            # Прогресс: снимок work_state до tool-calls, чтобы отличить
+            # «читаю одно и то же» (loop на read_file) от реальной работы.
+            ws_snapshot = json.dumps(
+                self.session.work_state, sort_keys=True, ensure_ascii=False
+            )
+            progress_made = False
             for tc in msg.tool_calls:
                 await self._handle_tool_call(tc)
+                # В ACT успешный мутирующий tool — прогресс. В PLAN/AUDIT
+                # мутаций по дизайну нет, там прогресс только work_state.
+                if self.session.mode == Mode.ACT:
+                    tool = self.registry.get(tc.name)
+                    if tool is not None and not tool.read_only:
+                        last = (
+                            self.session.messages[-1] if self.session.messages else {}
+                        )
+                        content = last.get("content") or ""
+                        if last.get(
+                            "role"
+                        ) == "tool" and not content.lstrip().startswith("Ошибка"):
+                            progress_made = True
+            if (
+                json.dumps(self.session.work_state, sort_keys=True, ensure_ascii=False)
+                != ws_snapshot
+            ):
+                progress_made = True
+
+            if progress_made:
+                iterations_since_progress = 0
+            else:
+                iterations_since_progress += 1
+                if iterations_since_progress >= config.MAX_ITERATIONS_NO_PROGRESS:
+                    msg = (
+                        f"Нет прогресса {iterations_since_progress} итераций "
+                        f"подряд (только чтение, work_state не менялся) — "
+                        f"останавливаюсь, чтобы не зациклиться. "
+                        f"Сессия сохранена — уточни задачу или продолжи."
+                    )
+                    await _maybe_await(self.events.on_error, msg)
+                    self.session.save()
+                    return LoopResult(
+                        iterations_used=iteration,
+                        consecutive_errors=consecutive_errors,
+                        no_progress=True,
+                        error_message=msg,
+                        task_cost=self.session.total_usage.cost - start_cost,
+                    )
 
             # Watchdog: считаем подряд идущие ошибочные tool-результаты
             if self.session.messages:
