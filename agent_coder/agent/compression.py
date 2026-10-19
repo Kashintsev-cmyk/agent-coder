@@ -34,6 +34,14 @@ MIN_TOTAL = 10  # минимум сообщений для запуска сжа
 # Если старая часть — меньше этой доли истории, сжатие неэффективно.
 MIN_OLD_SHARE = 0.2
 
+# Аварийный режим: если total >> soft_limit, а old всё равно мал (огромный
+# recent-блок), обычная защита MIN_OLD_SHARE блокирует единственное спасение —
+# old будет копиться, пока не упрёмся. Сжимаем принудительно, но только если
+# в old есть что сжимать (>= EMERGENCY_MIN_OLD_TOKENS) — иначе «резюме от
+# резюме» ради нулевой экономии.
+EMERGENCY_SOFT_FACTOR = 2.0
+EMERGENCY_MIN_OLD_TOKENS = 3000
+
 # Cooldown после неудачных вызовов суммаризации.
 _COOLDOWN_SECONDS = 600.0
 _MAX_FAIL_STREAK = 2
@@ -363,7 +371,13 @@ async def compress(session, client) -> CompressionResult | None:
     # «резюме от резюме». Лучше подождать, пока старая часть подрастёт.
     old_tokens = estimate_tokens(old)
     total_tokens = estimate_tokens(messages)
-    if total_tokens > 0 and old_tokens / total_tokens < MIN_OLD_SHARE:
+    share = old_tokens / total_tokens if total_tokens else 1.0
+    soft = soft_limit(session)
+    emergency = (
+        total_tokens > soft * EMERGENCY_SOFT_FACTOR
+        and old_tokens >= EMERGENCY_MIN_OLD_TOKENS
+    )
+    if share < MIN_OLD_SHARE and not emergency:
         logger.info(
             "compress: старая часть ~%d из ~%d токенов (<%.0f%%) — пропускаю",
             old_tokens,
@@ -371,6 +385,18 @@ async def compress(session, client) -> CompressionResult | None:
             MIN_OLD_SHARE * 100,
         )
         return None
+    if share < MIN_OLD_SHARE and emergency:
+        logger.warning(
+            "compress: аварийный режим — total ~%d > soft*%.1f (%d), "
+            "old ~%d (%.0f%%) ниже %.0f%%, но >= %d — сжимаю принудительно",
+            total_tokens,
+            EMERGENCY_SOFT_FACTOR,
+            int(soft * EMERGENCY_SOFT_FACTOR),
+            old_tokens,
+            share * 100,
+            MIN_OLD_SHARE * 100,
+            EMERGENCY_MIN_OLD_TOKENS,
+        )
 
     # Предыдущее резюме передаём отдельно, чтобы модель обновила его,
     # а не пересуммаризировала наравне с живым диалогом.
