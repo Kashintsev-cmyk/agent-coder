@@ -7,7 +7,11 @@ from typing import Any
 
 from agent_coder.tools.registry import Tool, ToolContext
 
-MAX_BYTES = 200_000
+# MAX_BYTES контролирует только «чтение целиком» (без offset/limit).
+# 200k -> 80k: одно read_file не должно возвращать ~50k токенов (85%
+# soft-лимита). 80k ~ 20k токенов — влезает с запасом. Файлы > 80k
+# читаются слайсами (offset/limit) — контракт tool'а не меняется.
+MAX_BYTES = 80_000
 MAX_LINES = 2000
 
 
