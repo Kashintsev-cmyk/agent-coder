@@ -80,19 +80,25 @@ def test_run_command_long_header_truncated() -> None:
     assert len(out) <= 4096
 
 
-def test_read_file_keeps_defs_and_imports() -> None:
+def test_read_file_not_truncated_in_extract() -> None:
+    """read_file — явный контракт offset/limit: extract НЕ вырезает середину.
+
+    Регресс 5974e69: read_file был в _ALWAYS_APPLY, модель получала
+    огрызок (head+defs+tail), перечитывала файл с другими окнами и
+    упиралась в лимит итераций (сессия 93108d9a: 44 итерации, 0 повторов,
+    но 9 перечитываний commands.py).
+    """
     content = ["x"] * 200
     content[5] = "def foo():"
-    content[10] = "import os"
-    content[15] = "class Bar:"
+    content[100] = "MIDDLE_MARKER_XYZ"
     body = "\n".join(f"{i + 1:5d}│ {ln}" for i, ln in enumerate(content))
     result = f"test.py ({len(content)} строк):\n{body}"
-    out = tool_extract.extract("read_file", {}, result, 4096)
-    assert "test.py" in out
-    assert "def foo" in out
-    assert "import os" in out
-    assert "class Bar" in out
-    assert len(out) <= 4096
+    # read_file в _NO_EXTRACT: возвращается как есть, даже если > limit.
+    assert result == tool_extract.extract("read_file", {}, result, 4096)
+    long_result = result + "\n" + "y" * 10000
+    out = tool_extract.extract("read_file", {}, long_result, 4096)
+    assert out == long_result  # никакой обрезки
+    assert "обрезано" not in out
 
 
 def test_git_diff_strips_body_and_counts() -> None:

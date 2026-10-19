@@ -4,6 +4,10 @@
 search_history), а в session.messages кладётся сжатая версия по правилам
 для каждого tool. Без LLM — только regex по строкам + head/tail + счётчики.
 
+ВАЖНО: read_file сюда НЕ входит. Модель явно запрашивает offset/limit —
+это контракт, вырезать середину нельзя (иначе перечитывание → loop).
+Объём read_file ограничен самим tool'ом (MAX_LINES/MAX_BYTES).
+
 Лимиты: DEFAULT_LIMITS (per-tool) переопределяются через env:
   TOOL_MAX_CHARS_<TOOL_NAME>  — конкретный tool, приоритет 1
   TOOL_MAX_CHARS              — глобальный, приоритет 2
@@ -23,7 +27,6 @@ Extractor = Callable[[str, dict[str, Any], int], str]
 DEFAULT_MAX_CHARS = 4096
 DEFAULT_LIMITS: dict[str, int] = {
     "run_command": 4096,
-    "read_file": 4096,
     "git_diff": 2048,
     "git_status": 2048,
     "git_log": 2048,
@@ -146,7 +149,13 @@ def _fmt_run_command(result: str, args: dict[str, Any], limit: int) -> str:
 
 
 def _fmt_read_file(result: str, args: dict[str, Any], limit: int) -> str:
-    """Путь + N строк (header) + первые/последние 30 + все def/class/import/from."""
+    """Оставлено для совместимости/экспериментов; в EXTRACTORS НЕ включён.
+
+    Причина: read_file — явный контракт «дай строки offset..offset+limit»,
+    вырезать середину нельзя (модель перечитывает → loop). См. комментарий
+    у _ALWAYS_APPLY. В format_for_summary read_file идёт через общий
+    fallback head/tail — там ок (резюме всё равно LLM-сжимается).
+    """
     lines = result.splitlines()
     if not lines:
         return result
@@ -239,7 +248,6 @@ def _fmt_list_files(result: str, args: dict[str, Any], limit: int) -> str:
 
 EXTRACTORS: dict[str, Extractor] = {
     "run_command": _fmt_run_command,
-    "read_file": _fmt_read_file,
     "git_diff": _fmt_git_diff,
     "search": _fmt_search,
     "search_history": _fmt_search_history,
@@ -247,14 +255,24 @@ EXTRACTORS: dict[str, Extractor] = {
 }
 
 # tools, для которых formatter применяется всегда (не только при превышении):
-# - run_command/read_file: хотим резать даже средние логи (30–60 строк) —
-#   хвост лога почти никогда не несёт новых фактов, а volume копится;
+# - run_command: хотим резать даже средние логи (30–60 строк) — хвост лога
+#   почти никогда не несёт новых фактов, а volume копится;
 # - git_diff: тело выкидываем даже для коротких diff'ов;
 # - search/search_history/list_files: лимитируют количество хитов/строк,
 #   а не объём, поэтому применяются всегда.
+# read_file СОЗНАТЕЛЬНО НЕ входит: модель явно запросила offset/limit —
+# это контракт, вырезать середину нельзя (иначе модель перечитывает
+# файл с другими окнами → loop → упор в лимит итераций; регресс 5974e69).
+# Объём read_file ограничен самим tool'ом (MAX_LINES/MAX_BYTES).
 _ALWAYS_APPLY = frozenset(
-    {"run_command", "read_file", "git_diff", "search", "search_history", "list_files"}
+    {"run_command", "git_diff", "search", "search_history", "list_files"}
 )
+
+# tools, которые extract НЕ трогает ВООБЩЕ (ни formatter, ни fallback):
+# read_file — явный контракт offset/limit; объём ограничен tool'ом
+# (MAX_LINES=2000 / MAX_BYTES=200k). Любая обрезка здесь = модель
+# перечитывает файл с другими окнами → loop → упор в лимит итераций.
+_NO_EXTRACT = frozenset({"read_file"})
 
 
 def _resolve_limit(tool_name: str, default: int) -> int:
@@ -274,13 +292,26 @@ def _resolve_limit(tool_name: str, default: int) -> int:
     return DEFAULT_LIMITS.get(tool_name, default)
 
 
-def extract(tool_name: str, args: dict[str, Any], result: str, max_chars: int) -> str:
+def extract(
+    tool_name: str,
+    args: dict[str, Any],
+    result: str,
+    max_chars: int,
+    *,
+    for_summary: bool = False,
+) -> str:
     """Сжать tool-результат до per-tool лимита (env-переопределяемо).
 
     Короткий результат неизвестного/непокрытого formatter'ом tool'а
     возвращается как есть. Длинный — head(40%)/tail(40%) с маркером.
     Для git_diff formatter применяется всегда (тело diff не нужно).
+    Для read_file (_NO_EXTRACT) — возвращается как есть, кроме
+    for_summary=True: явный контракт offset/limit в живом цикле (обрезка
+    → перечитывание → loop), но в резюме read_file — просто информация,
+    его можно резать fallback'ом (иначе резюме раздувается до сотен КБ).
     """
+    if tool_name in _NO_EXTRACT and not for_summary:
+        return result
     limit = _resolve_limit(tool_name, max_chars)
     formatter = EXTRACTORS.get(tool_name)
     if formatter is not None and (tool_name in _ALWAYS_APPLY or len(result) > limit):

@@ -5,7 +5,8 @@ tool-сообщения после маскировки секретов (см. 
 Сжаты gzip (5.2 МБ -> 990 КБ) — сырые логи в git не кладём.
 
 Проверяем:
-- падение суммарного объёма tool-контента >= 85% (критерий готовности);
+- падение объёма «сжимаемых» tool-контентов >= 85% (критерий готовности;
+  read_file исключён — это контракт offset/limit, extract его не трогает);
 - ни один 'exit code: N' из run_command не потерян;
 - ни одна строка с Traceback/FAIL/error из run_command не потеряна;
 - ни один 'def '/'class '/'import '/'from ' из read_file не потерян.
@@ -31,6 +32,14 @@ ERROR_LINE_RE = re.compile(r"Traceback|FAIL|(?i:\berror\b)")
 EXIT_CODE_RE = re.compile(r"exit code:\s*(-?\d+)")
 DEF_LINE_RE = re.compile(r"│ (?:def |class |import |from )")
 
+# read_file — контракт offset/limit, extract его НЕ трогает (см. _NO_EXTRACT).
+# Из метрики сжатия исключаем: это не «несжатие», а другой контракт.
+_NON_COMPRESSIBLE = frozenset({"read_file"})
+
+
+def _compressible(rows: list[dict]) -> list[dict]:
+    return [r for r in rows if r["name"] not in _NON_COMPRESSIBLE]
+
 
 def _load(path: Path) -> list[dict]:
     rows = []
@@ -44,8 +53,8 @@ def _load(path: Path) -> list[dict]:
 
 @pytest.mark.parametrize("path", FILES, ids=lambda p: p.stem)
 def test_fixture_compression_volume(path: Path) -> None:
-    rows = _load(path)
-    assert rows, f"empty fixture {path}"
+    rows = _compressible(_load(path))
+    assert rows, f"empty compressible subset {path}"
     before = sum(len(r["content"]) for r in rows)
     after = 0
     for r in rows:
@@ -72,7 +81,7 @@ def test_fixtures_weighted_compression() -> None:
     """
     total_before = total_after = 0
     for path in FILES:
-        for r in _load(path):
+        for r in _compressible(_load(path)):
             total_before += len(r["content"])
             total_after += len(tool_extract.extract(r["name"], {}, r["content"], 4096))
     share = total_after / max(total_before, 1)
@@ -113,6 +122,19 @@ def test_fixture_read_file_keeps_defs(path: Path) -> None:
         if len(defs) <= 30:  # форматер гарантирует только при разумном числе
             for ln in defs:
                 assert ln in out, f"def-строка потеряна: {ln[:120]!r}"
+
+
+def test_fixture_read_file_passes_through() -> None:
+    """read_file на реальных данных extract НЕ трогает (контракт)."""
+    total = 0
+    for path in FILES:
+        for r in _load(path):
+            if r["name"] != "read_file":
+                continue
+            out = tool_extract.extract("read_file", {}, r["content"], 4096)
+            assert out == r["content"], f"read_file усечён в {path.name}"
+            total += 1
+    assert total > 0, "в фикстурах нет read_file — тест бесполезен"
 
 
 def test_fixtures_have_no_secrets() -> None:

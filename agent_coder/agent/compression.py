@@ -159,7 +159,9 @@ def format_for_summary(messages: list[dict[str, Any]]) -> str:
         elif role == "tool":
             name = tool_names.get(m.get("tool_call_id"), "")
             label = f"[TOOL {name}]" if name else "[TOOL]"
-            extracted = tool_extract.extract(name or "", {}, content, 2048)
+            extracted = tool_extract.extract(
+                name or "", {}, content, 2048, for_summary=True
+            )
             parts.append(f"{label}: {extracted}")
     return "\n\n".join(parts)
 
