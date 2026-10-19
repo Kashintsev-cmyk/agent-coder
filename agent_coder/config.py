@@ -47,7 +47,7 @@ class Config:
 
     # Модели
     MODEL_MAIN: str = os.getenv("MODEL_MAIN", "deepseek/deepseek-v4-flash")
-    # Зарезервировано на будущее (не используется в коде)
+    # Fallback для RECOMMENDED_MODEL_BY_MODE (см. telegram/handlers/project_utils.py).
 
     # Список curated-моделей для меню выбора (через запятую). Порядок
     # сохраняется в UI. Метаданные моделей — в `agent_coder.models._FALLBACK_CATALOG`.
@@ -66,6 +66,11 @@ class Config:
         "anthropic/claude-sonnet-5.5",
         "x-ai/grok-4.20",
     ]
+
+    # Единый список моделей (B1): все модели, доступные в UI и роутере.
+    # Порядок = приоритет авто-выбора (resolve берёт первую влезающую).
+    # CURATED_MODEL_IDS оставлен как алиас на переходный период.
+    MODEL_IDS: ClassVar[list[str]] = CURATED_MODEL_IDS
 
     # Группа coding: дефолт для ACT/PLAN/CHAT + fallback-цепочка при
     # 429/timeout (порядок = приоритет). Все id должны входить в
@@ -105,13 +110,13 @@ class Config:
         "MODEL_ROUTER_ENABLED", "1"
     ).strip().lower() in ("1", "true", "yes", "on")
 
-    # Модель по умолчанию (должна входить в CURATED_MODEL_IDS)
+    # Модель по умолчанию (должна входить в MODEL_IDS)
     DEFAULT_MODEL_ID: str = os.getenv("DEFAULT_MODEL_ID", "deepseek/deepseek-v4-flash")
 
     # Рекомендованная модель по режиму: ставится при создании сессии и при
     # смене режима (если пользователь не выбрал модель вручную). Это
     # РЕКОМЕНДАЦИЯ, не ограничение: пользователь может выбрать любую из
-    # CURATED_MODEL_IDS, роутер не перекрывает ручной выбор.
+    # MODEL_IDS, роутер не перекрывает ручной выбор.
     # Порядок ключей = Mode.value.
     #
     # Аудит по умолчанию — deepseek-v4-flash (дёшево): реальный аудит
@@ -151,7 +156,7 @@ class Config:
 
     # Дефолтная температура генерации (0.0–2.0). Для кода — 0.2.
     TEMPERATURE: float = _env_float("TEMPERATURE", "0.2")
-    # Модель для суммаризации старых сообщений. Должна быть в CURATED_MODEL_IDS
+    # Модель для суммаризации старых сообщений. Должна быть в MODEL_IDS
     # (или в _FALLBACK_CATALOG). Дешёвая — для вспомогательной задачи.
     SUMMARY_MODEL: str = os.getenv("SUMMARY_MODEL", "moonshotai/kimi-k2.7-code")
 
@@ -231,27 +236,25 @@ class Config:
         if not cls.ROUTERAI_API_KEY:
             errors.append("ROUTERAI_API_KEY не установлен")
 
-        if not cls.CURATED_MODEL_IDS:
+        if not cls.MODEL_IDS:
             errors.append(
-                "CURATED_MODEL_IDS пуст — задайте список моделей через .env "
-                "(через запятую)"
+                "MODEL_IDS пуст — задайте список моделей через .env (через запятую)"
             )
         else:
             seen: set[str] = set()
             dupes: list[str] = []
-            for mid in cls.CURATED_MODEL_IDS:
+            for mid in cls.MODEL_IDS:
                 if mid in seen and mid not in dupes:
                     dupes.append(mid)
                 seen.add(mid)
             if dupes:
                 errors.append(
-                    "CURATED_MODEL_IDS содержит дубли: "
-                    + ", ".join(repr(d) for d in dupes)
+                    "MODEL_IDS содержит дубли: " + ", ".join(repr(d) for d in dupes)
                 )
-            if cls.DEFAULT_MODEL_ID not in cls.CURATED_MODEL_IDS:
+            if cls.DEFAULT_MODEL_ID not in cls.MODEL_IDS:
                 errors.append(
                     f"DEFAULT_MODEL_ID={cls.DEFAULT_MODEL_ID!r} не входит в "
-                    f"CURATED_MODEL_IDS={cls.CURATED_MODEL_IDS!r}"
+                    f"MODEL_IDS={cls.MODEL_IDS!r}"
                 )
 
             # Группы coding/audit: непустые, без дублей, подмножества curated.
@@ -276,7 +279,7 @@ class Config:
                 unknown = [mid for mid in group_ids if mid not in seen]
                 if unknown:
                     errors.append(
-                        f"{group_name} содержит модели вне CURATED_MODEL_IDS: "
+                        f"{group_name} содержит модели вне MODEL_IDS: "
                         + ", ".join(repr(u) for u in unknown)
                     )
             # Recommended-модели должны входить в CURATED (иначе дефолт
@@ -285,17 +288,14 @@ class Config:
                 if mid not in seen:
                     errors.append(
                         f"RECOMMENDED_MODEL_BY_MODE[{mode_name!r}]={mid!r} "
-                        f"не входит в CURATED_MODEL_IDS"
+                        f"не входит в MODEL_IDS"
                     )
-
-            overlap = [
-                mid for mid in cls.CODING_MODEL_IDS if mid in cls.AUDIT_MODEL_IDS
-            ]
-            if overlap:
-                errors.append(
-                    "CODING_MODEL_IDS и AUDIT_MODEL_IDS пересекаются: "
-                    + ", ".join(repr(m) for m in overlap)
-                )
+            for mode_name, mid in cls.RECOMMENDED_MANUAL_BY_MODE.items():
+                if mid not in seen:
+                    errors.append(
+                        f"RECOMMENDED_MANUAL_BY_MODE[{mode_name!r}]={mid!r} "
+                        f"не входит в MODEL_IDS"
+                    )
 
         # Доля контекста под входные токены: разумные границы.
         if not (0.1 <= cls.CONTEXT_FILL_RATIO <= 1.0):
