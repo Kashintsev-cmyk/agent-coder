@@ -142,6 +142,11 @@ class AgentLoop:
         # читала разные файлы, но не звала update_work_state (сессия
         # a1b0a44b: 12 read_file, 12 уникальных, work_state пуст).
         seen_paths: set[str] = set()
+        # Длина messages ПЕРЕД прошлым client.chat (без ответа и tool-результатов).
+        # Нужна для pre-check: после chat добавились assistant + tool-результаты,
+        # которых LLM не видел. Их оценка + last_input_tokens = effective size
+        # следующего запроса (Cline-паттерн max(estimate, actual)).
+        last_llm_messages_len = 0
 
         self._refresh_system_prompt()
         content = _build_user_content(task, images)
@@ -202,11 +207,31 @@ class AgentLoop:
             if fixed:
                 logger.warning("Восстановлено %d dangling tool_calls", fixed)
                 self.session.save()
-            # B5.2: сжатие истории при превышении порога input-токенов.
-            if self.session.last_input_tokens > soft:
+            # Сжатие истории. Cline-паттерн: учитываем не только last_input_tokens
+            # (факт прошлого запроса), но и сообщения, добавленные ПОСЛЕ него
+            # (assistant + tool-результаты текущей итерации). Иначе current
+            # request мог упереться в контекст: last=58000 < soft=60000, но
+            # 5 tool-результатов по 4096 симв. добавили ~5000 токенов.
+            # Страховка `last > soft` — на случай продолжения старой сессии,
+            # где новые сообщения ещё не появились.
+            new_msgs = self.session.messages[last_llm_messages_len:]
+            delta_tokens = compression.estimate_tokens(new_msgs) if new_msgs else 0
+            effective_tokens = self.session.last_input_tokens + delta_tokens
+            if effective_tokens > soft or self.session.last_input_tokens > soft:
+                logger.debug(
+                    "compress check: last=%d delta=%d effective=%d soft=%d",
+                    self.session.last_input_tokens,
+                    delta_tokens,
+                    effective_tokens,
+                    soft,
+                )
                 comp = await compression.compress(self.session, self.client)
                 if comp is not None:
                     self.session.save()
+                    # После compress messages изменились — пересчитать
+                    # last_llm_messages_len (новые сообщения = всё после
+                    # сжатия, а не то, что было до него).
+                    last_llm_messages_len = len(self.session.messages)
                     # После compress история чтений выброшена из messages:
                     # модель не помнит, что читала (read_paths в промте —
                     # подсказка, но не гарантия). Перечитывание после
@@ -219,6 +244,11 @@ class AgentLoop:
             # (update_work_state в прошлой итерации) — модель должна видеть
             # актуальные факты, иначе смысл structured memory теряется.
             self._refresh_system_prompt()
+
+            # Запомнить длину messages ПЕРЕД запросом: на следующей итерации
+            # messages[last_llm_messages_len:] — то, чего LLM ещё не видел
+            # (assistant + tool-результаты). Для pre-check сжатия.
+            last_llm_messages_len = len(self.session.messages)
 
             try:
                 response = await self.client.chat(
