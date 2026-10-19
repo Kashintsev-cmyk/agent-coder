@@ -220,7 +220,14 @@ async def test_audit_unique_paths_is_progress(monkeypatch) -> None:
     loop = AgentLoop(client=client, registry=_Registry(), session=s, events=_events())
     res = await loop.run("аудит модуля")
     assert not res.no_progress, "12 уникальных файлов — легитимный аудит"
-    assert client.calls == 13  # 12 чтений + финальный текст
+    # 12 чтений + финальный текст + 1 post-audit guard.
+    # B9.1: AUDIT, findings пуст, read_paths непуст → guard делает
+    # принудительную итерацию «запиши findings». Тест симулирует модель,
+    # которая findings не пишет (кейс f0fbbe9a) — это ровно триггер guard'а.
+    # Свой отдельный тест guard'а — в test_loop_work_state.py.
+    assert client.calls == 14
+    assert res.work_state_updates == 0, "findings так и не записаны"
+    assert res.iterations_used == 13, "break на 13-й итерации + guard, без роста"
 
 
 @pytest.mark.asyncio

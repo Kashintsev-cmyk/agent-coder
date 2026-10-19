@@ -121,10 +121,14 @@ def test_audit_standard_has_findings_rule() -> None:
 
 
 def test_work_state_rule_hardens_audit() -> None:
-    """B9.1: _WORK_STATE_RULE содержит жёсткое правило для AUDIT."""
+    """B9.1: _WORK_STATE_RULE содержит жёсткое правило для AUDIT.
+
+    Нормализуем переносы и кратные пробелы, чтобы тест не зависел от
+    переносов в исходной строковой константе.
+    """
     from agent_coder.agent.prompts import _WORK_STATE_RULE
 
-    assert "В AUDIT — особо жёстко" in _WORK_STATE_RULE
-    assert "после КАЖДОГО turn" in _WORK_STATE_RULE
-    # В константе разрыв строки: "...не\nбатчи на конец аудита" — "не" опускаем
-    assert "батчи на конец аудита" in _WORK_STATE_RULE
+    text = " ".join(_WORK_STATE_RULE.split())
+    assert "В AUDIT — особо жёстко" in text
+    assert "после КАЖДОГО turn" in text
+    assert "не батчи на конец аудита" in text

@@ -51,6 +51,7 @@ class LoopResult:
     cost_limit_reached: bool = False  # вышли по MAX_COST_PER_TASK/SESSION
     no_progress: bool = False  # вышли по MAX_ITERATIONS_NO_PROGRESS
     provider_error: bool = False  # LLM-провайдер недоступен (не ротируем)
+    work_state_updates: int = 0  # B9.1: сколько раз state реально менялся
     error_message: str = ""  # текст для UI (cost/provider/no_progress)
     task_cost: float = 0.0  # потрачено на задачу (₽), для UI
 
@@ -191,6 +192,10 @@ class AgentLoop:
 
         soft = compression.soft_limit(self.session)
         consecutive_errors = 0
+        # B9.1: счётчик итераций без записи findings (для AUDIT) и
+        # общий счётчик «сколько раз state реально менялся» (метрика).
+        iterations_since_ws_update = 0
+        work_state_updates = 0
 
         for iteration in range(1, max_iter + 1):
             logger.debug("Итерация %d", iteration)
@@ -235,6 +240,17 @@ class AgentLoop:
             # (update_work_state в прошлой итерации) — модель должна видеть
             # актуальные факты, иначе смысл structured memory теряется.
             self._refresh_system_prompt()
+
+            # B9.1: напоминание в AUDIT — модель уходит в цикл чтения и
+            # не пишет findings. Каждые N=5 итераций без изменения state
+            # добавляем user-reminder, чтобы вернуть к update_work_state.
+            if (
+                self.session.mode == Mode.AUDIT
+                and iterations_since_ws_update >= 5
+                and self.session.read_paths
+            ):
+                self._inject_audit_reminder(iterations_since_ws_update)
+                iterations_since_ws_update = 0
 
             # Запомнить длину messages ПЕРЕД запросом: на следующей итерации
             # messages[last_llm_messages_len:] — то, чего LLM ещё не видел
@@ -307,6 +323,7 @@ class AgentLoop:
                     cost_limit_reached=True,
                     error_message=msg,
                     task_cost=task_cost,
+                    work_state_updates=work_state_updates,
                 )
             if self.session.total_usage.cost > config.MAX_COST_PER_SESSION:
                 msg = (
@@ -323,6 +340,7 @@ class AgentLoop:
                     cost_limit_reached=True,
                     error_message=msg,
                     task_cost=task_cost,
+                    work_state_updates=work_state_updates,
                 )
 
             # B5.1: собираем статистику для будущего сжатия истории.
@@ -352,10 +370,7 @@ class AgentLoop:
 
             if not msg.tool_calls:
                 self.session.save()
-                return LoopResult(
-                    iterations_used=iteration,
-                    consecutive_errors=consecutive_errors,
-                )
+                break  # B9.1: post-audit guard проверяется после for
 
             # Прогресс: снимок work_state до tool-calls, чтобы отличить
             # «читаю одно и то же» (loop на read_file) от реальной работы.
@@ -384,11 +399,16 @@ class AgentLoop:
                             "role"
                         ) == "tool" and not content.lstrip().startswith("Ошибка"):
                             progress_made = True
-            if (
+            ws_changed = (
                 json.dumps(self.session.work_state, sort_keys=True, ensure_ascii=False)
                 != ws_snapshot
-            ):
+            )
+            if ws_changed:
                 progress_made = True
+                iterations_since_ws_update = 0
+                work_state_updates += 1
+            else:
+                iterations_since_ws_update += 1
 
             if progress_made:
                 iterations_since_progress = 0
@@ -409,6 +429,7 @@ class AgentLoop:
                         no_progress=True,
                         error_message=msg,
                         task_cost=self.session.total_usage.cost - start_cost,
+                        work_state_updates=work_state_updates,
                     )
 
             # Watchdog: считаем подряд идущие ошибочные tool-результаты
@@ -434,16 +455,37 @@ class AgentLoop:
                     iterations_used=iteration,
                     watchdog_triggered=True,
                     consecutive_errors=consecutive_errors,
+                    work_state_updates=work_state_updates,
                 )
 
             self.session.save()
 
-        # Цикл завершился естественно = упёрлись в лимит
-        self.session.save()
-        return LoopResult(
-            iterations_used=max_iter,
-            limit_reached=True,
+        else:
+            # Цикл завершился естественно = упёрлись в лимит
+            self.session.save()
+            return LoopResult(
+                iterations_used=max_iter,
+                limit_reached=True,
+                consecutive_errors=consecutive_errors,
+                work_state_updates=work_state_updates,
+            )
+
+        # B9.1: post-audit guard — только AUDIT, только если findings пуст,
+        # только если были read_file. Одна принудительная итерация
+        # «запиши findings, не читай». Возвращает (work_state_inc, LoopResult|None).
+        ws_inc, guard_result = await self._post_audit_guard(
+            start_cost=start_cost,
+            iteration=iteration,
             consecutive_errors=consecutive_errors,
+        )
+        work_state_updates += ws_inc
+        if guard_result is not None:
+            return guard_result
+
+        return LoopResult(
+            iterations_used=iteration,
+            consecutive_errors=consecutive_errors,
+            work_state_updates=work_state_updates,
         )
 
     async def _handle_tool_call(self, tc: ToolCall) -> None:
@@ -524,6 +566,142 @@ class AgentLoop:
             }
         )
         self.session.save()
+
+    def _inject_audit_reminder(self, iters_no_ws: int) -> None:
+        """B9.1: напомнить модели записать findings, не читая дальше."""
+        self.session.add_message(
+            {
+                "role": "user",
+                "content": (
+                    f"[НАПОМИНАНИЕ B9.1] Ты не записывал findings уже "
+                    f"{iters_no_ws} итераций, хотя прочитал файлов: "
+                    f"{len(self.session.read_paths)}. "
+                    "Вызови update_work_state с findings СЕЙЧАС, до "
+                    "следующего read_file. Если проблем не нашёл — "
+                    "запиши это в open_questions."
+                ),
+            }
+        )
+
+    async def _post_audit_guard(
+        self,
+        *,
+        start_cost: float,
+        iteration: int,
+        consecutive_errors: int,
+    ) -> tuple[int, LoopResult | None]:
+        """B9.1: принудительная итерация «запиши findings, не читай».
+
+        Триггер: AUDIT-loop завершился естественно (break), но
+        work_state["findings"] пуст, а read_paths непуст. Добавляем
+        user-reminder и один client.chat, ловим update_work_state.
+
+        Возвращает (work_state_increment, terminal_LoopResult_или_None).
+        increment = 1, если findings появились; иначе 0. LoopResult
+        возвращается только при превышении бюджета задачи.
+        """
+        if self.session.mode != Mode.AUDIT:
+            return 0, None
+        if (self.session.work_state or {}).get("findings"):
+            return 0, None
+        if not self.session.read_paths:
+            return 0, None
+        # Pre-check: не лезем, если бюджет уже на грани.
+        if self.session.total_usage.cost - start_cost > config.MAX_COST_PER_TASK:
+            return 0, None
+        if self.session.total_usage.cost > config.MAX_COST_PER_SESSION:
+            return 0, None
+
+        self.session.add_message(
+            {
+                "role": "user",
+                "content": (
+                    "[ПРИНУДИТЕЛЬНО B9.1] Аудит завершён, но findings пуст, "
+                    f"а ты прочитал файлов: {len(self.session.read_paths)}. "
+                    "Вызови update_work_state с findings СЕЙЧАС. НЕ читай "
+                    "файлы. Если проблем не нашёл — запиши это в "
+                    "open_questions."
+                ),
+            }
+        )
+        self.session.save()
+
+        ws_before = json.dumps(
+            self.session.work_state, sort_keys=True, ensure_ascii=False
+        )
+
+        try:
+            response = await self.client.chat(
+                messages=self.session.messages,
+                model=self.session.model,
+                tools=self.registry.openai_schemas(self.session.mode),
+                reasoning_effort=self.session.reasoning_effort,
+                web_search=self.session.web_search,
+                service_tier=self.session.service_tier or config.SERVICE_TIER,
+                verbosity=self.session.verbosity or None,
+                temperature=config.TEMPERATURE,
+            )
+        except Exception as e:
+            logger.warning("post-audit guard: LLM error: %s", e)
+            return 0, None
+
+        self.session.add_usage(response.usage)
+        await _maybe_await(self.events.on_usage, response.usage)
+
+        task_cost = self.session.total_usage.cost - start_cost
+        ws_after_usage = json.dumps(
+            self.session.work_state, sort_keys=True, ensure_ascii=False
+        )
+        inc = 0 if ws_after_usage == ws_before else 1
+
+        if task_cost > config.MAX_COST_PER_TASK:
+            msg = (
+                f"post-audit guard: бюджет задачи исчерпан "
+                f"{task_cost:.1f}₽ (лимит {config.MAX_COST_PER_TASK:.0f}₽)"
+            )
+            await _maybe_await(self.events.on_error, msg)
+            self.session.save()
+            return inc, LoopResult(
+                iterations_used=iteration + 1,
+                consecutive_errors=consecutive_errors,
+                cost_limit_reached=True,
+                error_message=msg,
+                task_cost=task_cost,
+                work_state_updates=inc,
+            )
+
+        msg = response.message
+        if msg.content:
+            await _maybe_await(self.events.on_assistant_text, msg.content)
+
+        assistant_history: dict[str, Any] = {
+            "role": "assistant",
+            "content": msg.content or "",
+        }
+        if msg.tool_calls:
+            assistant_history["tool_calls"] = [
+                {
+                    "id": tc.id,
+                    "type": "function",
+                    "function": {
+                        "name": tc.name,
+                        "arguments": json.dumps(tc.arguments, ensure_ascii=False),
+                    },
+                }
+                for tc in msg.tool_calls
+            ]
+        self.session.add_message(assistant_history)
+
+        if msg.tool_calls:
+            for tc in msg.tool_calls:
+                await self._handle_tool_call(tc)
+
+        self.session.save()
+        ws_final = json.dumps(
+            self.session.work_state, sort_keys=True, ensure_ascii=False
+        )
+        inc = 0 if ws_final == ws_before else 1
+        return inc, None
 
     def _work_state_handle(self) -> WorkStateHandle:
         """Узкий handle над живым session.work_state (не копия).
