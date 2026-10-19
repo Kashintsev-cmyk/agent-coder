@@ -104,8 +104,21 @@ def _strip_numbered(line: str) -> str:
 # ---------- formatters ----------
 
 
+# Команды-«листинги»: модель хочет ВЕСЬ список, head/tail режет его и
+# провоцирует loop (ls tests/ = 65 строк, head 8 + tail 8 = 16, модель
+# пробует ls tests/, ls -1, find... — сессия 75f25748). Для листинга
+# оставляем до LISTING_MAX строк вместо head/tail.
+_LISTING_RE = re.compile(
+    r"^(?:ls|find|tree|du|git\s+ls-files|git\s+status|rg\s+--files)(?:\s|$)"
+)
+LISTING_MAX = 100
+
+
 def _fmt_run_command(result: str, args: dict[str, Any], limit: int) -> str:
-    """exit code + error-строки + head/tail контекст.
+    """exit code + error-строки + head/tail контекст (листинги — целиком).
+
+    Листинг (ls/find/tree/du/git ls-files/status) при exit_code=0 —
+    отдаём до LISTING_MAX строк, без head/tail: модель хочет весь список.
 
     Особый случай — heredoc (`python3 - <<'PYEOF'`): команда многострочная,
     «$ cmd» занимает десятки строк, а exit code оказывается далеко внизу.
@@ -126,6 +139,41 @@ def _fmt_run_command(result: str, args: dict[str, Any], limit: int) -> str:
             exit_idx = i
             keep.add(i)
             break
+
+    # Листинг? Команда из args["command"], exit_code=0 → отдаём тело целиком
+    # (до LISTING_MAX), без head/tail. Head/tail для логов pytest/build.
+    cmd = str(args.get("command") or "").strip()
+    is_listing = bool(cmd) and _LISTING_RE.match(cmd) is not None
+    ok_exit = exit_idx is not None and lines[exit_idx].strip() == "exit code: 0"
+    if is_listing and ok_exit:
+        body_start = exit_idx + 1
+        # Пропускаем маркеры --- stdout ---/--- stderr --- при подсчёте.
+        body = [
+            ln
+            for ln in lines[body_start:]
+            if ln not in ("--- stdout ---", "--- stderr ---")
+        ]
+        if len(body) <= LISTING_MAX:
+            # Влезает целиком — оставляем все body-строки.
+            for i in range(body_start, n):
+                keep.add(i)
+            return _assemble(lines, keep, limit)
+        # Не влезает — первые LISTING_MAX строк тела + маркер.
+        kept = 0
+        for i in range(body_start, n):
+            if lines[i] in ("--- stdout ---", "--- stderr ---"):
+                keep.add(i)
+                continue
+            if kept < LISTING_MAX:
+                keep.add(i)
+                kept += 1
+            else:
+                # маркер добавим ниже, в _assemble он не нужен
+                break
+        text = _assemble(lines, keep, limit)
+        if kept < len(body):
+            text += f"\n…[ещё {len(body) - kept} строк скрыто]…"
+        return _cap(text, limit)
     # Первая строка ($ cmd) — обрезаем длинный heredoc, чтобы шапка
     # не съедала весь лимит.
     if n > 0:
@@ -272,7 +320,12 @@ _ALWAYS_APPLY = frozenset(
 # read_file — явный контракт offset/limit; объём ограничен tool'ом
 # (MAX_LINES=2000 / MAX_BYTES=200k). Любая обрезка здесь = модель
 # перечитывает файл с другими окнами → loop → упор в лимит итераций.
-_NO_EXTRACT = frozenset({"read_file"})
+# tools-«контракты», которые extract НЕ трогает ВООБЩЕ:
+# - read_file: явный offset/limit;
+# - list_files: «покажи файлы» — модель хочет весь список, а не head/tail
+#   (loop в 75f25748: tests/ = 65 файлов, extract оставлял 10 + «55 скрыто»,
+#   модель пробовала ls/find/list_files по кругу). MAX_ENTRIES=500 в tool'е.
+_NO_EXTRACT = frozenset({"read_file", "list_files"})
 
 
 def _resolve_limit(tool_name: str, default: int) -> int:

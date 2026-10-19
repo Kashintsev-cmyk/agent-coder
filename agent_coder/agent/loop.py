@@ -76,7 +76,10 @@ async def _maybe_await(fn, *args) -> None:
 # отдельно в ACT).
 _READ_PATH_TOOLS: dict[str, str] = {
     "read_file": "path",
-    "list_files": "sub",
+    # list_files читает args["path"] (см. tools/list_files.py: sub = args.get("path")),
+    # а не "sub" — иначе ключ всегда list_files:. и прогресс не засчитывался
+    # (loop в сессии 75f25748: 3x list_files sub=None → ложный watchdog).
+    "list_files": "path",
     "search": "path",
 }
 

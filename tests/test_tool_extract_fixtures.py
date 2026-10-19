@@ -34,7 +34,10 @@ DEF_LINE_RE = re.compile(r"│ (?:def |class |import |from )")
 
 # read_file — контракт offset/limit, extract его НЕ трогает (см. _NO_EXTRACT).
 # Из метрики сжатия исключаем: это не «несжатие», а другой контракт.
-_NON_COMPRESSIBLE = frozenset({"read_file"})
+# read_file — контракт offset/limit; list_files — контракт «покажи файлы».
+# Оба extract НЕ трогает (см. _NO_EXTRACT), это не «несжатие», а другой
+# контракт. Из метрики сжатия исключаем.
+_NON_COMPRESSIBLE = frozenset({"read_file", "list_files"})
 
 
 def _compressible(rows: list[dict]) -> list[dict]:

@@ -158,33 +158,38 @@ def test_search_history_top_fragments() -> None:
     assert len(out) <= 2048
 
 
-def test_list_files_top_and_counter() -> None:
+def test_list_files_passthrough() -> None:
+    """list_files — контракт «покажи файлы», extract НЕ режет.
+
+    Регресс 75f25748: tests/ = 65 файлов, extract оставлял 10 + «55
+    скрыто», модель пробовала list_files/ls/find по кругу → watchdog
+    останавливал легитимный аудит. Tool сам ограничивает MAX_ENTRIES=500.
+    """
     result = "\n".join(f"file{i}.py" for i in range(100))
     out = tool_extract.extract("list_files", {}, result, 1024)
-    assert "file0.py" in out
-    assert "файлов скрыто" in out
-    assert len(out) <= 1024
+    assert out == result  # как есть, без обрезки
+    assert "скрыто" not in out
 
 
 def test_env_override_per_tool(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setenv("TOOL_MAX_CHARS_LIST_FILES", "500")
-    result = "\n".join(f"file{i}.py" for i in range(1000))
-    out = tool_extract.extract("list_files", {}, result, 1024)
+    monkeypatch.setenv("TOOL_MAX_CHARS_SEARCH", "500")
+    result = "\n".join(f"src/f{i}.py:{i}:match" for i in range(1000))
+    out = tool_extract.extract("search", {}, result, 2048)
     assert len(out) <= 500
 
 
 def test_env_override_global(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TOOL_MAX_CHARS", "300")
-    result = "\n".join(f"file{i}.py" for i in range(1000))
-    out = tool_extract.extract("list_files", {}, result, 1024)
+    result = "\n".join(f"src/f{i}.py:{i}:match" for i in range(1000))
+    out = tool_extract.extract("search", {}, result, 2048)
     assert len(out) <= 300
 
 
 def test_per_tool_env_wins_over_global(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setenv("TOOL_MAX_CHARS", "300")
-    monkeypatch.setenv("TOOL_MAX_CHARS_LIST_FILES", "700")
-    result = "\n".join(f"file{i}.py" for i in range(1000))
-    out = tool_extract.extract("list_files", {}, result, 1024)
+    monkeypatch.setenv("TOOL_MAX_CHARS_SEARCH", "700")
+    result = "\n".join(f"src/f{i}.py:{i}:match" for i in range(1000))
+    out = tool_extract.extract("search", {}, result, 2048)
     assert len(out) <= 700
 
 
@@ -206,3 +211,37 @@ def test_git_diff_not_truncated_no_marker() -> None:
     out = tool_extract.extract("git_diff", {}, result, 2048)
     assert "x.py" in out
     assert "неполные" not in out
+
+
+def test_run_command_listing_keeps_all_lines() -> None:
+    """ls/find/tree — листинг: весь список, не head 8 + tail 8.
+
+    Регресс 75f25748: `ls tests` = 65 файлов, extract оставлял 16,
+    модель пробовала `ls tests/`, `ls -1 tests/`, `find` по кругу.
+    """
+    body = [f"test_{i:02d}.py" for i in range(65)]
+    result = "\n".join(["$ ls tests", "exit code: 0", "--- stdout ---", *body])
+    out = tool_extract.extract("run_command", {"command": "ls tests"}, result, 4096)
+    for name in body:
+        assert name in out, f"листинг потерял {name}"
+    assert "скрыто" not in out
+
+
+def test_run_command_pytest_still_head_tail() -> None:
+    """pytest-лог — не листинг: head/tail, середина вырезана (как было)."""
+    body = [f"line{i}" for i in range(200)]
+    result = "\n".join(["$ pytest", "exit code: 0", "--- stdout ---", *body])
+    out = tool_extract.extract("run_command", {"command": "pytest"}, result, 4096)
+    assert "line0" in out and "line199" in out
+    assert "line100" not in out
+
+
+def test_run_command_listing_capped_at_100() -> None:
+    """Листинг > LISTING_MAX — режется с маркером (страховка от гиганта)."""
+    body = [f"file{i:04d}.py" for i in range(300)]
+    result = "\n".join(["$ find .", "exit code: 0", "--- stdout ---", *body])
+    out = tool_extract.extract("run_command", {"command": "find ."}, result, 4096)
+    assert "file0000.py" in out
+    assert "file0099.py" in out
+    assert "file0299.py" not in out
+    assert "скрыто" in out
