@@ -28,6 +28,7 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | A4 | minor | `git_diff` режет тело через `_truncate(MAX_OUTPUT)` **до** extract → `+N -M` недосчитывает на огромных diff'ах | детект маркера `_truncate` → header помечается «неполные: точные — search_history»; целый diff — без пометки. На реальных фикстурах усечение не воспроизводится (страховка) | **done** (отдельный коммит после `2776d10`) | session 2026-10-19 |
 | A5 | major | модель «искала заново» после compress: детали теряются LLM-суммаризацией, structured memory нет. Подтверждено на реальных сессиях (галлюцинации, повторный поиск) | `Session.work_state` (user_requests/findings/done/todo/open_questions) + tool `update_work_state` (точечный patch: set/+/−) + `[WORK_STATE]` в system prompt **каждую итерацию** + правило 14 в `SYSTEM_ACT` | **done** `f3e879e` | session 2026-10-19 |
 | A6 | major | `compress()` терял факты: LLM-narrative + нет детерминированного скелета; work_state-факты, которых нет в transcript, ложно помечались `(не подтверждено)` | work_state как скелет: `[ИЗВЕСТНЫЕ ФАКТЫ]` для LLM + детерминированный suffix после валидатора (не LLM-генерирован); `_validate_summary(extra_known=...)` | **done** `d102286` | session 2026-10-19 |
+| A7 | major | AUDIT не видел work_state: `system_prompt()` делал ранний return `build_audit_prompt()` до инъекции `[WORK_STATE]`, правила про `update_work_state` не было в `audit_standard.md`. На живой аудит-сессии `93108d9a` — 11 сжатий, `work_state_items=0` (самый дорогой режим: 300 итераций × 3 автопродолжения) | единое правило `_WORK_STATE_RULE` (одна константа, не копии) инжектится в PLAN/ACT/AUDIT + блок `[WORK_STATE]`; из `SYSTEM_ACT` правило 14 убрано (один источник); AUDIT без `_with_rules` (вариант a) | **done** `0ed979b` | session 2026-10-19 |
 
 ## Стандарт и проверки
 
@@ -70,4 +71,4 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 3. **F3** — `ruff format`: futures_3.0 (280), ai_bot_2.0 (43, deprecated), crypto_bot (11, deprecated).
 4. **F28** — UP046 в `builder_bot` (PEP 695 generics + pydantic, unsafe fix).
 
-Закрыто в сессии 2026-10-19 (агентный цикл и память): A1 (extraction), A2 (save в error-path), A3 (heredoc exit code), A4 (git_diff truncation marker), A5 (work_state), A6 (work_state как скелет compress). Открытых A-пунктов нет.
+Закрыто в сессии 2026-10-19 (агентный цикл и память): A1 (extraction), A2 (save в error-path), A3 (heredoc exit code), A4 (git_diff truncation marker), A5 (work_state), A6 (work_state как скелет compress), A7 (work_state в AUDIT + единое правило). Открытых A-пунктов нет.
