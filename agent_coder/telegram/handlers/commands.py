@@ -51,6 +51,21 @@ logger = logging.getLogger(__name__)
 # ---------- /start, /help ----------
 
 
+def _apply_recommended_model(session) -> None:
+    """При смене режима — рекомендованная модель, если не выбран вручную.
+
+    Фикс бага 2026-10-19: смена режима меняла только session.mode,
+    session.model оставался от прошлого режима (UI показывал deepseek,
+    роутер при запуске подменял на kimi → рассинхрон UI и истории).
+    Ручной выбор (model_manual=True) не перекрываем — это выбор пользователя.
+    """
+    if session.model_manual:
+        return
+    recommended = config.RECOMMENDED_MODEL_BY_MODE.get(session.mode.value)
+    if recommended:
+        session.model = recommended
+
+
 @router.message(CommandStart())
 async def cmd_start(message: Message) -> None:
     projects = _list_projects()
@@ -310,6 +325,7 @@ async def cmd_mode(message: Message) -> None:
     if session.mode != new_mode:
         old_mode = session.mode
         session.mode = new_mode
+        _apply_recommended_model(session)
         if not _should_preserve_history(old_mode, new_mode):
             session.messages = []
         session.save()
@@ -541,6 +557,7 @@ async def cb_mode(query: CallbackQuery) -> None:
     if session.mode != new_mode:
         old_mode = session.mode
         session.mode = new_mode
+        _apply_recommended_model(session)
         if not _should_preserve_history(old_mode, new_mode):
             session.messages = []
         session.save()

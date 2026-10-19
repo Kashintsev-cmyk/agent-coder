@@ -108,6 +108,18 @@ class Config:
     # Модель по умолчанию (должна входить в CURATED_MODEL_IDS)
     DEFAULT_MODEL_ID: str = os.getenv("DEFAULT_MODEL_ID", "deepseek/deepseek-v4-flash")
 
+    # Рекомендованная модель по режиму: ставится при создании сессии и при
+    # смене режима (если пользователь не выбрал модель вручную). Это
+    # РЕКОМЕНДАЦИЯ, не ограничение: пользователь может выбрать любую из
+    # CURATED_MODEL_IDS, роутер не перекрывает ручной выбор.
+    # Порядок ключей = Mode.value.
+    RECOMMENDED_MODEL_BY_MODE: ClassVar[dict[str, str]] = {
+        "act": "deepseek/deepseek-v4-flash",
+        "plan": "deepseek/deepseek-v4-flash",
+        "chat": "deepseek/deepseek-v4-flash",
+        "audit": "moonshotai/kimi-k2.7-code",
+    }
+
     # Model catalog (кэш метаданных моделей из RouterAI)
     # TTL дискового кэша каталога моделей, часы (минимум 1)
     MODELS_CACHE_TTL: int = _env_int("MODELS_CACHE_TTL", "24")
@@ -256,6 +268,15 @@ class Config:
                         f"{group_name} содержит модели вне CURATED_MODEL_IDS: "
                         + ", ".join(repr(u) for u in unknown)
                     )
+            # Recommended-модели должны входить в CURATED (иначе дефолт
+            # режима поставит модель, которой нет в UI/каталоге).
+            for mode_name, mid in cls.RECOMMENDED_MODEL_BY_MODE.items():
+                if mid not in seen:
+                    errors.append(
+                        f"RECOMMENDED_MODEL_BY_MODE[{mode_name!r}]={mid!r} "
+                        f"не входит в CURATED_MODEL_IDS"
+                    )
+
             overlap = [
                 mid for mid in cls.CODING_MODEL_IDS if mid in cls.AUDIT_MODEL_IDS
             ]

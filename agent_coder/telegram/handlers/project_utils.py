@@ -83,9 +83,13 @@ async def _create_session(
         )
         return
 
+    # Модель по режиму (рекомендация), а не MODEL_MAIN: иначе при
+    # создании AUDIT-сессии UI показывал deepseek, а роутер подменял на
+    # kimi при первом запуске — рассинхрон UI и истории (баг 2026-10-19).
+    initial_model = config.RECOMMENDED_MODEL_BY_MODE.get(mode.value, config.MODEL_MAIN)
     session = Session.new(
         workspace=str(workspace),
-        model=config.MODEL_MAIN,
+        model=initial_model,
         mode=mode,
     )
     session.title = title or f"Новая сессия в {workspace.name}"
