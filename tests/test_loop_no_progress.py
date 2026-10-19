@@ -83,7 +83,9 @@ async def test_no_progress_stops_read_loop(monkeypatch) -> None:
     res = await loop.run("аудит")
     assert res.no_progress
     assert "прогресса" in res.error_message
-    assert client.calls == 5  # ровно MAX_ITERATIONS_NO_PROGRESS, не 300
+    # 1-й read_file — новый путь (прогресс, счётчик сброшен), затем 5
+    # непрогрессов (тот же путь) → стоп на 6-м вызове.
+    assert client.calls == 6
 
 
 @pytest.mark.asyncio
@@ -151,3 +153,71 @@ async def test_progress_via_work_state_resets_counter(monkeypatch) -> None:
     assert not res.no_progress
     assert not res.limit_reached
     assert res.iterations_used == 6  # 5 с tool_call + 1 финальный текст
+
+
+@pytest.mark.asyncio
+async def test_audit_unique_paths_is_progress(monkeypatch) -> None:
+    """AUDIT: 12 разных read_file — прогресс, watchdog НЕ срабатывает.
+
+    Регресс сессии a1b0a44b: 12 уникальных файлов, work_state пуст
+    (модель не звала update_work_state) → watchdog ложно останавливал
+    легитимный аудит. Новый путь = прогресс охвата.
+    """
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 5)
+
+    class _Tool:
+        name = "read_file"
+        read_only = True
+        requires_approval = False
+
+        def needs_approval(self, args):
+            return False
+
+        async def executor(self, args, ctx):
+            return f"content of {args.get('path')}"
+
+    class _Registry:
+        def openai_schemas(self, mode):
+            return []
+
+        def get(self, name):
+            return _Tool() if name == "read_file" else None
+
+        def is_call_allowed(self, mode, tool, args):
+            return True
+
+    class _Client:
+        """12 итераций: каждый раз новый файл, затем финал."""
+
+        def __init__(self):
+            self.calls = 0
+            self.paths = [f"file{i}.py" for i in range(12)]
+
+        async def chat(self, messages, **kwargs):
+            self.calls += 1
+            if self.calls > 12:
+                return ChatResponse(
+                    message=AssistantMessage(content="готово", tool_calls=[]),
+                    usage=Usage(input_tokens=10, output_tokens=5, cost=0.0),
+                )
+            return ChatResponse(
+                message=AssistantMessage(
+                    content="",
+                    tool_calls=[
+                        ToolCall(
+                            id=f"c{self.calls}",
+                            name="read_file",
+                            arguments={"path": self.paths[self.calls - 1]},
+                        )
+                    ],
+                ),
+                usage=Usage(input_tokens=10, output_tokens=5, cost=0.0),
+            )
+
+    s = Session.new(workspace="/tmp", model="m", mode=Mode.AUDIT)
+    s.messages = [{"role": "system", "content": "S"}]
+    client = _Client()
+    loop = AgentLoop(client=client, registry=_Registry(), session=s, events=_events())
+    res = await loop.run("аудит модуля")
+    assert not res.no_progress, "12 уникальных файлов — легитимный аудит"
+    assert client.calls == 13  # 12 чтений + финальный текст

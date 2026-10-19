@@ -71,6 +71,31 @@ async def _maybe_await(fn, *args) -> None:
             )
 
 
+# tools, у которых args содержат путь: новый путь = прогресс охвата,
+# повтор = loop на перечитывании. Только read-only (мутации трекаются
+# отдельно в ACT).
+_READ_PATH_TOOLS: dict[str, str] = {
+    "read_file": "path",
+    "list_files": "sub",
+    "search": "path",
+}
+
+
+def _read_path_key(tc: ToolCall) -> str | None:
+    """Ключ «прочитанного пути» для read-only tool или None.
+
+    Нормализуем: list_files без sub == list_files('.') — один и тот же
+    корень, не новый прогресс (в сессии a1b0a44b было 3x agent/agent +
+    3x '.' подряд — микро-loop, watchdog его пропускал).
+    """
+    arg_name = _READ_PATH_TOOLS.get(tc.name)
+    if arg_name is None:
+        return None
+    raw = tc.arguments.get(arg_name)
+    path = str(raw).strip() if raw else "."
+    return f"{tc.name}:{path}"
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -108,6 +133,12 @@ class AgentLoop:
             )
         start_cost = self.session.total_usage.cost
         iterations_since_progress = 0
+        # Прогресс = новый факт. Ключи уже «прочитанных» путей — чтобы
+        # отличить аудит (12 уникальных файлов) от loop (9 перечитываний
+        # одного). Без этого watchdog ложно срабатывал в AUDIT: модель
+        # читала разные файлы, но не звала update_work_state (сессия
+        # a1b0a44b: 12 read_file, 12 уникальных, work_state пуст).
+        seen_paths: set[str] = set()
 
         self._refresh_system_prompt()
         content = _build_user_content(task, images)
@@ -292,8 +323,14 @@ class AgentLoop:
             progress_made = False
             for tc in msg.tool_calls:
                 await self._handle_tool_call(tc)
-                # В ACT успешный мутирующий tool — прогресс. В PLAN/AUDIT
-                # мутаций по дизайну нет, там прогресс только work_state.
+                # Новый путь чтения/поиска — прогресс, даже в AUDIT/PLAN
+                # (там мутаций нет по дизайну, прогресс = охват нового).
+                # Повтор того же пути — не прогресс: это loop на перечитывании.
+                path_key = _read_path_key(tc)
+                if path_key is not None and path_key not in seen_paths:
+                    seen_paths.add(path_key)
+                    progress_made = True
+                # В ACT успешный мутирующий tool — прогресс.
                 if self.session.mode == Mode.ACT:
                     tool = self.registry.get(tc.name)
                     if tool is not None and not tool.read_only:
