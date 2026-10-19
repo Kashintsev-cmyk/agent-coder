@@ -159,7 +159,7 @@ class Config:
     MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "200"))
     MAX_ITERATIONS_PLAN: int = int(os.getenv("MAX_ITERATIONS_PLAN", "100"))
     MAX_ITERATIONS_ACT: int = int(os.getenv("MAX_ITERATIONS_ACT", "200"))
-    MAX_ITERATIONS_AUDIT: int = int(os.getenv("MAX_ITERATIONS_AUDIT", "300"))
+    MAX_ITERATIONS_AUDIT: int = int(os.getenv("MAX_ITERATIONS_AUDIT", "200"))
 
     # Авто-продолжение: сколько раз бот сам шлёт "продолжи", если агент
     # остановился на лимите, но задача не завершена.
