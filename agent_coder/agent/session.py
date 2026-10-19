@@ -79,6 +79,11 @@ class Session:
     # Не пересуммаризуется LLM при compress(): детерминированный набор
     # фактов, инжектится в system prompt и служит скелетом резюме.
     work_state: dict[str, list[str]] = field(default_factory=dict)
+    # Прочитанные файлы: path -> краткий digest (header + def/class/import).
+    # Детерминированно, без LLM. Переживает compress() — чтобы модель
+    # видела «уже читал X» и не перечитывала целиком (сессия 6cc7d5bd:
+    # 92 read_file, 37 уникальных, 55 повторов после сжатий = деньги).
+    read_paths: dict[str, str] = field(default_factory=dict)
     # Статистика сжатия истории (B5.1: только собираем)
     last_input_tokens: int = 0  # usage.input_tokens последнего запроса
     summary_count: int = 0  # сколько раз сжимали историю
@@ -250,6 +255,8 @@ class Session:
             data["model_manual"] = False
         if "work_state" not in data:
             data["work_state"] = {}
+        if "read_paths" not in data:
+            data["read_paths"] = {}
 
         # Разовая чистка: если в истории есть DSML-мусор (старые версии
         # кода не фильтровали) — убираем при загрузке.

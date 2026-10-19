@@ -131,7 +131,12 @@ def _with_rules(base: str, workspace: str) -> str:
         return base
 
 
-def system_prompt(mode: Mode, workspace: str, work_state: object | None = None) -> str:
+def system_prompt(
+    mode: Mode,
+    workspace: str,
+    work_state: object | None = None,
+    read_paths: dict[str, str] | None = None,
+) -> str:
     """Собрать system prompt для главного агента.
 
     Единый принцип: PLAN/ACT/AUDIT получают _WORK_STATE_RULE (structured
@@ -144,7 +149,10 @@ def system_prompt(mode: Mode, workspace: str, work_state: object | None = None) 
     это отдельное решение, не часть structured memory.
 
     work_state — WorkStateHandle (см. agent/work_state.py) или None.
-    None (chat/telegram/тесты) — правило есть, блок [WORK_STATE] — нет.
+    read_paths — {path: digest} уже прочитанных файлов (переживает
+    compress) или None. Блок [ПРОЧИТАННЫЕ ФАЙЛЫ] — чтобы модель не
+    перечитывала целиком (сессия 6cc7d5bd: 55 повторов = деньги).
+    None (chat/telegram/тесты) — правило есть, блоки — нет.
     """
     if mode == Mode.CHAT:
         return _with_rules(SYSTEM_CHAT.format(workspace=workspace), workspace)
@@ -164,6 +172,12 @@ def system_prompt(mode: Mode, workspace: str, work_state: object | None = None) 
         block = render_for_prompt(getattr(work_state, "_state", None))
         if block:
             base = base + "\n\n" + block
+    if read_paths:
+        from agent_coder.agent.work_state import render_read_paths
+
+        rp_block = render_read_paths(read_paths)
+        if rp_block:
+            base = base + "\n\n" + rp_block
 
     if mode == Mode.AUDIT:
         return base

@@ -168,3 +168,63 @@ def render_for_prompt(state: dict[str, Any] | None) -> str:
         for it in items:
             lines.append(f"- {it}")
     return "\n".join(lines)
+
+
+MAX_READ_PATHS_IN_PROMPT = 60
+
+
+def make_read_digest(path: str, result: str) -> str | None:
+    """Краткий digest прочитанного файла: header + def/class/import/from.
+
+    Возвращает None для ошибок (не записываем в read_paths). Ограничен
+    ~200 символами: это подсказка «что в файле», не замена чтению.
+    """
+    if not result or not result.strip():
+        return None
+    first = result.splitlines()[0] if result.splitlines() else ""
+    bad_prefixes = (
+        "Ошибка",
+        "Файл не найден",
+        "Не файл",
+        "Файл слишком большой",
+        "Не найдено",
+    )
+    if first.startswith(bad_prefixes):
+        return None
+    defs: list[str] = []
+    for line in result.splitlines()[1:]:
+        idx = line.find("│ ")
+        body = line[idx + 2 :] if idx >= 0 else line
+        for prefix in ("def ", "class ", "import ", "from "):
+            if body.startswith(prefix):
+                defs.append(body.strip())
+                break
+        if len(defs) >= 8:
+            break
+    header = first if len(first) <= 120 else first[:117] + "…"
+    if defs:
+        digest = header + " | " + "; ".join(defs[:8])
+    else:
+        digest = header
+    return digest[:200]
+
+
+def render_read_paths(read_paths: dict[str, str] | None) -> str:
+    """Блок [ПРОЧИТАННЫЕ ФАЙЛЫ] для system prompt. Пусто -> пустая строка."""
+    if not read_paths:
+        return ""
+    items = sorted(read_paths.items())[:MAX_READ_PATHS_IN_PROMPT]
+    if not items:
+        return ""
+    lines = [
+        (
+            "[ПРОЧИТАННЫЕ ФАЙЛЫ] — уже читал в этой сессии "
+            "(не перечитывай целиком; детали — offset/limit или search_history):"
+        )
+    ]
+    for path, digest in items:
+        lines.append(f"- {path}: {digest}")
+    hidden = len(read_paths) - len(items)
+    if hidden > 0:
+        lines.append(f"…ещё {hidden} файлов скрыто (см. search_history)")
+    return "\n".join(lines)

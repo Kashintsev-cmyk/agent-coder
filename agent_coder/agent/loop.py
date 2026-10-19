@@ -15,7 +15,7 @@ from typing import Any
 from agent_coder.agent import compression, history_archive, tool_extract
 from agent_coder.agent.prompts import Mode, system_prompt
 from agent_coder.agent.session import Session
-from agent_coder.agent.work_state import WorkStateHandle
+from agent_coder.agent.work_state import WorkStateHandle, make_read_digest
 from agent_coder.config import config
 from agent_coder.llm.client import LLMClient
 from agent_coder.llm.router import RouterState, router
@@ -207,6 +207,11 @@ class AgentLoop:
                 comp = await compression.compress(self.session, self.client)
                 if comp is not None:
                     self.session.save()
+                    # После compress история чтений выброшена из messages:
+                    # модель не помнит, что читала (read_paths в промте —
+                    # подсказка, но не гарантия). Перечитывание после
+                    # сжатия — легитимно, не наказываем watchdog'ом.
+                    seen_paths.clear()
                     if self.events.on_compression is not None:
                         await _maybe_await(self.events.on_compression, comp)
 
@@ -462,6 +467,16 @@ class AgentLoop:
             result = f"Ошибка выполнения инструмента: {e}"
             logger.exception("tool %s failed", tc.name)
 
+        # read_file: запомнить digest (path + def/class/import) в Session.
+        # Переживает compress → модель видит «уже читал X» в system prompt
+        # и не перечитывает целиком (сессия 6cc7d5bd: 55 повторов = деньги).
+        if tc.name == "read_file" and not result.lstrip().startswith("Ошибка"):
+            path = str(tc.arguments.get("path") or "").strip()
+            if path:
+                digest = make_read_digest(path, result)
+                if digest:
+                    self.session.read_paths[path] = digest
+
         self._append_tool_result(tc, result)
         await _maybe_await(self.events.on_tool_result, tc, result)
 
@@ -502,6 +517,7 @@ class AgentLoop:
             self.session.mode,
             self.session.workspace,
             self._work_state_handle(),
+            self.session.read_paths,
         )
         if (
             not self.session.messages
