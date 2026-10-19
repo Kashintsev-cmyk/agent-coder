@@ -33,6 +33,19 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | A9 | major | аудит `93108d9a` сжёг ~1000₽ с нулевым результатом: (1) loop на `read_file` — watchdog по ошибкам молчал (результат «успешный»); (2) ротация моделей при 429/timeout множила расход (итерация × 3 модели); (3) не было потолка трат | (1) бюджетные cap `MAX_COST_PER_TASK=200₽` / `MAX_COST_PER_SESSION=300₽`; (2) ротация убрана: 429/timeout → стоп `provider_error` (сессия сохранена, продолжение кнопкой), 402 → `LLMError(retryable=False)`; (3) watchdog «нет прогресса» `MAX_ITERATIONS_NO_PROGRESS=10` (прогресс = изменение work_state или успешный мутирующий tool) | **done** (коммит в сессии 2026-10-19) | session 2026-10-19 |
 | A10 | major | рассинхрон UI и истории при смене режима: `/mode audit` менял только `session.mode`, `session.model` оставался deepseek-v4-flash; UI показывал deepseek, роутер при запуске подменял на kimi. Плюс `Session.new(model=MODEL_MAIN)` при создании AUDIT-сессии сразу ставил coding-модель | `config.RECOMMENDED_MODEL_BY_MODE` (рекомендация, не ограничение) + `_apply_recommended_model` при смене режима (обе точки) + `Session.new` по режиму; `model_manual=True` не перекрывается; валидация recommended ∈ CURATED. Группы/роутер не тронуты (единый `MODEL_IDS` — отдельный ACT) | **done** (коммит в сессии 2026-10-19) | session 2026-10-19 |
 
+## Backlog agent-coder (B-серия)
+
+Не баги, а упрощения/долги, отложенные осознанно. Отдельно от A (баги
+агентного цикла) и F (стандарт/CI), чтобы не смешивать приоритеты.
+
+| ID | sev | what | fix | status | source |
+|---|---|---|---|---|---|
+| B1 | minor | Три источника моделей: `CURATED_MODEL_IDS` (UI), `CODING_MODEL_IDS`/`AUDIT_MODEL_IDS` (роутер), `MODEL_MAIN`/`DEFAULT_MODEL_ID`. Модель без «режима» доступна в UI, но не в группе роутера | Единый `MODEL_IDS` + `RECOMMENDED_MODEL_BY_MODE` как рекомендация (не ограничение); убрать `group_for_mode` из роутера; переписать `test_router.py` (24 теста) | open | session 2026-10-19 |
+| B2 | minor | `session_index`: при OSError в `load()` не сбрасывается `_loaded` (старые данные после битого файла); `float(data.get("cost"))` пропускает NaN/Inf в сортировку `list()` | В ветке OSError: `_loaded=False` + `_sessions={}`; `math.isfinite` при парсинге cost | open | аудит 2026-10-19 |
+| B3 | minor | `compression._fail_streak`/`_fail_until` — глобальные dict без блокировки. Гонки при двух loop-процессах на одну сессию | Привязать cooldown к session (поле) или `threading.Lock` | open | аудит 2026-10-19 |
+| B4 | minor | `Usage.cost` — float для денег. Для текущих сумм (<300₽/сессия) ошибка <1 коп., при масштабировании накопится | Decimal + миграция JSON-сессий (меняет формат) | open | аудит 2026-10-19 |
+| B5 | minor | `Session.save()` на каждую tool-итерацию + atomic replace. Для SSD ок, для NFS/SD — узкое место | Отложенная запись + принудительный save на аварийных выходах | open | аудит 2026-10-19 |
+
 ## Стандарт и проверки
 
 | ID | sev | what | fix | status | source |
