@@ -7,6 +7,8 @@ deepseek-v4-flash (от прошлого режима). UI показывал de
 
 from __future__ import annotations
 
+import pytest
+
 from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
 from agent_coder.config import config
@@ -68,3 +70,72 @@ def test_new_session_uses_recommended_for_mode() -> None:
         initial = config.RECOMMENDED_MODEL_BY_MODE.get(mode.value, config.MODEL_MAIN)
         s = Session.new(workspace="/tmp", model=initial, mode=mode)
         assert s.model == config.RECOMMENDED_MODEL_BY_MODE[mode.value]
+
+
+@pytest.mark.asyncio
+async def test_cli_audit_run_uses_recommended_not_group() -> None:
+    """CLI-путь: run() ставит recommended (deepseek), не группу (kimi).
+
+    Регресс сессии 95190cc2: /audit в CLI шёл через router.resolve →
+    group_for_mode("audit") → kimi (27.51₽ за 21 итерацию). A10
+    применялся только к Telegram (_apply_recommended_model).
+    """
+    from agent_coder.agent.loop import AgentLoop, LoopEvents
+    from agent_coder.llm.types import AssistantMessage, ChatResponse, Usage
+
+    class _EmptyRegistry:
+        def openai_schemas(self, mode):
+            return []
+
+        def get(self, name):
+            return None
+
+        def is_call_allowed(self, mode, tool, args):
+            return True
+
+    def _events() -> LoopEvents:
+        async def request_approval(tc):
+            return True
+
+        return LoopEvents(
+            on_assistant_text=lambda *a: None,
+            on_tool_call=lambda *a: None,
+            on_tool_result=lambda *a: None,
+            on_usage=lambda *a: None,
+            on_error=lambda *a: None,
+            request_approval=request_approval,
+        )
+
+    class _RecordingClient:
+        """Запоминает модель, с которой его вызвали; отвечает финалом."""
+
+        def __init__(self):
+            self.models: list[str] = []
+
+        async def chat(self, messages, *, model, **kwargs):
+            self.models.append(model)
+            return ChatResponse(
+                message=AssistantMessage(content="готово", tool_calls=[]),
+                usage=Usage(input_tokens=10, output_tokens=5, cost=0.0),
+            )
+
+    # Сессия в AUDIT с kimi (как после старого бага) — run() должен
+    # переключить на recommended до первого запроса к LLM.
+    s = Session.new(
+        workspace="/tmp", model="moonshotai/kimi-k2.7-code", mode=Mode.AUDIT
+    )
+    s.messages = [{"role": "system", "content": "S"}]
+    client = _RecordingClient()
+    loop = AgentLoop(
+        session=s,
+        client=client,  # type: ignore[arg-type]
+        registry=_EmptyRegistry(),  # type: ignore[arg-type]
+        events=_events(),
+    )
+    await loop.run("аудит модуля")
+
+    assert client.models == ["deepseek/deepseek-v4-flash"], (
+        f"CLI-аудит должен идти на recommended (deepseek), не на группе "
+        f"(kimi); фактически: {client.models}"
+    )
+    assert s.model == "deepseek/deepseek-v4-flash"

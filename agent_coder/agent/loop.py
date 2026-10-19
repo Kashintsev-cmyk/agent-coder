@@ -152,12 +152,25 @@ class AgentLoop:
         )
 
         # Роутер: если модель не выбрана вручную и MODEL_ROUTER_ENABLED —
-        # подставляем первую влезающую модель группы режима
-        # (AUDIT → audit-модели, иначе coding).
+        # подставляем рекомендованную для режима (RECOMMENDED_MODEL_BY_MODE),
+        # если она влезает по контексту. Иначе — первую влезающую из группы
+        # режима (AUDIT → audit-модели, иначе coding).
+        #
+        # Фикс: CLI-путь (/audit) шёл напрямую через router.resolve →
+        # group_for_mode("audit") → kimi (дорого). A10 применялся только
+        # к Telegram (_apply_recommended_model). Теперь recommended
+        # приоритетнее группы; router.py не тронут (test_router цел).
         if not self.session.model_manual and config.MODEL_ROUTER_ENABLED:
-            routed = router.resolve(
-                self.session.mode.value, input_tokens=self._router_state.input_tokens
-            )
+            recommended = config.RECOMMENDED_MODEL_BY_MODE.get(self.session.mode.value)
+            if recommended and router.fits_context(
+                recommended, self._router_state.input_tokens
+            ):
+                routed: str | None = recommended
+            else:
+                routed = router.resolve(
+                    self.session.mode.value,
+                    input_tokens=self._router_state.input_tokens,
+                )
             if routed and routed != self.session.model:
                 logger.info(
                     "Роутер: %s → %s (режим %s, ~%d токенов)",
