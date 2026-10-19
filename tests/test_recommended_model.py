@@ -30,21 +30,23 @@ def test_recommended_map_covers_all_modes() -> None:
         )
 
 
-def test_audit_recommended_is_kimi() -> None:
-    assert config.RECOMMENDED_MODEL_BY_MODE["audit"] == "moonshotai/kimi-k2.7-code"
+def test_audit_recommended_is_cheap_deepseek() -> None:
+    """Аудит по умолчанию — deepseek (дёшево); kimi — для сложного вручную."""
+    assert config.RECOMMENDED_MODEL_BY_MODE["audit"] == "deepseek/deepseek-v4-flash"
+    assert config.RECOMMENDED_MANUAL_BY_MODE["audit"] == "moonshotai/kimi-k2.7-code"
 
 
 def test_apply_on_mode_change_sets_recommended() -> None:
-    """ACT → AUDIT: модель становится kimi (рекомендация аудита)."""
-    s = _session(Mode.ACT, model="deepseek/deepseek-v4-flash")
+    """ACT → AUDIT: модель становится deepseek (дешёвая рекомендация)."""
+    s = _session(Mode.ACT, model="anthropic/claude-sonnet-5.5")
     s.mode = Mode.AUDIT
     _apply_recommended_model(s)
-    assert s.model == "moonshotai/kimi-k2.7-code"
+    assert s.model == "deepseek/deepseek-v4-flash"
 
 
 def test_apply_on_audit_to_act_returns_to_coding() -> None:
     """AUDIT → ACT: модель возвращается к coding-рекомендации."""
-    s = _session(Mode.AUDIT, model="moonshotai/kimi-k2.7-code")
+    s = _session(Mode.AUDIT, model="deepseek/deepseek-v4-flash")
     s.mode = Mode.ACT
     _apply_recommended_model(s)
     assert s.model == config.RECOMMENDED_MODEL_BY_MODE["act"]

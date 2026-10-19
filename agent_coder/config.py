@@ -113,10 +113,21 @@ class Config:
     # РЕКОМЕНДАЦИЯ, не ограничение: пользователь может выбрать любую из
     # CURATED_MODEL_IDS, роутер не перекрывает ручной выбор.
     # Порядок ключей = Mode.value.
+    #
+    # Аудит по умолчанию — deepseek-v4-flash (дёшево): реальный аудит
+    # модуля на kimi стоил 13.57₽ за 10 итераций (сессия a1b0a44b).
+    # Для сложного аудита — kimi вручную через /model (в карточке модели
+    # помечен как «рекомендуем для аудита»).
     RECOMMENDED_MODEL_BY_MODE: ClassVar[dict[str, str]] = {
         "act": "deepseek/deepseek-v4-flash",
         "plan": "deepseek/deepseek-v4-flash",
         "chat": "deepseek/deepseek-v4-flash",
+        "audit": "deepseek/deepseek-v4-flash",
+    }
+
+    # Модели, которые рекомендуется выбирать вручную для конкретного
+    # режима (пометка в UI-карточке, не авто-выбор). Пусто — нет пометок.
+    RECOMMENDED_MANUAL_BY_MODE: ClassVar[dict[str, str]] = {
         "audit": "moonshotai/kimi-k2.7-code",
     }
 
