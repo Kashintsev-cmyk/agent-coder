@@ -34,6 +34,69 @@ MIN_TOTAL = 10  # минимум сообщений для запуска сжа
 # Если старая часть — меньше этой доли истории, сжатие неэффективно.
 MIN_OLD_SHARE = 0.2
 
+# Retry при context-length (400 от провайдера на промпте суммаризатора):
+# дропаем старейшие API-раунды, как Claude Code truncateHeadForPTLRetry.
+# Assistant + его tool-результаты — атомарная группа, рвать нельзя
+# (tool_call без tool_result = 400). До 3 попыток.
+_PTL_MAX_RETRIES = 3
+_PTL_DROP_FRACTION = 0.2  # 20% раундов за retry (fallback Claude Code)
+
+_CONTEXT_LENGTH_MARKERS = (
+    "context length",
+    "context_length",
+    "maximum context",
+    "max context",
+    "too many tokens",
+    "prompt is too long",
+    "input is too long",
+    "exceeds the model",
+    "reduce the length",
+    "request too large",
+)
+
+
+def _is_context_length_error(exc: Exception) -> bool:
+    """400 «слишком длинный промпт»? Провайдеры не дают структурированный код."""
+    text = str(exc).lower()
+    return any(m in text for m in _CONTEXT_LENGTH_MARKERS)
+
+
+def _drop_oldest_api_round(
+    old: list[dict[str, Any]],
+) -> list[dict[str, Any]] | None:
+    """Дропнуть старейшие API-раунды (assistant + tool-результаты).
+
+    Группы атомарны: assistant с tool_calls + все его tool-результаты
+    уходят вместе (иначе провайдер вернёт 400 «tool_call без ответа»).
+    Возвращает новый список или None, если дропать нечего (<2 раундов
+    — последний не трогаем, он recent-контекст).
+    """
+    if len(old) <= 1:
+        return None
+    rounds: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] = []
+    for m in old:
+        if m.get("role") == "assistant" and current:
+            rounds.append(current)
+            current = [m]
+        else:
+            current.append(m)
+    if current:
+        rounds.append(current)
+    # Требуем >=2 assistant-циклов: иначе после дропа останется один
+    # «осиротевший» assistant(tool_calls)+tool без user-контекста задачи.
+    assistant_rounds = sum(
+        1 for r in rounds if any(m.get("role") == "assistant" for m in r)
+    )
+    if assistant_rounds < 2:
+        return None
+    drop_n = max(1, round(len(rounds) * _PTL_DROP_FRACTION))
+    if drop_n >= len(rounds):
+        return None
+    kept = rounds[drop_n:]
+    return [m for r in kept for m in r]
+
+
 # Аварийный режим: если total >> soft_limit, а old всё равно мал (огромный
 # recent-блок), обычная защита MIN_OLD_SHARE блокирует единственное спасение —
 # old будет копиться, пока не упрёмся. Сжимаем принудительно, но только если
@@ -406,46 +469,75 @@ async def compress(session, client) -> CompressionResult | None:
             prev_summary = content_to_text(m.get("content")).strip()
             break
 
-    transcript = format_for_summary(old)
+    # work_state — детерминированные факты, которые LLM не должна
+    # потерять/пересуммаризировать.
+    from agent_coder.agent.work_state import render_for_prompt
+
+    ws_block = render_for_prompt(getattr(session, "work_state", None))
+
+    def _build_user_content(old_msgs: list[dict[str, Any]]) -> tuple[str, str, str]:
+        """(system, user_content, transcript) из old_msgs."""
+        tr = format_for_summary(old_msgs)
+        if prev_summary:
+            uc = f"ПРЕДЫДУЩЕЕ РЕЗЮМЕ:\n{prev_summary}\n\nНОВЫЕ СОБЫТИЯ ДИАЛОГА:\n{tr}"
+            sys_msg = _SUMMARY_UPDATE_SYSTEM
+        else:
+            uc = tr
+            sys_msg = _SUMMARY_SYSTEM
+        if ws_block:
+            uc += f"\n\n[ИЗВЕСТНЫЕ ФАКТЫ (work_state)]:\n{ws_block}"
+        return sys_msg, uc, tr
+
+    # Архив — ПОЛНЫЙ old (до возможного retry-дропа). Даже если LLM-сжатие
+    # пришлось урезать, оригинал должен попасть в history_archive —
+    # иначе search_history не найдёт выброшенное.
+    archive_old = old
+
+    system, user_content, transcript = _build_user_content(old)
     if not transcript.strip() and not prev_summary:
         return None
 
-    # work_state — детерминированные факты, которые LLM не должна
-    # потерять/пересуммаризировать. Передаём как «известные факты»,
-    # чтобы narrative не противоречил state.
-    from agent_coder.agent.work_state import render_for_prompt
-
-    # getattr: тесты/моки могут не иметь поля; реальный Session — имеет.
-    ws_block = render_for_prompt(getattr(session, "work_state", None))
-
-    if prev_summary:
-        user_content = (
-            f"ПРЕДЫДУЩЕЕ РЕЗЮМЕ:\n{prev_summary}\n\n"
-            f"НОВЫЕ СОБЫТИЯ ДИАЛОГА:\n{transcript}"
-        )
-        if ws_block:
-            user_content += f"\n\n[ИЗВЕСТНЫЕ ФАКТЫ (work_state)]:\n{ws_block}"
-        system = _SUMMARY_UPDATE_SYSTEM
-    else:
-        user_content = transcript
-        if ws_block:
-            user_content += f"\n\n[ИЗВЕСТНЫЕ ФАКТЫ (work_state)]:\n{ws_block}"
-        system = _SUMMARY_SYSTEM
-
-    try:
-        resp = await client.chat(
-            messages=[
-                {"role": "system", "content": system},
-                {"role": "user", "content": user_content},
-            ],
-            model=config.SUMMARY_MODEL,
-            reasoning_effort="none",
-            temperature=0.0,
-        )
-    except Exception as e:
-        logger.warning("compress: LLM вызов не удался: %s", e)
-        _register_failure(session.id)
-        return None
+    ptl_retries = _PTL_MAX_RETRIES
+    while True:
+        try:
+            resp = await client.chat(
+                messages=[
+                    {"role": "system", "content": system},
+                    {"role": "user", "content": user_content},
+                ],
+                model=config.SUMMARY_MODEL,
+                reasoning_effort="none",
+                temperature=0.0,
+            )
+            break
+        except Exception as e:
+            if not _is_context_length_error(e):
+                logger.warning("compress: LLM вызов не удался: %s", e)
+                _register_failure(session.id)
+                return None
+            dropped = _drop_oldest_api_round(old)
+            if dropped is None:
+                logger.warning(
+                    "compress: context-length, дропать нечего (old=%d) — сдаюсь",
+                    len(old),
+                )
+                _register_failure(session.id)
+                return None
+            old = dropped
+            system, user_content, transcript = _build_user_content(old)
+            if not transcript.strip() and not prev_summary:
+                logger.warning("compress: context-length, transcript пуст — сдаюсь")
+                _register_failure(session.id)
+                return None
+            ptl_retries -= 1
+            if ptl_retries <= 0:
+                logger.warning("compress: context-length retry исчерпан — сдаюсь")
+                _register_failure(session.id)
+                return None
+            logger.warning(
+                "compress: context-length, дропнул старейшие раунды, retry (%d left)",
+                ptl_retries,
+            )
 
     text = (getattr(resp.message, "content", None) or "").strip()
     if not text:
@@ -474,7 +566,7 @@ async def compress(session, client) -> CompressionResult | None:
     try:
         from agent_coder.agent import history_archive
 
-        archived = history_archive.append_messages(session.id, old)
+        archived = history_archive.append_messages(session.id, archive_old)
         if archived:
             logger.info("compress: %d сообщений заархивировано", archived)
     except Exception as e:
