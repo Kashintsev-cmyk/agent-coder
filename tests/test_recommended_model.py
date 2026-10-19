@@ -119,11 +119,13 @@ def test_session_new_model_manual_kwarg() -> None:
 
 @pytest.mark.asyncio
 async def test_cli_audit_run_uses_recommended_not_group() -> None:
-    """CLI-путь: run() ставит recommended (deepseek), не группу (kimi).
+    """CLI-путь: run() ставит recommended (deepseek), не audit-модель (kimi).
 
-    Регресс сессии 95190cc2: /audit в CLI шёл через router.resolve →
-    group_for_mode("audit") → kimi (27.51₽ за 21 итерацию). A10
-    применялся только к Telegram (_apply_recommended_model).
+    Регресс сессии 95190cc2: /audit в CLI шёл напрямую через роутер
+    и брал первую модель legacy audit-группы — kimi (27.51₽ за
+    21 итерацию). A10 применялся только к Telegram
+    (_apply_recommended_model). После B1 recommended — часть
+    router.resolve, обе точки согласованы.
     """
     from agent_coder.agent.loop import AgentLoop, LoopEvents
     from agent_coder.llm.types import AssistantMessage, ChatResponse, Usage

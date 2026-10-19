@@ -40,7 +40,7 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 
 | ID | sev | what | fix | status | source |
 |---|---|---|---|---|---|
-| B1 | minor | Три источника моделей: `CURATED_MODEL_IDS` (UI), `CODING_MODEL_IDS`/`AUDIT_MODEL_IDS` (роутер), `MODEL_MAIN`/`DEFAULT_MODEL_ID`. Модель без «режима» доступна в UI, но не в группе роутера | Единый `MODEL_IDS` + `RECOMMENDED_MODEL_BY_MODE` как рекомендация (не ограничение); убрать `group_for_mode` из роутера; переписать `test_router.py` (24 теста) | open | session 2026-10-19 |
+| B1 | minor | Три источника моделей: `CURATED_MODEL_IDS` (UI), `CODING_MODEL_IDS`/`AUDIT_MODEL_IDS` (роутер), `MODEL_MAIN`/`DEFAULT_MODEL_ID`. Модель без «режима» доступна в UI, но не в группе роутера | Единый `MODEL_IDS`; `RECOMMENDED_MODEL_BY_MODE` — рекомендация (не ограничение); `resolve` = recommended-first; `group_for_mode`/`default_for_mode` удалены; `test_router.py` переписан (24 → 20 тестов) | closed (`6319d38`, 5 коммитов) | session 2026-10-19 |
 | B2 | minor | `session_index`: при OSError в `load()` не сбрасывается `_loaded` (старые данные после битого файла); `float(data.get("cost"))` пропускает NaN/Inf в сортировку `list()` | В ветке OSError: `_loaded=False` + `_sessions={}`; `math.isfinite` при парсинге cost | open | аудит 2026-10-19 |
 | B3 | minor | `compression._fail_streak`/`_fail_until` — глобальные dict без блокировки. Гонки при двух loop-процессах на одну сессию | Привязать cooldown к session (поле) или `threading.Lock` | open | аудит 2026-10-19 |
 | B4 | minor | `Usage.cost` — float для денег. Для текущих сумм (<300₽/сессия) ошибка <1 коп., при масштабировании накопится | Decimal + миграция JSON-сессий (меняет формат) | open | аудит 2026-10-19 |
