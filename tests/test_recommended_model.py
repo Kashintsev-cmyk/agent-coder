@@ -94,6 +94,29 @@ def test_models_keyboard_marks_recommended() -> None:
     )
 
 
+def test_session_new_model_manual_kwarg() -> None:
+    """Session.new(model_manual=True) — явный выбор не перекрывается роутером.
+
+    Регресс: CLI --model раньше не ставил model_manual, и router.resolve
+    подменял модель на RECOMMENDED_MODEL_BY_MODE (AGENTS.md, B1).
+    """
+    s = Session.new(
+        workspace="/tmp",
+        model="vendor/custom",
+        mode=Mode.ACT,
+        model_manual=True,
+    )
+    assert s.model == "vendor/custom"
+    assert s.model_manual is True
+
+    default = Session.new(
+        workspace="/tmp",
+        model=config.DEFAULT_MODEL_ID,
+        mode=Mode.ACT,
+    )
+    assert default.model_manual is False
+
+
 @pytest.mark.asyncio
 async def test_cli_audit_run_uses_recommended_not_group() -> None:
     """CLI-путь: run() ставит recommended (deepseek), не группу (kimi).

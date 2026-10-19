@@ -101,6 +101,7 @@ class Session:
         mode: Mode,
         title: str = "",
         web_search: bool = False,
+        model_manual: bool = False,
     ) -> Session:
         return cls(
             id=uuid.uuid4().hex[:8],
@@ -109,6 +110,7 @@ class Session:
             mode=mode,
             title=title,
             web_search=web_search,
+            model_manual=model_manual,
         )
 
     def save_media(self, data: bytes, ext: str = "bin") -> Path:

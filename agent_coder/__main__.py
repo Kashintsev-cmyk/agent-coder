@@ -22,7 +22,12 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(prog="agent-coder", description="CLI coding agent")
     p.add_argument("task", nargs="?", help="Задача. Если не указана — REPL")
     p.add_argument("--cwd", default=config.DEFAULT_WORKSPACE, help="Рабочая директория")
-    p.add_argument("--model", default=config.MODEL_MAIN, help="Модель RouterAI")
+    p.add_argument(
+        "--model",
+        default=None,
+        help="Модель RouterAI (по умолчанию — config.DEFAULT_MODEL_ID). "
+        "Явный --model ставит model_manual=True (роутер не перекрывает).",
+    )
     p.add_argument("--plan", action="store_true", help="Plan-режим")
     p.add_argument("--audit", action="store_true", help="Audit-режим: только чтение")
     p.add_argument("--yolo", action="store_true", help="Без подтверждений")
@@ -331,12 +336,22 @@ def main() -> int:
         if session is None:
             ui.print_error(f"Нет сессий для {workspace}. Создаю новую.")
             mode = Mode.AUDIT if args.audit else (Mode.PLAN if args.plan else Mode.ACT)
-            session = Session.new(workspace=workspace, model=args.model, mode=mode)
+            session = Session.new(
+                workspace=workspace,
+                model=args.model or config.DEFAULT_MODEL_ID,
+                model_manual=args.model is not None,
+                mode=mode,
+            )
         else:
             ui.print_info(f"Продолжаем сессию {session.id}: {session.title}")
     else:
         mode = Mode.AUDIT if args.audit else (Mode.PLAN if args.plan else Mode.ACT)
-        session = Session.new(workspace=workspace, model=args.model, mode=mode)
+        session = Session.new(
+            workspace=workspace,
+            model=args.model or config.DEFAULT_MODEL_ID,
+            model_manual=args.model is not None,
+            mode=mode,
+        )
 
     try:
         if args.task:
