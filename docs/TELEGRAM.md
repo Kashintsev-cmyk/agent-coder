@@ -45,6 +45,7 @@ systemd: `agent-coder-bot.service` (пользователь `botuser`).
 | `/model` | Выбрать модель (кнопки) |
 | `/reasoning` | Уровень reasoning (модели с support) |
 | `/mode plan\|act\|audit\|chat` | Сменить режим |
+| `/verify [model]` | Верифицировать findings аудита (дефолт glm-5.3, LLM) |
 | `/cost` | Стоимость и число запросов сессии |
 | `/balance` | Баланс RouterAI |
 | `/chat` | Быстрый переход в CHAT-режим |

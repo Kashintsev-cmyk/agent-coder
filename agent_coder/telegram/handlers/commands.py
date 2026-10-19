@@ -98,6 +98,7 @@ async def cmd_start(message: Message) -> None:
         "  /balance — баланс RouterAI\n"
         "  /server — диагностика сервера\n"
         "  /audit — аудит проекта\n"
+        "  /verify [model] — проверить findings аудита (glm-5.3, дешёво)\n"
         "  /history — история сессии\n"
         "  /delete — удалить сессию\n"
         "\n"

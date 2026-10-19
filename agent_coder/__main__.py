@@ -259,6 +259,7 @@ def _print_help() -> None:
         "  /yolo [on|off] — без подтверждений опасных операций\n"
         "\n"
         "Прочее:\n"
+        "  /verify [model] — проверить findings аудита (glm-5.3)\n"
         "  /history       — последние сообщения\n"
         "  /help          — справка\n"
         "  /exit          — выход"
