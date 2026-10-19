@@ -1,5 +1,5 @@
-"""Тесты ModelRouter: дефолты по режиму, приоритет ручного выбора,
-fallback-цепочки при 429/timeout."""
+"""Тесты ModelRouter (B1): единый MODEL_IDS, recommended-first,
+приоритет ручного выбора, fallback-цепочки при 429/timeout."""
 
 from __future__ import annotations
 
@@ -13,37 +13,62 @@ from agent_coder.llm.router import FALLBACK_ERRORS, RouterState, router
 
 @pytest.fixture
 def fresh_router():
-    """Роутер с актуальными группами из config (на случай env-переопределений)."""
+    """Синглтон-роутер (MODEL_IDS читается в __init__)."""
     return router
 
 
-# --- дефолты по режиму ---
+# --- deprecated group methods ---
 
 
-def test_default_for_act_is_first_coding(fresh_router):
-    assert fresh_router.default_for_mode("act") == config.CODING_MODEL_IDS[0]
+def test_group_for_mode_deprecated_warns(fresh_router):
+    with pytest.warns(DeprecationWarning):
+        fresh_router.group_for_mode("audit")
 
 
-def test_default_for_audit_is_first_audit(fresh_router):
-    assert fresh_router.default_for_mode("audit") == config.AUDIT_MODEL_IDS[0]
+def test_default_for_mode_deprecated_warns(fresh_router):
+    with pytest.warns(DeprecationWarning):
+        fresh_router.default_for_mode("act")
 
 
-def test_default_for_plan_and_chat_use_coding_group(fresh_router):
-    assert fresh_router.default_for_mode("plan") == config.CODING_MODEL_IDS[0]
-    assert fresh_router.default_for_mode("chat") == config.CODING_MODEL_IDS[0]
+def test_default_for_mode_returns_first_model_ids(fresh_router):
+    expected = config.MODEL_IDS[0]
+    with pytest.warns(DeprecationWarning):
+        got = fresh_router.default_for_mode("audit")
+    assert got == expected
+    with pytest.warns(DeprecationWarning):
+        got = fresh_router.default_for_mode("act")
+    assert got == expected
 
 
-# --- приоритет ручного выбора (вариант «б») ---
+# --- resolve: manual > recommended > MODEL_IDS ---
 
 
-def test_resolve_manual_overrides_router(fresh_router):
-    manual = config.CURATED_MODEL_IDS[-1]
+def test_resolve_manual_overrides_everything(fresh_router):
+    manual = config.MODEL_IDS[-1]
     assert fresh_router.resolve("audit", manual_model=manual) == manual
+    assert fresh_router.resolve("act", manual_model=manual) == manual
 
 
-def test_resolve_auto_uses_mode_default(fresh_router):
-    assert fresh_router.resolve("audit") == config.AUDIT_MODEL_IDS[0]
-    assert fresh_router.resolve("act") == config.CODING_MODEL_IDS[0]
+def test_resolve_uses_recommended_for_all_modes(fresh_router):
+    for mode in ("act", "plan", "chat", "audit"):
+        rec = config.RECOMMENDED_MODEL_BY_MODE[mode]
+        assert fresh_router.resolve(mode) == rec
+
+
+def test_resolve_falls_back_when_recommended_does_not_fit(monkeypatch, fresh_router):
+    rec = "vendor/recommended-does-not-fit"
+    monkeypatch.setitem(config.RECOMMENDED_MODEL_BY_MODE, "act", rec)
+    original = fresh_router.fits_context
+
+    def fake_fits(model_id, tokens=0):
+        if model_id == rec:
+            return False
+        return original(model_id, tokens)
+
+    monkeypatch.setattr(fresh_router, "fits_context", fake_fits)
+    chosen = fresh_router.resolve("act")
+    assert chosen != rec
+    assert chosen == config.MODEL_IDS[0]
 
 
 def test_resolve_router_disabled_returns_none(monkeypatch, fresh_router):
@@ -74,91 +99,40 @@ def test_fits_context_small_task_fits_r1(fresh_router):
 def test_fits_context_large_task_does_not_fit_r1(fresh_router):
     # 100k токенов > 64k * 0.8 = 51.2k → R1 не влезает.
     assert fresh_router.fits_context("deepseek/deepseek-r1", 100_000) is False
-    # Kimi K2.7 (262k) и GLM 5.3 (1048k) влезают.
     assert fresh_router.fits_context("moonshotai/kimi-k2.7-code", 100_000) is True
     assert fresh_router.fits_context("z-ai/glm-5.3", 100_000) is True
 
 
-def test_chain_100k_audit_respects_context(fresh_router):
-    """100k токенов: chain_for = выбранная + все влезающие модели группы."""
-    audit = config.AUDIT_MODEL_IDS
-    chain = fresh_router.chain_for(audit[0], "audit", 100_000)
-    assert chain[0] == audit[0]
-    for mid in audit[1:]:
-        if fresh_router.fits_context(mid, 100_000):
-            assert mid in chain
-        else:
-            assert mid not in chain
+# --- chain_for: MODEL_IDS order ---
 
 
-def test_next_on_error_100k_audit_moves_to_next_fitting(fresh_router):
-    """100k токенов в audit: next_on_error двигает по цепочке audit-группы."""
-    audit = config.AUDIT_MODEL_IDS
-    chain = fresh_router.chain_for(audit[0], "audit", 100_000)
-    assert len(chain) >= 2  # как минимум kimi и glm влезают в 100k
-    state = RouterState(input_tokens=100_000)
-    nxt = fresh_router.next_on_error(state, "audit", _rate_limit_error())
-    assert nxt == chain[1]
+def test_chain_input_zero_keeps_all_model_ids(fresh_router):
+    """input_tokens=0 → фильтр по контексту не применяется, все MODEL_IDS."""
+    first = config.MODEL_IDS[0]
+    chain = fresh_router.chain_for(first, "act", 0)
+    assert chain == list(config.MODEL_IDS)
 
 
-def test_resolve_100k_audit_picks_first_fitting(fresh_router):
-    """100k токенов в audit: resolve берёт первую влезающую модель группы."""
-    audit = config.AUDIT_MODEL_IDS
-    expected = next(mid for mid in audit if fresh_router.fits_context(mid, 100_000))
-    assert fresh_router.resolve("audit", input_tokens=100_000) == expected
+def test_chain_middle_model_first(fresh_router):
+    """Середина цепочки: выбранная первая, остальные — в порядке MODEL_IDS."""
+    mid = config.MODEL_IDS[3]
+    chain = fresh_router.chain_for(mid, "act", 0)
+    assert chain[0] == mid
+    assert chain[1:] == [m for m in config.MODEL_IDS if m != mid]
 
 
-def test_resolve_small_audit_task_uses_default(fresh_router):
-    """Небольшая задача в audit: resolve возвращает дефолт группы."""
-    assert (
-        fresh_router.resolve("audit", input_tokens=1_000) == config.AUDIT_MODEL_IDS[0]
-    )
-
-
-def test_resolve_picks_first_fitting_not_biggest_context(fresh_router):
-    """resolve берёт ПЕРВУЮ влезающую модель группы, а не самую большую по контексту.
-
-    Новый стек audit = [kimi(262k), glm(1048k), mimo]: маленькие задачи
-    решаются на kimi (первая), крупные — переключаются на glm (838k max).
-    """
-    audit = config.AUDIT_MODEL_IDS
-    # 1k влезает в первую модель — она и выбирается.
-    assert fresh_router.resolve("audit", input_tokens=1_000) == audit[0]
-    # 300k не влезает в kimi (209k max), но влезает в glm (838k max).
-    assert fresh_router.fits_context(audit[0], 300_000) is False
-    resolved_300k = fresh_router.resolve("audit", input_tokens=300_000)
-    assert resolved_300k != audit[0]
-    assert fresh_router.fits_context(resolved_300k, 300_000) is True
-
-
-def test_chain_without_metadata_keeps_model(fresh_router):
-    """Модель вне каталога: цепочка не режется (нет данных о контексте)."""
-    assert fresh_router.chain_for("vendor/unknown", "act", 10_000_000) == [
-        "vendor/unknown"
-    ]
-
-
-# --- fallback-цепочки ---
-
-
-def test_chain_coding_order(fresh_router):
-    coding = config.CODING_MODEL_IDS
-    assert fresh_router.chain_for(coding[0], "act") == list(coding)
-    # Середина цепочки: выбранная модель первая, остальные в исходном порядке.
-    assert fresh_router.chain_for(coding[1], "act") == [
-        coding[1],
-        coding[0],
-        coding[2],
-    ]
-
-
-def test_chain_audit_order(fresh_router):
-    audit = config.AUDIT_MODEL_IDS
-    assert fresh_router.chain_for(audit[0], "audit") == list(audit)
+def test_chain_100k_filters_rest_by_context(fresh_router):
+    first = config.MODEL_IDS[0]
+    chain = fresh_router.chain_for(first, "act", 100_000)
+    assert chain[0] == first
+    for mid in chain[1:]:
+        assert fresh_router.fits_context(mid, 100_000)
 
 
 def test_chain_unknown_model_single_element(fresh_router):
-    assert fresh_router.chain_for("vendor/unknown", "act") == ["vendor/unknown"]
+    assert fresh_router.chain_for("vendor/unknown", "act", 10_000_000) == [
+        "vendor/unknown"
+    ]
 
 
 # --- next_on_error ---
@@ -175,40 +149,41 @@ def _timeout_error() -> APITimeoutError:
     return APITimeoutError(request=request)
 
 
-def test_next_on_error_rate_limit_moves_down_chain(fresh_router):
-    coding = config.CODING_MODEL_IDS
-    state = RouterState(manual_model=coding[0])
+def test_next_on_error_manual_moves_down_chain(fresh_router):
+    m0 = config.MODEL_IDS[0]
+    state = RouterState(manual_model=m0)
     nxt = fresh_router.next_on_error(state, "act", _rate_limit_error())
-    assert nxt == coding[1]
-    assert state.current == coding[0]  # manual не мутирует
-    assert state.switches == [f"{coding[0]} → {coding[1]}"]
+    assert nxt == config.MODEL_IDS[1]
+    assert state.current == m0  # manual не мутирует
+    assert state.switches == [f"{m0} → {config.MODEL_IDS[1]}"]
 
     nxt2 = fresh_router.next_on_error(state, "act", _timeout_error())
-    assert nxt2 == coding[2]
-    assert state.switches[-1] == f"{coding[1]} → {coding[2]}"
+    assert nxt2 == config.MODEL_IDS[2]
 
 
 def test_next_on_error_chain_exhausted_returns_none(fresh_router):
-    coding = config.CODING_MODEL_IDS
-    state = RouterState(manual_model=coding[0])
-    # Пройти всю цепочку.
-    for _ in range(len(coding)):
-        fresh_router.next_on_error(state, "act", _rate_limit_error())
+    state = RouterState(manual_model=config.MODEL_IDS[0])
+    for _ in range(len(config.MODEL_IDS) - 1):
+        assert fresh_router.next_on_error(state, "act", _rate_limit_error()) is not None
     assert fresh_router.next_on_error(state, "act", _rate_limit_error()) is None
 
 
 def test_next_on_error_non_fallback_error_returns_none(fresh_router):
-    state = RouterState(manual_model=config.CODING_MODEL_IDS[0])
+    state = RouterState(manual_model=config.MODEL_IDS[0])
     assert fresh_router.next_on_error(state, "act", ValueError("boom")) is None
     assert state.chain_index == 0
     assert state.switches == []
 
 
-def test_next_on_error_auto_mode_uses_group_default(fresh_router):
-    audit = config.AUDIT_MODEL_IDS
+def test_next_on_error_auto_uses_resolve(fresh_router):
+    """manual=None → base = resolve(mode) = recommended → next = chain[1]."""
+    rec = config.RECOMMENDED_MODEL_BY_MODE["audit"]
     state = RouterState(manual_model=None)
+    assert fresh_router.resolve("audit") == rec  # база для fallback
     nxt = fresh_router.next_on_error(state, "audit", _rate_limit_error())
-    assert nxt == audit[1]
+    assert nxt is not None
+    chain = fresh_router.chain_for(rec, "audit", state.input_tokens)
+    assert nxt == chain[1]
 
 
 def test_next_on_error_no_base_model_returns_none(monkeypatch, fresh_router):

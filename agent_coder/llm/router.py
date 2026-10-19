@@ -3,16 +3,15 @@
 Логика (вариант «б» — ручной выбор приоритетен):
 
 - Если пользователь выбрал модель вручную (``/model`` или меню сессии) —
-  роутер её НЕ трогает. Работает только fallback-цепочка внутри группы
-  выбранной модели (при 429/timeout).
+  роутер её НЕ трогает. Работает только fallback-цепочка внутри
+  ``MODEL_IDS`` (при 429/timeout).
 - Если модель не выбрана вручную (``model_manual=False``) и включён
-  ``MODEL_ROUTER_ENABLED`` — при старте задачи подставляется первая
-  ВЛЕЗАЮЩАЯ по контексту модель группы по режиму: AUDIT →
-  ``AUDIT_MODEL_IDS``, иначе → ``CODING_MODEL_IDS``.
+  ``MODEL_ROUTER_ENABLED`` — при старте задачи подставляется
+  ``RECOMMENDED_MODEL_BY_MODE[mode]``, если она влезает по контексту;
+  иначе — первая ВЛЕЗАЮЩАЯ из единого ``MODEL_IDS`` (порядок = приоритет).
 
-Fallback-цепочки (порядок = приоритет):
-- coding: deepseek/deepseek-v4.1-flash → z-ai/glm-5.3-flash → qwen/qwen3-coder-next
-- audit:  z-ai/glm-5.3 → moonshotai/kimi-k2.7-code → deepseek/deepseek-r1
+Fallback-цепочка: ``MODEL_IDS`` (порядок = приоритет), выбранная модель
+всегда первая, остальные — в порядке ``MODEL_IDS`` с фильтром по контексту.
 
 Проверка размера контекста: перед выбором/переключением модели роутер
 сверяет оценку входных токенов с ``context_limit * CONTEXT_FILL_RATIO``.
@@ -28,6 +27,7 @@ Fallback срабатывает на 429 (RateLimitError) и timeout (APITimeout
 from __future__ import annotations
 
 import logging
+import warnings
 from dataclasses import dataclass, field
 
 from openai import APIConnectionError, APITimeoutError, RateLimitError
@@ -67,19 +67,38 @@ class ModelRouter:
     """Выбор модели по режиму + fallback-цепочка при 429/timeout."""
 
     def __init__(self) -> None:
+        self._models: list[str] = list(config.MODEL_IDS)
+        # deprecated: legacy-группы для group_for_mode (удалятся в шаге 5).
         self._coding: list[str] = list(config.CODING_MODEL_IDS)
         self._audit: list[str] = list(config.AUDIT_MODEL_IDS)
 
     # --- группы ---
 
     def group_for_mode(self, mode: str) -> list[str]:
-        """Группа моделей для режима ('audit' → audit-группа, иначе coding)."""
+        """DEPRECATED (B1): группы заменены единым ``MODEL_IDS``.
+
+        Возвращает legacy-группу для обратной совместимости. Будет удалён
+        в шаге 5 после миграции вызовов.
+        """
+        warnings.warn(
+            "group_for_mode deprecated с B1, используйте MODEL_IDS",
+            DeprecationWarning,
+            stacklevel=2,
+        )
         return self._audit if mode == "audit" else self._coding
 
     def default_for_mode(self, mode: str) -> str | None:
-        """Дефолтная модель режима (первая в группе) или None, если группа пуста."""
-        group = self.group_for_mode(mode)
-        return group[0] if group else None
+        """DEPRECATED (B1): дефолт = первая модель ``MODEL_IDS``.
+
+        Режимы больше не влияют на дефолт (это делает ``resolve`` через
+        ``RECOMMENDED_MODEL_BY_MODE``).
+        """
+        warnings.warn(
+            "default_for_mode deprecated с B1, используйте resolve",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return self._models[0] if self._models else None
 
     # --- контекст ---
 
@@ -134,21 +153,27 @@ class ModelRouter:
     ) -> str | None:
         """Какую модель использовать для задачи.
 
-        Приоритет: ручной выбор > первая ВЛЕЗАЮЩАЯ модель группы режима > None.
+        Приоритет: ручной выбор > recommended для режима (если влезает) >
+        первая влезающая из ``MODEL_IDS`` > первая ``MODEL_IDS``.
         Ручной выбор не переопределяется даже при превышении контекста
         (пользователь мог сознательно выбрать конкретную модель).
         """
         if manual_model:
             return manual_model
-        if config.MODEL_ROUTER_ENABLED:
-            group = self.group_for_mode(mode)
-            for mid in group:
-                if self.fits_context(mid, input_tokens):
-                    return mid
-            # Ни одна не влезает — возвращаем дефолт группы: лучше
-            # попробовать, чем не отвечать (провайдер скажет про переполнение).
-            return self.default_for_mode(mode)
-        return None
+        if not config.MODEL_ROUTER_ENABLED:
+            return None
+        # 1) recommendation при создании/смене режима — часть выбора
+        #    модели, поэтому живёт в ядре (AGENTS.md). Не влезает — пропускаем.
+        recommended = config.RECOMMENDED_MODEL_BY_MODE.get(mode)
+        if recommended and self.fits_context(recommended, input_tokens):
+            return recommended
+        # 2) первая влезающая из MODEL_IDS (порядок = приоритет).
+        for mid in self._models:
+            if self.fits_context(mid, input_tokens):
+                return mid
+        # 3) ни одна не влезает — лучше попробовать первую, чем не отвечать
+        #    (провайдер вернёт переполнение, fallback переключит).
+        return self._models[0] if self._models else None
 
     def chain_for(
         self,
@@ -156,17 +181,18 @@ class ModelRouter:
         mode: str,
         input_tokens: int = 0,
     ) -> list[str]:
-        """Fallback-цепочка для модели: её группа (порядок = приоритет).
+        """Fallback-цепочка для модели: ``MODEL_IDS`` (порядок = приоритет).
 
         Выбранная модель всегда первая (это текущая модель задачи), далее —
-        остальные модели её группы в исходном порядке, КРОМЕ тех, в чей
-        context_limit задача не влезает. Если модель вне групп — цепочка из
-        одного элемента.
+        остальные ``MODEL_IDS`` в исходном порядке, КРОМЕ тех, в чей
+        context_limit задача не влезает. Если модель вне ``MODEL_IDS`` —
+        цепочка из одного элемента.
         """
-        group = self._audit if model_id in self._audit else self._coding
-        if model_id not in group:
+        if model_id not in self._models:
             return [model_id]
-        rest = self.filter_by_context([m for m in group if m != model_id], input_tokens)
+        rest = self.filter_by_context(
+            [m for m in self._models if m != model_id], input_tokens
+        )
         return [model_id, *rest]
 
     # --- fallback при ошибке ---
@@ -186,8 +212,8 @@ class ModelRouter:
         if not isinstance(error, FALLBACK_ERRORS):
             return None
         base = state.manual_model
-        if base is None and config.MODEL_ROUTER_ENABLED:
-            base = self.default_for_mode(mode)
+        if base is None:
+            base = self.resolve(mode, input_tokens=state.input_tokens)
         if base is None:
             return None
         chain = self.chain_for(base, mode, state.input_tokens)
