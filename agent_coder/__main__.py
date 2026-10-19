@@ -194,6 +194,39 @@ async def _handle_slash(line: str, session: Session) -> bool:
                 ui.print_success("⚡ YOLO включён: опасные операции без подтверждения.")
             else:
                 ui.print_success("🔒 YOLO выключен: подтверждения включены.")
+    elif cmd == "verify":
+        from agent_coder.agent.verify import run_verify
+        from agent_coder.llm.client import LLMClient
+        from agent_coder.tools import build_registry
+
+        if not session.work_state or not any(session.work_state.values()):
+            ui.print_error("work_state пуст — сначала /audit или update_work_state")
+        else:
+            arg_model = arg.strip() if arg else ""
+            if arg_model and arg_model not in config.MODEL_IDS:
+                ui.print_error(f"Модель {arg_model} не в MODEL_IDS")
+            else:
+                used = arg_model or config.VERIFY_MODEL_ID
+                ui.print_info(f"Верифицирую work_state на {used}...")
+                client = LLMClient()
+                await client.start()
+                try:
+                    result = await run_verify(
+                        client=client,
+                        session=session,
+                        model=used,
+                        registry=build_registry(),
+                    )
+                finally:
+                    await client.close()
+                if result.error:
+                    ui.print_error(result.error)
+                else:
+                    ui.print_success(
+                        f"Готово: {result.iterations} итераций, {result.cost:.2f}₽"
+                    )
+                    for k, v in (result.counts or {}).items():
+                        ui.print_info(f"  {k}: {v}")
     elif cmd == "clear":
         session.messages = []
         ui.print_success("История очищена (стоимость сохранена).")

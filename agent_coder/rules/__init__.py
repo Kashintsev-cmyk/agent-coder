@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 
 STANDARD_PATH = Path(__file__).parent / "project_standard.md"
 AUDIT_STANDARD_PATH = Path(__file__).parent / "audit_standard.md"
+VERIFY_STANDARD_PATH = Path(__file__).parent / "verify_standard.md"
 
 
 @lru_cache(maxsize=1)
@@ -33,4 +34,14 @@ def load_audit_standard() -> str:
         return AUDIT_STANDARD_PATH.read_text(encoding="utf-8")
     except OSError as e:
         logger.warning("audit_standard.md: не удалось прочитать: %s", e)
+        return ""
+
+
+@lru_cache(maxsize=1)
+def load_verify_standard() -> str:
+    """Вернуть текст встроенного verify-промта (B9) или '' при ошибке."""
+    try:
+        return VERIFY_STANDARD_PATH.read_text(encoding="utf-8")
+    except OSError as e:
+        logger.warning("verify_standard.md: не удалось прочитать: %s", e)
         return ""

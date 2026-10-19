@@ -139,6 +139,14 @@ class Config:
         MODEL_IDS, MODEL_MODE_FIT, DEFAULT_MODEL_ID
     )
 
+    # /verify: модель-верификатор по умолчанию. Не наследует
+    # session.model/model_manual: цель verify — ДЕШЁВЫЙ фильтр ложных
+    # findings. Для дорогой проверки — /verify <model_id> явно.
+    # glm-5.3: 152₽/1M, 1048k контекст, есть в FIT["audit"].
+    VERIFY_MODEL_ID: str = os.getenv("VERIFY_MODEL_ID", "z-ai/glm-5.3")
+    # Отдельный бюджет на verify, не съедает MAX_COST_PER_TASK.
+    MAX_COST_VERIFY: float = _env_float("MAX_COST_VERIFY", "50.0")
+
     # Model catalog (кэш метаданных моделей из RouterAI)
     # TTL дискового кэша каталога моделей, часы (минимум 1)
     MODELS_CACHE_TTL: int = _env_int("MODELS_CACHE_TTL", "24")
@@ -268,6 +276,17 @@ class Config:
                         f"RECOMMENDED_MODEL_BY_MODE[{mode_name!r}]={mid!r} "
                         f"не входит в MODEL_IDS"
                     )
+            # VERIFY_MODEL_ID ∈ MODEL_IDS и подходит для audit.
+            if cls.VERIFY_MODEL_ID not in seen:
+                errors.append(
+                    f"VERIFY_MODEL_ID={cls.VERIFY_MODEL_ID!r} не входит в MODEL_IDS"
+                )
+            elif "audit" not in cls.MODEL_MODE_FIT.get(cls.VERIFY_MODEL_ID, []):
+                errors.append(
+                    f"VERIFY_MODEL_ID={cls.VERIFY_MODEL_ID!r} не подходит "
+                    f"для audit (нет в MODEL_MODE_FIT[VERIFY_MODEL_ID])"
+                )
+
             # MODEL_MODE_FIT: ключи ∈ MODEL_IDS, режимы — известные.
             known_modes = {"act", "plan", "chat", "audit"}
             for mid, modes in cls.MODEL_MODE_FIT.items():

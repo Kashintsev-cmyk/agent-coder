@@ -84,6 +84,12 @@ class Session:
     # видела «уже читал X» и не перечитывала целиком (сессия 6cc7d5bd:
     # 92 read_file, 37 уникальных, 55 повторов после сжатий = деньги).
     read_paths: dict[str, str] = field(default_factory=dict)
+    # Результаты /verify (B9): история прогонов, append. Каждый элемент:
+    # {"text": str, "status": "confirmed|rejected|uncertain|unparsed",
+    #  "evidence": str, "reason": str, "model": str, "cost": float,
+    #  "ts": float, "run_id": str}. Не переживает compress в messages
+    # (это отдельное поле), но переживает compress истории.
+    verify_results: list[dict[str, Any]] = field(default_factory=list)
     # Статистика сжатия истории (B5.1: только собираем)
     last_input_tokens: int = 0  # usage.input_tokens последнего запроса
     summary_count: int = 0  # сколько раз сжимали историю
@@ -264,6 +270,8 @@ class Session:
             data["work_state"] = {}
         if "read_paths" not in data:
             data["read_paths"] = {}
+        if "verify_results" not in data:
+            data["verify_results"] = []
 
         # Разовая чистка: если в истории есть DSML-мусор (старые версии
         # кода не фильтровали) — убираем при загрузке.
