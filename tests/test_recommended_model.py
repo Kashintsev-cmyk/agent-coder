@@ -33,9 +33,13 @@ def test_recommended_map_covers_all_modes() -> None:
 
 
 def test_audit_recommended_is_cheap_deepseek() -> None:
-    """Аудит по умолчанию — deepseek (дёшево); kimi — для сложного вручную."""
+    """Аудит по умолчанию — deepseek (дёшево), т.к. он первый в MODEL_IDS
+    с "audit" в MODEL_MODE_FIT.
+    """
     assert config.RECOMMENDED_MODEL_BY_MODE["audit"] == "deepseek/deepseek-v4-flash"
-    assert config.RECOMMENDED_MANUAL_BY_MODE["audit"] == "moonshotai/kimi-k2.7-code"
+    # kimi остаётся в FIT["audit"] — виден в UI как 🎯 audit.
+    assert "moonshotai/kimi-k2.7-code" in config.MODEL_MODE_FIT
+    assert "audit" in config.MODEL_MODE_FIT["moonshotai/kimi-k2.7-code"]
 
 
 def test_apply_on_mode_change_sets_recommended() -> None:
@@ -72,8 +76,8 @@ def test_new_session_uses_recommended_for_mode() -> None:
         assert s.model == config.RECOMMENDED_MODEL_BY_MODE[mode.value]
 
 
-def test_models_keyboard_marks_recommended() -> None:
-    """models_keyboard: ⭐ на RECOMMENDED_MODEL_BY_MODE, 🔧 на RECOMMENDED_MANUAL.
+def test_models_keyboard_marks_fit() -> None:
+    """models_keyboard: 🎯 с режимами из MODEL_MODE_FIT.
 
     Модели, доступные в UI, совпадают с MODEL_IDS (catalog.all);
     пометки — из config (единое ядро, AGENTS.md).
@@ -86,12 +90,21 @@ def test_models_keyboard_marks_recommended() -> None:
         for row in kb.inline_keyboard
         if row and row[0].callback_data.startswith("info:")
     ]
-    assert any("⭐ act/plan/chat/audit" in t for t in texts), (
-        "нет пометки ⭐ с mode-кодами (RECOMMENDED_MODEL_BY_MODE)"
+    assert any("🎯 act/plan/chat/audit" in t for t in texts), (
+        "нет пометки 🎯 act/plan/chat/audit (deepseek-v4-flash)"
     )
-    assert any("🔧 audit" in t for t in texts), (
-        "нет пометки 🔧 audit (RECOMMENDED_MANUAL_BY_MODE)"
+    assert any("🎯 audit" in t for t in texts), (
+        "нет пометки 🎯 audit (kimi, glm, r1, ...)"
     )
+
+
+def test_model_mode_fit_valid() -> None:
+    """MODEL_MODE_FIT: все модели ∈ MODEL_IDS, режимы — известные."""
+    known = {"act", "plan", "chat", "audit"}
+    for mid, modes in config.MODEL_MODE_FIT.items():
+        assert mid in config.MODEL_IDS, f"{mid!r} не в MODEL_IDS"
+        for m in modes:
+            assert m in known, f"{mid!r}: неизвестный режим {m!r}"
 
 
 def test_session_new_model_manual_kwarg() -> None:

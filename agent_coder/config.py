@@ -35,6 +35,29 @@ def _env_float(name: str, default: str) -> float:
         raise ValueError(f"{name}={raw!r} должен быть числом (env {name})") from exc
 
 
+def _recommended_from_fit(
+    model_ids: list[str],
+    fit: dict[str, list[str]],
+    default: str,
+) -> dict[str, str]:
+    """Вывести RECOMMENDED_MODEL_BY_MODE из MODEL_IDS + MODEL_MODE_FIT.
+
+    Первая в MODEL_IDS (порядок = приоритет), для которой mode ∈ FIT.
+    Fallback — ``default`` (DEFAULT_MODEL_ID).
+
+    Module-level, а не comprehension в теле класса: в class-body
+    генератор не видит class-переменные (Python scoping) —
+    NameError: name 'MODEL_IDS' is not defined.
+    """
+    return {
+        mode: next(
+            (mid for mid in model_ids if mode in fit.get(mid, [])),
+            default,
+        )
+        for mode in ("act", "plan", "chat", "audit")
+    }
+
+
 class Config:
     BASE_DIR: Path = BASE_DIR
 
@@ -88,28 +111,33 @@ class Config:
     # Модель по умолчанию (должна входить в MODEL_IDS)
     DEFAULT_MODEL_ID: str = os.getenv("DEFAULT_MODEL_ID", "deepseek/deepseek-v4-flash")
 
-    # Рекомендованная модель по режиму: ставится при создании сессии и при
-    # смене режима (если пользователь не выбрал модель вручную). Это
-    # РЕКОМЕНДАЦИЯ, не ограничение: пользователь может выбрать любую из
-    # MODEL_IDS, роутер не перекрывает ручной выбор.
-    # Порядок ключей = Mode.value.
-    #
-    # Аудит по умолчанию — deepseek-v4-flash (дёшево): реальный аудит
-    # модуля на kimi стоил 13.57₽ за 10 итераций (сессия a1b0a44b).
-    # Для сложного аудита — kimi вручную через /model (в карточке модели
-    # помечен как «рекомендуем для аудита»).
-    RECOMMENDED_MODEL_BY_MODE: ClassVar[dict[str, str]] = {
-        "act": "deepseek/deepseek-v4-flash",
-        "plan": "deepseek/deepseek-v4-flash",
-        "chat": "deepseek/deepseek-v4-flash",
-        "audit": "deepseek/deepseek-v4-flash",
+    # B1: соответствие «модель → режимы, для которых подходит».
+    # Один источник истины для UI-пометок 🎯 и для
+    # RECOMMENDED_MODEL_BY_MODE (ниже выводится автоматически).
+    # Пустой список = «универсальная, режим не указан» (разрешено,
+    # не блокирует добавление новых моделей).
+    # Порядок MODEL_IDS = приоритет авто-выбора (не порядок этого dict).
+    MODEL_MODE_FIT: ClassVar[dict[str, list[str]]] = {
+        "deepseek/deepseek-v4-flash": ["act", "plan", "chat", "audit"],
+        "deepseek/deepseek-v4.1-flash": ["act", "plan", "chat"],
+        "qwen/qwen3-coder-next": ["act", "plan", "chat"],
+        "moonshotai/kimi-k2.7-code": ["audit"],
+        "z-ai/glm-5.3": ["audit", "act"],
+        "xiaomi/mimo-v2.6-flash": ["act", "plan"],
+        "deepseek/deepseek-r1": ["audit"],
+        "openai/gpt-6.1-sol": ["act", "audit"],
+        "anthropic/claude-sonnet-5.5": ["act", "audit"],
+        "x-ai/grok-4.20": ["act", "chat"],
     }
 
-    # Модели, которые рекомендуется выбирать вручную для конкретного
-    # режима (пометка в UI-карточке, не авто-выбор). Пусто — нет пометок.
-    RECOMMENDED_MANUAL_BY_MODE: ClassVar[dict[str, str]] = {
-        "audit": "moonshotai/kimi-k2.7-code",
-    }
+    # Рекомендованная модель по режиму: ПЕРВАЯ в MODEL_IDS, для которой
+    # mode ∈ MODEL_MODE_FIT[mid]. Выводится, а не задаётся руками — чтобы
+    # UI-пометки 🎯 и авто-выбор (router.resolve) не разъезжались.
+    # Fallback — DEFAULT_MODEL_ID, если ни одна модель не подошла (это
+    # поймает validate() ниже, но код не упадёт на импорте).
+    RECOMMENDED_MODEL_BY_MODE: ClassVar[dict[str, str]] = _recommended_from_fit(
+        MODEL_IDS, MODEL_MODE_FIT, DEFAULT_MODEL_ID
+    )
 
     # Model catalog (кэш метаданных моделей из RouterAI)
     # TTL дискового кэша каталога моделей, часы (минимум 1)
@@ -240,11 +268,18 @@ class Config:
                         f"RECOMMENDED_MODEL_BY_MODE[{mode_name!r}]={mid!r} "
                         f"не входит в MODEL_IDS"
                     )
-            for mode_name, mid in cls.RECOMMENDED_MANUAL_BY_MODE.items():
+            # MODEL_MODE_FIT: ключи ∈ MODEL_IDS, режимы — известные.
+            known_modes = {"act", "plan", "chat", "audit"}
+            for mid, modes in cls.MODEL_MODE_FIT.items():
                 if mid not in seen:
                     errors.append(
-                        f"RECOMMENDED_MANUAL_BY_MODE[{mode_name!r}]={mid!r} "
-                        f"не входит в MODEL_IDS"
+                        f"MODEL_MODE_FIT: модель {mid!r} не входит в MODEL_IDS"
+                    )
+                unknown_modes = [m for m in modes if m not in known_modes]
+                if unknown_modes:
+                    errors.append(
+                        f"MODEL_MODE_FIT[{mid!r}]: неизвестные режимы "
+                        + ", ".join(repr(m) for m in unknown_modes)
                     )
 
         # Доля контекста под входные токены: разумные границы.

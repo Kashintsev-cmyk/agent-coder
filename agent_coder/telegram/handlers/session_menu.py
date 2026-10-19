@@ -72,12 +72,12 @@ async def cb_model_info(query: CallbackQuery) -> None:
     ]
     if m.tag:
         lines.append(f"🏷 {html_escape(m.tag)}")
-    # Рекомендация «для сложного X» (ручной выбор, не авто-выбор).
+    # B1: режимы, для которых модель подходит (MODEL_MODE_FIT).
     from agent_coder.config import config as _cfg
 
-    for _mode, _mid in _cfg.RECOMMENDED_MANUAL_BY_MODE.items():
-        if _mid == model_id:
-            lines.append(f"⭐ Рекомендуем для сложного {_mode} (выбрать вручную)")
+    _fit_modes = _cfg.MODEL_MODE_FIT.get(model_id, [])
+    if _fit_modes:
+        lines.append(f"🎯 Подходит для: {", ".join(_fit_modes)}")
     if is_current:
         lines.append("")
         lines.append("✅ <b>Это текущая модель</b>")
