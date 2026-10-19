@@ -112,9 +112,22 @@ def gh_private_keyboard(name: str) -> InlineKeyboardMarkup:
 
 
 def models_keyboard(current_model: str) -> InlineKeyboardMarkup:
-    """Список кураторских моделей для выбора."""
+    """Список моделей (``MODEL_IDS``) с пометками recommended.
+
+    ⭐ — авто-выбор для режима (``RECOMMENDED_MODEL_BY_MODE``);
+    🔧 — ручная рекомендация для сложного режима (``RECOMMENDED_MANUAL_BY_MODE``).
+    """
+    from agent_coder.config import config
     from agent_coder.model_catalog import catalog
     from agent_coder.models import feature_badges
+
+    # mode-коды, сгруппированные по модели: id → [act, plan, ...].
+    auto_modes: dict[str, list[str]] = {}
+    for _mode, _mid in config.RECOMMENDED_MODEL_BY_MODE.items():
+        auto_modes.setdefault(_mid, []).append(_mode)
+    manual_modes: dict[str, list[str]] = {}
+    for _mode, _mid in config.RECOMMENDED_MANUAL_BY_MODE.items():
+        manual_modes.setdefault(_mid, []).append(_mode)
 
     rows = []
     for m in catalog.all():
@@ -123,6 +136,10 @@ def models_keyboard(current_model: str) -> InlineKeyboardMarkup:
         text = f"{mark} {m.name} · {m.input_price:.1f}/{m.output_price:.0f}₽ · {m.context // 1000}k"
         if badges:
             text += f" · {badges}"
+        if m.id in auto_modes:
+            text += f" · ⭐ {'/'.join(auto_modes[m.id])}"
+        if m.id in manual_modes:
+            text += f" · 🔧 {'/'.join(manual_modes[m.id])}"
         rows.append([InlineKeyboardButton(text=text, callback_data=f"info:{m.id}")])
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="session_back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

@@ -72,6 +72,28 @@ def test_new_session_uses_recommended_for_mode() -> None:
         assert s.model == config.RECOMMENDED_MODEL_BY_MODE[mode.value]
 
 
+def test_models_keyboard_marks_recommended() -> None:
+    """models_keyboard: ⭐ на RECOMMENDED_MODEL_BY_MODE, 🔧 на RECOMMENDED_MANUAL.
+
+    Модели, доступные в UI, совпадают с MODEL_IDS (catalog.all);
+    пометки — из config (единое ядро, AGENTS.md).
+    """
+    from agent_coder.telegram.keyboards import models_keyboard
+
+    kb = models_keyboard(current_model="__none__")
+    texts = [
+        row[0].text
+        for row in kb.inline_keyboard
+        if row and row[0].callback_data.startswith("info:")
+    ]
+    assert any("⭐ act/plan/chat/audit" in t for t in texts), (
+        "нет пометки ⭐ с mode-кодами (RECOMMENDED_MODEL_BY_MODE)"
+    )
+    assert any("🔧 audit" in t for t in texts), (
+        "нет пометки 🔧 audit (RECOMMENDED_MANUAL_BY_MODE)"
+    )
+
+
 @pytest.mark.asyncio
 async def test_cli_audit_run_uses_recommended_not_group() -> None:
     """CLI-путь: run() ставит recommended (deepseek), не группу (kimi).
