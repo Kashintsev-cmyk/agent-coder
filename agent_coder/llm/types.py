@@ -79,7 +79,6 @@ class ToolCall:
 class AssistantMessage:
     content: str | None
     tool_calls: list[ToolCall] = field(default_factory=list)
-    reasoning: str | None = None
 
 
 @dataclass

@@ -184,12 +184,9 @@ class LLMClient:
                 args = {"_raw": tc.function.arguments, "_error": str(e)}
             tool_calls.append(ToolCall(id=tc.id, name=tc.function.name, arguments=args))
 
-        reasoning = getattr(msg, "reasoning", None) or None
-
         assistant = AssistantMessage(
             content=strip_dsml(msg.content or ""),
             tool_calls=tool_calls,
-            reasoning=reasoning,
         )
         return ChatResponse(message=assistant, usage=usage, raw=response)
 
