@@ -49,8 +49,9 @@ class Config:
     MODEL_MAIN: str = os.getenv("MODEL_MAIN", "deepseek/deepseek-v4-flash")
     # Fallback для RECOMMENDED_MODEL_BY_MODE (см. telegram/handlers/project_utils.py).
 
-    # Список curated-моделей для меню выбора (через запятую). Порядок
-    # сохраняется в UI. Метаданные моделей — в `agent_coder.models._FALLBACK_CATALOG`.
+    # Единый список моделей (B1): UI, роутер, дефолты.
+    # Порядок = приоритет авто-выбора. Метаданные — в
+    # `agent_coder.models._FALLBACK_CATALOG`.
     _curated_raw: str = os.getenv("CURATED_MODEL_IDS", "")
     CURATED_MODEL_IDS: ClassVar[list[str]] = [
         mid.strip() for mid in _curated_raw.split(",") if mid.strip()
@@ -71,32 +72,6 @@ class Config:
     # Порядок = приоритет авто-выбора (resolve берёт первую влезающую).
     # CURATED_MODEL_IDS оставлен как алиас на переходный период.
     MODEL_IDS: ClassVar[list[str]] = CURATED_MODEL_IDS
-
-    # Группа coding: дефолт для ACT/PLAN/CHAT + fallback-цепочка при
-    # 429/timeout (порядок = приоритет). Все id должны входить в
-    # CURATED_MODEL_IDS.
-    _coding_raw: str = os.getenv("CODING_MODEL_IDS", "")
-    CODING_MODEL_IDS: ClassVar[list[str]] = [
-        mid.strip() for mid in _coding_raw.split(",") if mid.strip()
-    ] or [
-        "deepseek/deepseek-v4-flash",
-        "deepseek/deepseek-v4.1-flash",
-        "qwen/qwen3-coder-next",
-    ]
-
-    # Группа audit: дефолт для режима AUDIT + fallback-цепочка (порядок =
-    # приоритет). resolve берёт ПЕРВУЮ влезающую модель группы. Порядок —
-    # «сильнейшая для аудита первой» (270901b), не по размеру контекста:
-    # kimi (262k) перед glm (1048k). Для крупных задач router пропускает
-    # kimi и берёт glm (см. llm/router.py: resolve / fits_context).
-    _audit_raw: str = os.getenv("AUDIT_MODEL_IDS", "")
-    AUDIT_MODEL_IDS: ClassVar[list[str]] = [
-        mid.strip() for mid in _audit_raw.split(",") if mid.strip()
-    ] or [
-        "moonshotai/kimi-k2.7-code",
-        "z-ai/glm-5.3",
-        "xiaomi/mimo-v2.6-flash",
-    ]
 
     # Доля context_limit модели, которую разрешено занимать входным токенам.
     # Если задача не влезает — модель пропускается (fallback берёт следующую).
@@ -257,31 +232,6 @@ class Config:
                     f"MODEL_IDS={cls.MODEL_IDS!r}"
                 )
 
-            # Группы coding/audit: непустые, без дублей, подмножества curated.
-            for group_name, group_ids in (
-                ("CODING_MODEL_IDS", cls.CODING_MODEL_IDS),
-                ("AUDIT_MODEL_IDS", cls.AUDIT_MODEL_IDS),
-            ):
-                if not group_ids:
-                    errors.append(f"{group_name} пуст — задайте список через .env")
-                    continue
-                g_seen: set[str] = set()
-                g_dupes: list[str] = []
-                for mid in group_ids:
-                    if mid in g_seen and mid not in g_dupes:
-                        g_dupes.append(mid)
-                    g_seen.add(mid)
-                if g_dupes:
-                    errors.append(
-                        f"{group_name} содержит дубли: "
-                        + ", ".join(repr(d) for d in g_dupes)
-                    )
-                unknown = [mid for mid in group_ids if mid not in seen]
-                if unknown:
-                    errors.append(
-                        f"{group_name} содержит модели вне MODEL_IDS: "
-                        + ", ".join(repr(u) for u in unknown)
-                    )
             # Recommended-модели должны входить в CURATED (иначе дефолт
             # режима поставит модель, которой нет в UI/каталоге).
             for mode_name, mid in cls.RECOMMENDED_MODEL_BY_MODE.items():

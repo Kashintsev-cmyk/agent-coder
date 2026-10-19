@@ -27,7 +27,6 @@ Fallback срабатывает на 429 (RateLimitError) и timeout (APITimeout
 from __future__ import annotations
 
 import logging
-import warnings
 from dataclasses import dataclass, field
 
 from openai import APIConnectionError, APITimeoutError, RateLimitError
@@ -68,37 +67,6 @@ class ModelRouter:
 
     def __init__(self) -> None:
         self._models: list[str] = list(config.MODEL_IDS)
-        # deprecated: legacy-группы для group_for_mode (удалятся в шаге 5).
-        self._coding: list[str] = list(config.CODING_MODEL_IDS)
-        self._audit: list[str] = list(config.AUDIT_MODEL_IDS)
-
-    # --- группы ---
-
-    def group_for_mode(self, mode: str) -> list[str]:
-        """DEPRECATED (B1): группы заменены единым ``MODEL_IDS``.
-
-        Возвращает legacy-группу для обратной совместимости. Будет удалён
-        в шаге 5 после миграции вызовов.
-        """
-        warnings.warn(
-            "group_for_mode deprecated с B1, используйте MODEL_IDS",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._audit if mode == "audit" else self._coding
-
-    def default_for_mode(self, mode: str) -> str | None:
-        """DEPRECATED (B1): дефолт = первая модель ``MODEL_IDS``.
-
-        Режимы больше не влияют на дефолт (это делает ``resolve`` через
-        ``RECOMMENDED_MODEL_BY_MODE``).
-        """
-        warnings.warn(
-            "default_for_mode deprecated с B1, используйте resolve",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        return self._models[0] if self._models else None
 
     # --- контекст ---
 

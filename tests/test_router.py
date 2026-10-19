@@ -17,29 +17,6 @@ def fresh_router():
     return router
 
 
-# --- deprecated group methods ---
-
-
-def test_group_for_mode_deprecated_warns(fresh_router):
-    with pytest.warns(DeprecationWarning):
-        fresh_router.group_for_mode("audit")
-
-
-def test_default_for_mode_deprecated_warns(fresh_router):
-    with pytest.warns(DeprecationWarning):
-        fresh_router.default_for_mode("act")
-
-
-def test_default_for_mode_returns_first_model_ids(fresh_router):
-    expected = config.MODEL_IDS[0]
-    with pytest.warns(DeprecationWarning):
-        got = fresh_router.default_for_mode("audit")
-    assert got == expected
-    with pytest.warns(DeprecationWarning):
-        got = fresh_router.default_for_mode("act")
-    assert got == expected
-
-
 # --- resolve: manual > recommended > MODEL_IDS ---
 
 
