@@ -51,8 +51,6 @@ HISTORY_SNIPPET = 200
 LIST_TOP = 10
 
 _ERROR_RE = re.compile(r"error|Error|FAIL|Traceback|Warning", re.IGNORECASE)
-# определения/импорты в read_file-выводе (после отсечения "NNNNN│ ")
-_DEF_RE = re.compile(r"^(def |class |import |from )")
 
 
 def _cap(text: str, limit: int) -> str:
@@ -93,12 +91,6 @@ def _assemble(lines: list[str], keep_idx: set[int], limit: int) -> str:
     if prev < len(lines) - 1:
         parts.append(f"…[{len(lines) - prev - 1} строк скрыто]…")
     return _cap("\n".join(parts), limit)
-
-
-def _strip_numbered(line: str) -> str:
-    """'  42│ def foo()' -> 'def foo()' (read_file нумерует строки)."""
-    idx = line.find("│ ")
-    return line[idx + 2 :] if idx >= 0 else line
 
 
 # ---------- formatters ----------
