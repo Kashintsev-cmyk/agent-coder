@@ -59,9 +59,15 @@ def test_no_rules_backward_compat(
     template: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    """Без AGENTS.md и builtin: PLAN/ACT = template + _WORK_STATE_RULE, CHAT — как был."""
+    from agent_coder.agent.prompts import _WORK_STATE_RULE
+
     monkeypatch.setattr(workspace_rules, "append_builtin_standard", lambda p: p)
     ws = str(tmp_path)
-    assert system_prompt(mode, ws) == template.format(workspace=ws)
+    expected = template.format(workspace=ws)
+    if mode != Mode.CHAT:
+        expected = expected + "\n\n" + _WORK_STATE_RULE
+    assert system_prompt(mode, ws) == expected
 
 
 def test_builtin_standard_present_when_no_agents_md(tmp_path: Path) -> None:
@@ -90,12 +96,15 @@ def test_truncated_through_prompt(tmp_path: Path) -> None:
     assert SECTION_FOOTER.strip() in out
     assert "a" * MAX_AGENTS_MD_BYTES in out
     assert "a" * (MAX_AGENTS_MD_BYTES + 1) not in out
+    from agent_coder.agent.prompts import _WORK_STATE_RULE
+
     upper = (
         len(base.encode("utf-8"))
         + len(SECTION_HEADER)
         + MAX_AGENTS_MD_BYTES
         + len(TRUNCATION_MARKER)
         + len(SECTION_FOOTER)
+        + len(("\n\n" + _WORK_STATE_RULE).encode("utf-8"))
     )
     assert len(out.encode("utf-8")) <= upper
 
@@ -114,8 +123,11 @@ def test_audit_not_touched(tmp_path: Path) -> None:
     _write(tmp_path, "SECRET_RULE_XYZ")
     ws = str(tmp_path)
     from agent_coder.agent.audit_prompt import build_audit_prompt
+    from agent_coder.agent.prompts import _WORK_STATE_RULE
 
-    assert system_prompt(Mode.AUDIT, ws) == build_audit_prompt(workspace=ws)
+    assert system_prompt(Mode.AUDIT, ws) == (
+        build_audit_prompt(workspace=ws) + "\n\n" + _WORK_STATE_RULE
+    )
     assert "SECRET_RULE_XYZ" not in system_prompt(Mode.AUDIT, ws)
 
 
@@ -142,14 +154,26 @@ def test_failure_falls_back_to_base(
     monkeypatch.setattr(workspace_rules, "append_agents_md", boom)
     ws = str(tmp_path)
     out = system_prompt(mode, ws)
-    assert out == template.format(workspace=ws)
+    from agent_coder.agent.prompts import _WORK_STATE_RULE
+
+    expected = template.format(workspace=ws)
+    if mode != Mode.CHAT:
+        expected = expected + "\n\n" + _WORK_STATE_RULE
+    assert out == expected
 
 
-def test_system_act_has_work_state_rule() -> None:
-    """Правило 14 — про structured memory, не меняя формат SYSTEM_*."""
+def test_work_state_rule_is_shared_across_modes() -> None:
+    """Единое правило structured memory инжектится в PLAN/ACT/AUDIT, не в CHAT."""
+    from agent_coder.agent.prompts import _WORK_STATE_RULE
+
+    assert "update_work_state" in _WORK_STATE_RULE
+    for mode in (Mode.PLAN, Mode.ACT, Mode.AUDIT):
+        assert "update_work_state" in system_prompt(mode, "/tmp")
+    assert "update_work_state" not in system_prompt(Mode.CHAT, "/tmp")
+
+
+def test_system_act_no_duplicate_rule() -> None:
+    """Правило в _WORK_STATE_RULE, не в SYSTEM_ACT (один источник)."""
     from agent_coder.agent.prompts import SYSTEM_ACT
 
-    assert "update_work_state" in SYSTEM_ACT
-    assert (
-        "structured memory" in SYSTEM_ACT.lower() or "Structured memory" in SYSTEM_ACT
-    )
+    assert "update_work_state" not in SYSTEM_ACT

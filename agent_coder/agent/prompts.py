@@ -72,13 +72,6 @@ SYSTEM_ACT = """\
     не проверки. Меняй ровно то, что просили; не расширяй scope.
     Если вывод показывает автофикс (например, `[*] N fixable with
     --fix`) — покажи его, но НЕ применяй без явной просьбы.
-14. Structured memory: после каждого значимого шага (нашёл причину
-    ошибки, починил файл, прогнал тесты) вызывай `update_work_state`,
-    чтобы зафиксировать факты в `findings`/`done`/`todo` — иначе при
-    сжатии истории они потеряются, и ты будешь искать заново.
-    Пиши в `findings` конкретику: пути, имена, номера строк, тексты
-    ошибок. Не пересказ («работал с файлом»), а факты
-    («src/x.py:42 — KeyError 'user_id'»).
 """
 
 
@@ -101,6 +94,30 @@ SYSTEM_CHAT = """\
 """
 
 
+# Общее правило structured memory для всех режимов с инструментами
+# (PLAN/ACT/AUDIT). Специфика режима — в его SYSTEM_*, это правило —
+# инвариант: факты должны переживать сжатие истории, иначе модель
+# ищет заново (подтверждено на реальных сессиях, A5/A7).
+_WORK_STATE_RULE = """\
+## Structured memory (правило для всех режимов)
+
+После каждого значимого шага — установил факт, нашёл причину проблемы,
+сделал правку, прогнал тесты, закрыл секцию аудита — вызывай
+`update_work_state`, чтобы сохранить результат в `findings`/`done`/`todo`.
+Иначе при сжатии истории (compress) эти факты потеряются, и ты будешь
+искать заново.
+
+Пиши конкретику, не пересказ:
+  плохо:  "работал с файлом commands.py"
+  хорошо: "commands.py:399 — _create_project_on_disk не проверяет name"
+  плохо:  "тесты падают"
+  хорошо: "pytest: 3 failed в test_standard.py (F821 unknown name)"
+
+Точечные операции: `{"findings+": [...]}` дописать, `{"todo": [...]}`
+заменить, `{"done-": [...]}` удалить.
+"""
+
+
 def _with_rules(base: str, workspace: str) -> str:
     try:
         from agent_coder.agent.workspace_rules import append_rules
@@ -117,23 +134,37 @@ def _with_rules(base: str, workspace: str) -> str:
 def system_prompt(mode: Mode, workspace: str, work_state: object | None = None) -> str:
     """Собрать system prompt для главного агента.
 
+    Единый принцип: PLAN/ACT/AUDIT получают _WORK_STATE_RULE (structured
+    memory — инвариант, факты должны переживать compress) и, если передан
+    непустой work_state, блок [WORK_STATE]. Специфика режима — в его
+    SYSTEM_* / audit_standard.md, не здесь.
+
+    CHAT — без правила и без state: там нет инструментов (см. for_mode).
+    AUDIT — без _with_rules (AGENTS.md): аудит идёт по audit_standard.md,
+    это отдельное решение, не часть structured memory.
+
     work_state — WorkStateHandle (см. agent/work_state.py) или None.
-    Если передан и не пуст — перед _with_rules вставляется блок [WORK_STATE].
-    None (по умолчанию) — chat/telegram-вызовы и тесты: блок не добавляется.
-    Формат SYSTEM_* не меняется — блок дописывается отдельно.
+    None (chat/telegram/тесты) — правило есть, блок [WORK_STATE] — нет.
     """
+    if mode == Mode.CHAT:
+        return _with_rules(SYSTEM_CHAT.format(workspace=workspace), workspace)
+
     if mode == Mode.AUDIT:
         from agent_coder.agent.audit_prompt import build_audit_prompt
 
-        return build_audit_prompt(workspace=workspace)
-    if mode == Mode.CHAT:
-        return _with_rules(SYSTEM_CHAT.format(workspace=workspace), workspace)
-    template = SYSTEM_PLAN if mode == Mode.PLAN else SYSTEM_ACT
-    base = template.format(workspace=workspace)
+        base = build_audit_prompt(workspace=workspace)
+    else:
+        template = SYSTEM_PLAN if mode == Mode.PLAN else SYSTEM_ACT
+        base = template.format(workspace=workspace)
+
+    base = base + "\n\n" + _WORK_STATE_RULE
     if work_state is not None:
         from agent_coder.agent.work_state import render_for_prompt
 
         block = render_for_prompt(getattr(work_state, "_state", None))
         if block:
             base = base + "\n\n" + block
+
+    if mode == Mode.AUDIT:
+        return base
     return _with_rules(base, workspace)
