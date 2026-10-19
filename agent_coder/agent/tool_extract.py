@@ -196,31 +196,6 @@ def _fmt_run_command(result: str, args: dict[str, Any], limit: int) -> str:
     return _assemble(lines, keep, limit)
 
 
-def _fmt_read_file(result: str, args: dict[str, Any], limit: int) -> str:
-    """Оставлено для совместимости/экспериментов; в EXTRACTORS НЕ включён.
-
-    Причина: read_file — явный контракт «дай строки offset..offset+limit»,
-    вырезать середину нельзя (модель перечитывает → loop). См. комментарий
-    у _ALWAYS_APPLY. В format_for_summary read_file идёт через общий
-    fallback head/tail — там ок (резюме всё равно LLM-сжимается).
-    """
-    lines = result.splitlines()
-    if not lines:
-        return result
-    n = len(lines)
-    keep: set[int] = {0}
-    for i in range(1, min(1 + READ_HEAD, n)):
-        keep.add(i)
-    for i in range(max(n - READ_TAIL, 1), n):
-        keep.add(i)
-    for i, ln in enumerate(lines):
-        if i == 0:
-            continue
-        if _DEF_RE.search(_strip_numbered(ln)):
-            keep.add(i)
-    return _assemble(lines, keep, limit)
-
-
 def _fmt_git_diff(result: str, args: dict[str, Any], limit: int) -> str:
     """Тело diff выкидываем: список файлов + счётчик '+N -M'.
 
@@ -283,48 +258,31 @@ def _fmt_search_history(result: str, args: dict[str, Any], limit: int) -> str:
     return _cap("\n\n".join(kept), limit)
 
 
-def _fmt_list_files(result: str, args: dict[str, Any], limit: int) -> str:
-    """Счётчик + первые 20 + «ещё N скрыто»."""
-    lines = result.splitlines()
-    if not lines:
-        return result
-    kept = lines[:LIST_TOP]
-    if len(lines) > LIST_TOP:
-        kept.append(f"…ещё {len(lines) - LIST_TOP} файлов скрыто…")
-    return _cap("\n".join(kept), limit)
-
-
 EXTRACTORS: dict[str, Extractor] = {
     "run_command": _fmt_run_command,
     "git_diff": _fmt_git_diff,
     "search": _fmt_search,
     "search_history": _fmt_search_history,
-    "list_files": _fmt_list_files,
 }
 
 # tools, для которых formatter применяется всегда (не только при превышении):
 # - run_command: хотим резать даже средние логи (30–60 строк) — хвост лога
 #   почти никогда не несёт новых фактов, а volume копится;
 # - git_diff: тело выкидываем даже для коротких diff'ов;
-# - search/search_history/list_files: лимитируют количество хитов/строк,
-#   а не объём, поэтому применяются всегда.
-# read_file СОЗНАТЕЛЬНО НЕ входит: модель явно запросила offset/limit —
-# это контракт, вырезать середину нельзя (иначе модель перечитывает
-# файл с другими окнами → loop → упор в лимит итераций; регресс 5974e69).
-# Объём read_file ограничен самим tool'ом (MAX_LINES/MAX_BYTES).
-_ALWAYS_APPLY = frozenset(
-    {"run_command", "git_diff", "search", "search_history", "list_files"}
-)
+# - search/search_history: лимитируют количество хитов/строк, а не объём,
+#   поэтому применяются всегда.
+# read_file/list_files СОЗНАТЕЛЬНО НЕ входят: это контракты (offset/limit
+# и «покажи файлы») — вырезать нельзя (иначе модель перечитывает → loop).
+# Они в _NO_EXTRACT, где formatter вообще не вызывается.
+_ALWAYS_APPLY = frozenset({"run_command", "git_diff", "search", "search_history"})
 
-# tools, которые extract НЕ трогает ВООБЩЕ (ни formatter, ни fallback):
-# read_file — явный контракт offset/limit; объём ограничен tool'ом
-# (MAX_LINES=2000 / MAX_BYTES=200k). Любая обрезка здесь = модель
-# перечитывает файл с другими окнами → loop → упор в лимит итераций.
-# tools-«контракты», которые extract НЕ трогает ВООБЩЕ:
-# - read_file: явный offset/limit;
+# tools-«контракты», которые extract НЕ трогает ВООБЩЕ (ни formatter,
+# ни fallback) — проверяется РАНЬШЕ formatter'а:
+# - read_file: явный offset/limit (MAX_LINES/MAX_BYTES в tool'е);
 # - list_files: «покажи файлы» — модель хочет весь список, а не head/tail
 #   (loop в 75f25748: tests/ = 65 файлов, extract оставлял 10 + «55 скрыто»,
 #   модель пробовала ls/find/list_files по кругу). MAX_ENTRIES=500 в tool'е.
+# Любая обрезка здесь = модель перечитывает → loop → упор в лимит итераций.
 _NO_EXTRACT = frozenset({"read_file", "list_files"})
 
 

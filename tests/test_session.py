@@ -321,3 +321,36 @@ class TestLoadSafety:
         }
         (tmp_path / "x.json").write_text(_json.dumps(payload))
         assert Session.load("x") is None
+
+
+def test_sanitize_tool_calls_neutral_prefix() -> None:
+    """Заглушка dangling tool_calls НЕ начинается с «Ошибка».
+
+    Аудит 2026-10-19: watchdog (loop.py) считает tool-результаты с
+    префиксом «Ошибка» ошибками. После аварийного рестарта с 3
+    dangling tool_calls consecutive_errors = 3/5 → ложный стоп.
+    """
+    from agent_coder.agent.prompts import Mode
+    from agent_coder.agent.session import Session
+
+    s = Session.new(workspace="/tmp", model="m", mode=Mode.ACT)
+    s.messages = [
+        {"role": "system", "content": "S"},
+        {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [
+                {
+                    "id": "c1",
+                    "type": "function",
+                    "function": {"name": "read_file", "arguments": "{}"},
+                }
+            ],
+        },
+    ]
+    fixed = s.sanitize_tool_calls()
+    assert fixed == 1
+    stub = s.messages[-1]
+    assert stub["role"] == "tool"
+    assert stub["content"].startswith("Прервано")
+    assert not stub["content"].lstrip().startswith("Ошибка")

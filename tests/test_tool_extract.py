@@ -245,3 +245,21 @@ def test_run_command_listing_capped_at_100() -> None:
     assert "file0099.py" in out
     assert "file0299.py" not in out
     assert "скрыто" in out
+
+
+def test_list_files_not_in_extractors_or_always_apply() -> None:
+    """list_files — только _NO_EXTRACT (не дублируется в мёртвых местах).
+
+    Аудит 2026-10-19: list_files был в EXTRACTORS + _ALWAYS_APPLY +
+    _NO_EXTRACT. _NO_EXTRACT проверяется первым → formatter мёртвый,
+    комментарий «применяется всегда» врал. Один источник правды.
+    """
+    assert "list_files" in tool_extract._NO_EXTRACT
+    assert "list_files" not in tool_extract.EXTRACTORS
+    assert "list_files" not in tool_extract._ALWAYS_APPLY
+
+
+def test_dead_formatters_removed() -> None:
+    """_fmt_read_file/_fmt_list_files удалены (были мёртвыми)."""
+    assert not hasattr(tool_extract, "_fmt_read_file")
+    assert not hasattr(tool_extract, "_fmt_list_files")
