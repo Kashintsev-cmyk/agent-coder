@@ -109,3 +109,22 @@ def test_findings_cap_documented() -> None:
     text = load_audit_standard()
     assert "30 findings" in text
     assert "Ниже порога" in text
+
+
+def test_audit_standard_has_findings_rule() -> None:
+    """B9.1: правило записи findings после каждого turn в AUDIT."""
+    text = load_audit_standard()
+    assert "## ПРАВИЛО: запись findings после каждого turn" in text
+    assert "update_work_state" in text
+    assert "НЕ батчи findings на конец аудита" in text
+    assert "read_file" in text
+
+
+def test_work_state_rule_hardens_audit() -> None:
+    """B9.1: _WORK_STATE_RULE содержит жёсткое правило для AUDIT."""
+    from agent_coder.agent.prompts import _WORK_STATE_RULE
+
+    assert "В AUDIT — особо жёстко" in _WORK_STATE_RULE
+    assert "после КАЖДОГО turn" in _WORK_STATE_RULE
+    # В константе разрыв строки: "...не\nбатчи на конец аудита" — "не" опускаем
+    assert "батчи на конец аудита" in _WORK_STATE_RULE
