@@ -28,6 +28,7 @@ WorkStateHandle — узкий контракт для tool'а update_work_state
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -44,6 +45,80 @@ FIELDS: tuple[str, ...] = (
 # Разумные потолки, чтобы state не разросся и не съел весь контекст.
 MAX_ITEMS_PER_FIELD = 50
 MAX_ITEM_CHARS = 500
+
+# B9.4: дедуп findings по «файл:строка». Модель пишет «services/pricing.py:13»
+# и «pricing.py:13» — это один finding с разными префиксами; без дедупа
+# state раздувается (f0fbbe9a: 25 findings с ~11 дублями). Префиксы
+# strip'аются ТОЛЬКО для сравнения — в state хранится исходная строка.
+_FILE_LINE_RE = re.compile(r"(\S+\.\w+):(\d+)")
+_DEDUP_DIR_PREFIXES: tuple[str, ...] = ("services/", "app/", "src/", "lib/", "core/")
+_SEVERITIES: tuple[str, ...] = ("BLOCKER", "MAJOR", "MINOR")
+
+
+def _dedup_enabled() -> bool:
+    """Флаг WORK_STATE_DEDUP (default True). Lazy import — без цикла.
+
+    В agent_coder.config инстанс называется `config = Config()`
+    (см. конец файла). Поля класса на модуле не видны — читаем инстанс.
+    """
+    try:
+        from agent_coder.config import config as _cfg
+
+        return bool(getattr(_cfg, "WORK_STATE_DEDUP", True))
+    except Exception:
+        logger.debug(
+            "work_state: не удалось прочитать WORK_STATE_DEDUP",
+            exc_info=True,
+        )
+        return True
+
+
+def _extract_file_line(item: str) -> tuple[str, str] | None:
+    """(нормализованный путь, номер строки) или None, если ключа нет."""
+    m = _FILE_LINE_RE.search(item)
+    if not m:
+        return None
+    path = m.group(1)
+    for prefix in _DEDUP_DIR_PREFIXES:
+        if path.startswith(prefix):
+            path = path[len(prefix) :]
+            break
+    return (path, m.group(2))
+
+
+def _has_severity(item: str) -> bool:
+    return any(sev in item for sev in _SEVERITIES)
+
+
+def _is_more_informative(a: str, b: str) -> bool:
+    """a лучше b: severity > длина. При равенстве — a (стабильность)."""
+    a_sev = _has_severity(a)
+    b_sev = _has_severity(b)
+    if a_sev != b_sev:
+        return a_sev
+    return len(a) >= len(b)
+
+
+def _dedup_findings(items: list[str]) -> list[str]:
+    """Схлопнуть findings по ключу (норм. путь, строка).
+
+    Findings без «файл:строка» не трогаем — это общие замечания
+    (ruff format, тесты), они не дублируют друг друга по определению.
+    """
+    result: list[str] = []
+    by_key: dict[tuple[str, str], int] = {}
+    for item in items:
+        key = _extract_file_line(item)
+        if key is None:
+            result.append(item)
+            continue
+        idx = by_key.get(key)
+        if idx is None:
+            by_key[key] = len(result)
+            result.append(item)
+        elif _is_more_informative(item, result[idx]):
+            result[idx] = item
+    return result
 
 
 def normalize(state: dict[str, Any] | None) -> dict[str, list[str]]:
@@ -136,6 +211,9 @@ class WorkStateHandle:
 
         # Финальная нормализация: дедуп/лимиты/обрезка.
         normalized = normalize(current)
+        # B9.4: дополнительный дедуп findings по (файл:строка).
+        if _dedup_enabled():
+            normalized["findings"] = _dedup_findings(normalized["findings"])
         # Пишем в живой dict сессии (in-place, чтобы ссылка осталась валидной).
         self._state.clear()
         self._state.update(normalized)
@@ -162,6 +240,9 @@ def render_for_prompt(state: dict[str, Any] | None) -> str:
     }
     for field_name in FIELDS:
         items = norm[field_name]
+        # B9.4: дедуп при рендере — защита от старых сессий с дублями.
+        if field_name == "findings" and _dedup_enabled():
+            items = _dedup_findings(items)
         if not items:
             continue
         lines.append(f"\n{titles[field_name]}:")

@@ -218,6 +218,15 @@ class Config:
     # «залип». 10 — эмпирически: read_file-loop упирался за 9 перечитываний.
     MAX_ITERATIONS_NO_PROGRESS: int = int(os.getenv("MAX_ITERATIONS_NO_PROGRESS", "10"))
 
+
+    # B9.4: дедуп findings по «файл:строка» в WorkStateHandle.update/render.
+    # Схлопывает «services/pricing.py:13» и «pricing.py:13» в один
+    # (оставляет более информативный: severity > длина). Default: 1 (вкл).
+    WORK_STATE_DEDUP: bool = (
+        os.getenv("WORK_STATE_DEDUP", "1").strip().lower()
+        not in ("0", "false", "no", "off")
+    )
+
     # Логи
     # Зарезервировано на будущее (не используется в коде)
     LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO")

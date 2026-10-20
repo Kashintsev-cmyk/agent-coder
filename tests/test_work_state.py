@@ -160,3 +160,95 @@ def test_session_roundtrip_with_work_state() -> None:
     assert d["work_state"] == {"findings": ["a"], "todo": ["b"]}
     s2 = Session.from_dict(d)
     assert s2.work_state == {"findings": ["a"], "todo": ["b"]}
+
+
+# --- B9.4: дедуп findings по «файл:строка» -----------------------------
+
+
+def test_dedup_findings_by_file_line_with_prefix() -> None:
+    """B9.4: «services/pricing.py:13» и «pricing.py:13» — один finding."""
+    h = WorkStateHandle({})
+    h.update(
+        {
+            "findings": [
+                "pricing.py:13 — float для денег",
+                "services/pricing.py:13 — float для денег",
+            ]
+        }
+    )
+    assert len(h.get()["findings"]) == 1
+
+
+def test_dedup_findings_keeps_more_informative() -> None:
+    """B9.4: severity / длина — оставляем более информативный."""
+    h = WorkStateHandle({})
+    h.update(
+        {
+            "findings": [
+                "pricing.py:13 — float",
+                "BLOCKER: services/pricing.py:13 — float для денег, ошибки округления",
+            ]
+        }
+    )
+    items = h.get()["findings"]
+    assert len(items) == 1
+    assert "BLOCKER" in items[0]
+    assert "float для денег" in items[0]
+
+
+def test_dedup_findings_no_file_line_kept() -> None:
+    """B9.4: findings без «файл:строка» не дедупаются."""
+    h = WorkStateHandle({})
+    h.update({"findings": ["ruff format не применён", "тесты: 3 failed"]})
+    assert len(h.get()["findings"]) == 2
+
+
+def test_dedup_findings_different_lines_kept() -> None:
+    """B9.4: разные строки одного файла — разные findings."""
+    h = WorkStateHandle({})
+    h.update(
+        {
+            "findings": [
+                "pricing.py:13 — float",
+                "pricing.py:14 — сравнение float",
+            ]
+        }
+    )
+    assert len(h.get()["findings"]) == 2
+
+
+def test_dedup_findings_different_files_kept() -> None:
+    """B9.4: один номер строки, разные файлы — оба сохраняются."""
+    h = WorkStateHandle({})
+    h.update({"findings": ["a.py:13 — проблема A", "b.py:13 — проблема B"]})
+    assert len(h.get()["findings"]) == 2
+
+
+def test_dedup_respects_config_flag_off(monkeypatch) -> None:
+    """B9.4: WORK_STATE_DEDUP=0 — дубли остаются (ручной override)."""
+    from agent_coder.config import config as _cfg
+
+    monkeypatch.setattr(_cfg, "WORK_STATE_DEDUP", False)
+    h = WorkStateHandle({})
+    h.update(
+        {
+            "findings": [
+                "pricing.py:13 — float",
+                "services/pricing.py:13 — float",
+            ]
+        }
+    )
+    assert len(h.get()["findings"]) == 2
+
+
+def test_render_for_prompt_dedups_legacy_state() -> None:
+    """B9.4: рендер дедупает findings в старых сессиях с дублями."""
+    state = {
+        "findings": [
+            "pricing.py:13 — float",
+            "services/pricing.py:13 — float",
+        ]
+    }
+    out = render_for_prompt(state)
+    # Должна остаться одна строка findings с pricing.py:13 (как подстрока)
+    assert out.count("pricing.py:13") == 1
