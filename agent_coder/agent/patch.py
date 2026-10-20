@@ -299,6 +299,11 @@ async def run_patch(
             "git_diff_stat": res.git_diff_stat,
             "error": res.error,
             "budget_exceeded": res.budget_exceeded,
+            # B9.2d: список findings, переданных модели. Для диагностики
+            # (что вошло в прогон) и будущего exclusion (не сейчас —
+            # модель может «попробовать и не справиться», exclusion
+            # такого finding'а не должен блокировать повтор).
+            "findings": confirmed,
         }
     )
     session.save()
