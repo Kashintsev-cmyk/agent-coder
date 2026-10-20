@@ -30,6 +30,16 @@ def parse_args() -> argparse.Namespace:
     )
     p.add_argument("--plan", action="store_true", help="Plan-режим")
     p.add_argument("--audit", action="store_true", help="Audit-режим: только чтение")
+    p.add_argument(
+        "--resume-audit",
+        action="store_true",
+        help="Восстановить persistent audit state (.agent-coder/)",
+    )
+    p.add_argument(
+        "--fresh-audit",
+        action="store_true",
+        help="Сбросить .agent-coder/ и начать аудит с нуля",
+    )
     p.add_argument("--yolo", action="store_true", help="Без подтверждений")
     p.add_argument("--resume", metavar="ID", help="Возобновить сессию по ID")
     p.add_argument(
@@ -374,6 +384,47 @@ def _reasoning_picker(session: Session) -> None:
     ui.print_success(f"Reasoning: {level}")
 
 
+def _validate_audit_flags(args) -> str | None:
+    """Валидация --resume-audit / --fresh-audit (B11.2b).
+
+    None — ОК, иначе текст ошибки. Оба флага без --audit бессмысленны;
+    --resume-audit и --fresh-audit взаимоисключающие.
+    """
+    resume = getattr(args, "resume_audit", False)
+    fresh = getattr(args, "fresh_audit", False)
+    if resume and fresh:
+        return "--resume-audit и --fresh-audit взаимоисключающие"
+    if (resume or fresh) and not getattr(args, "audit", False):
+        return "--resume-audit / --fresh-audit требуют --audit"
+    return None
+
+
+def _start_audit(workspace: str, session, *, fresh: bool) -> dict:
+    """Старт AUDIT: prepare + merge в session (B11.2b).
+
+    ``fresh=True`` — .agent-coder/ удаляется (--fresh-audit). Иначе —
+    load существующего state. Findings/todo мержатся через
+    WorkStateHandle.update (дедуп B9.4), coverage — в read_paths.
+    """
+    from agent_coder.agent import audit_storage as _audit_storage
+    from agent_coder.agent.work_state import WorkStateHandle
+
+    loaded = _audit_storage.prepare(workspace, fresh=fresh)
+    handle = WorkStateHandle(session.work_state)
+    if loaded["findings"]:
+        handle.update({"findings+": loaded["findings"]})
+    if loaded["todo"]:
+        handle.update({"todo+": loaded["todo"]})
+    session.work_state = handle.get()
+    if loaded["coverage"]:
+        session.read_paths.update(loaded["coverage"])
+    ui.print_info(
+        f"AUDIT state: findings={len(loaded['findings'])}, "
+        f"coverage={len(loaded['coverage'])}, todo={len(loaded['todo'])}"
+    )
+    return loaded
+
+
 def main() -> int:
     args = parse_args()
 
@@ -385,6 +436,10 @@ def main() -> int:
     config.validate()
     if args.audit and args.plan:
         ui.print_error("--audit и --plan нельзя использовать одновременно")
+        return 2
+    _audit_err = _validate_audit_flags(args)
+    if _audit_err:
+        ui.print_error(_audit_err)
         return 2
     # --max-iterations применяется ко всем режимам, ТОЛЬКО если указан явно.
     # Иначе уважаем MAX_ITERATIONS_PLAN/ACT/AUDIT из .env.
@@ -433,13 +488,28 @@ def main() -> int:
             mode=mode,
         )
 
+    audit_loaded = None
+    if args.audit and session.mode == Mode.AUDIT:
+        audit_loaded = _start_audit(workspace, session, fresh=args.fresh_audit)
+
     try:
         if args.task:
-            return asyncio.run(run_once(args, session))
-        return asyncio.run(run_repl(args, session))
+            rc = asyncio.run(run_once(args, session))
+        else:
+            rc = asyncio.run(run_repl(args, session))
     except KeyboardInterrupt:
         ui.print_info("\nПрервано.")
-        return 130
+        rc = 130
+
+    if audit_loaded is not None:
+        try:
+            from agent_coder.agent import audit_storage as _audit_storage
+
+            _audit_storage.save(workspace, session, audit_loaded)
+        except Exception as exc:
+            ui.print_error(f"audit save: {exc}")
+
+    return rc
 
 
 if __name__ == "__main__":

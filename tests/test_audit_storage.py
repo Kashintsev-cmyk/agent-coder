@@ -90,3 +90,21 @@ def test_gitignore_idempotent(tmp_path):
 
     text = (tmp_path / ".gitignore").read_text(encoding="utf-8")
     assert text.count(".agent-coder/") == 1
+
+
+def test_prepare_fresh_removes_state(tmp_path):
+    session = _session(str(tmp_path), findings=["a.py:1 — x"])
+    storage.save(str(tmp_path), session, storage.load(str(tmp_path)))
+    assert (storage.project_dir(str(tmp_path)) / "findings.md").exists()
+
+    state = storage.prepare(str(tmp_path), fresh=True)
+    assert state["findings"] == []
+    assert not storage.project_dir(str(tmp_path)).exists()
+
+
+def test_prepare_resume_loads_state(tmp_path):
+    session = _session(str(tmp_path), findings=["a.py:1 — x"])
+    storage.save(str(tmp_path), session, storage.load(str(tmp_path)))
+
+    state = storage.prepare(str(tmp_path), fresh=False)
+    assert state["findings"] == ["a.py:1 — x"]

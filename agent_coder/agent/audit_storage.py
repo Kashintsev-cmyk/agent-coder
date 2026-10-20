@@ -31,6 +31,7 @@ import hashlib
 import json
 import os
 import re
+import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -204,3 +205,16 @@ def mark_read(workspace: str, paths: dict[str, str]) -> None:
     with cm.open("a", encoding="utf-8") as f:
         for path, digest in paths.items():
             f.write(f"- {path} — {digest}\n" if digest else f"- {path}\n")
+
+
+def prepare(workspace: str, *, fresh: bool = False) -> dict[str, Any]:
+    """Старт AUDIT: ``fresh=True`` — удалить каталог state, затем ``load()``.
+
+    Для CLI-флага ``--fresh-audit`` (B11.2b). При ``fresh=False`` —
+    просто ``load()``, если каталога нет — пустое состояние.
+    """
+    if fresh:
+        pd = project_dir(workspace)
+        if pd.is_dir():
+            shutil.rmtree(pd)
+    return load(workspace)
