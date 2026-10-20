@@ -147,6 +147,7 @@ def system_prompt(
     workspace: str,
     work_state: object | None = None,
     read_paths: dict[str, str] | None = None,
+    audit_scopes: list[str] | None = None,
 ) -> str:
     """Собрать system prompt для главного агента.
 
@@ -164,6 +165,9 @@ def system_prompt(
     compress) или None. Блок [ПРОЧИТАННЫЕ ФАЙЛЫ] — чтобы модель не
     перечитывала целиком (сессия 6cc7d5bd: 55 повторов = деньги).
     None (chat/telegram/тесты) — правило есть, блоки — нет.
+
+    audit_scopes — B11.3: относительные пути из --scope/--scope-file.
+    Только для AUDIT: встраивается блок «Область аудита» в audit_standard.
     """
     if mode == Mode.CHAT:
         return _with_rules(SYSTEM_CHAT.format(workspace=workspace), workspace)
@@ -171,7 +175,7 @@ def system_prompt(
     if mode == Mode.AUDIT:
         from agent_coder.agent.audit_prompt import build_audit_prompt
 
-        base = build_audit_prompt(workspace=workspace)
+        base = build_audit_prompt(workspace=workspace, scopes=audit_scopes)
     else:
         template = SYSTEM_PLAN if mode == Mode.PLAN else SYSTEM_ACT
         base = template.format(workspace=workspace)

@@ -40,6 +40,17 @@ def parse_args() -> argparse.Namespace:
         action="store_true",
         help="Сбросить .agent-coder/ и начать аудит с нуля",
     )
+    p.add_argument(
+        "--scope",
+        action="append",
+        metavar="PATH",
+        help="B11.3: AUDIT только по пути (можно несколько; требует --audit)",
+    )
+    p.add_argument(
+        "--scope-file",
+        metavar="FILE",
+        help="B11.3: файл со списком путей, по одному в строке (требует --audit)",
+    )
     p.add_argument("--yolo", action="store_true", help="Без подтверждений")
     p.add_argument("--resume", metavar="ID", help="Возобновить сессию по ID")
     p.add_argument(
@@ -385,18 +396,68 @@ def _reasoning_picker(session: Session) -> None:
 
 
 def _validate_audit_flags(args) -> str | None:
-    """Валидация --resume-audit / --fresh-audit (B11.2b).
+    """Валидация audit-флагов (B11.2b, B11.3).
 
-    None — ОК, иначе текст ошибки. Оба флага без --audit бессмысленны;
-    --resume-audit и --fresh-audit взаимоисключающие.
+    None — ОК, иначе текст ошибки. --resume-audit / --fresh-audit /
+    --scope / --scope-file без --audit бессмысленны; взаимоисключающие
+    пары: resume↔fresh, scope↔scope-file.
     """
     resume = getattr(args, "resume_audit", False)
     fresh = getattr(args, "fresh_audit", False)
+    scope = getattr(args, "scope", None) or []
+    scope_file = getattr(args, "scope_file", None)
     if resume and fresh:
         return "--resume-audit и --fresh-audit взаимоисключающие"
     if (resume or fresh) and not getattr(args, "audit", False):
         return "--resume-audit / --fresh-audit требуют --audit"
+    if (scope or scope_file) and not getattr(args, "audit", False):
+        return "--scope / --scope-file требуют --audit"
+    if scope and scope_file:
+        return "--scope и --scope-file взаимоисключающие"
     return None
+
+
+def _resolve_scopes(
+    workspace: str,
+    args,
+    *,
+    current: list[str] | None = None,
+) -> tuple[list[str] | None, str | None]:
+    """B11.3: --scope/--scope-file → относительные пути внутри workspace.
+
+    Возвращает (scopes, error). Если флаги не заданы — (current, None).
+    Пути резолвятся; выход за workspace и несуществующие — ошибка.
+    """
+    raw = list(getattr(args, "scope", None) or [])
+    scope_file = getattr(args, "scope_file", None)
+    if scope_file is None and not raw:
+        return list(current or []), None
+    if scope_file is not None:
+        try:
+            text = Path(scope_file).read_text(encoding="utf-8")
+        except OSError as exc:
+            return None, f"--scope-file: {exc}"
+        for line in text.splitlines():
+            s = line.strip()
+            if not s or s.startswith("#"):
+                continue
+            raw.append(s)
+    ws = Path(workspace).resolve()
+    out: list[str] = []
+    for item in raw:
+        p = Path(item)
+        resolved = p.resolve() if p.is_absolute() else (ws / p).resolve()
+        try:
+            rel = resolved.relative_to(ws)
+        except ValueError:
+            return None, f"--scope: путь вне workspace: {item}"
+        if not resolved.exists():
+            return None, f"--scope: не существует: {item}"
+        rel_str = rel.as_posix()
+        if rel_str in ("", ".") or rel_str in out:
+            continue
+        out.append(rel_str)
+    return out, None
 
 
 def _start_audit(workspace: str, session, *, fresh: bool) -> dict:
@@ -490,6 +551,13 @@ def main() -> int:
 
     audit_loaded = None
     if args.audit and session.mode == Mode.AUDIT:
+        scopes, scope_err = _resolve_scopes(
+            workspace, args, current=session.audit_scopes
+        )
+        if scope_err:
+            ui.print_error(scope_err)
+            return 2
+        session.audit_scopes = scopes or []
         audit_loaded = _start_audit(workspace, session, fresh=args.fresh_audit)
 
     try:

@@ -84,6 +84,10 @@ class Session:
     # видела «уже читал X» и не перечитывала целиком (сессия 6cc7d5bd:
     # 92 read_file, 37 уникальных, 55 повторов после сжатий = деньги).
     read_paths: dict[str, str] = field(default_factory=dict)
+    # B11.3: область аудита — относительные пути внутри workspace.
+    # Пусто = без ограничения. Заполняется из --scope / --scope-file,
+    # резолвится в __main__ на старте AUDIT. Переживает resume.
+    audit_scopes: list[str] = field(default_factory=list)
     # Результаты /verify (B9): история прогонов, append. Каждый элемент:
     # {"text": str, "status": "confirmed|rejected|uncertain|unparsed",
     #  "evidence": str, "reason": str, "model": str, "cost": float,
@@ -280,6 +284,8 @@ class Session:
             data["verify_results"] = []
         if "patch_results" not in data:
             data["patch_results"] = []
+        if "audit_scopes" not in data:
+            data["audit_scopes"] = []
 
         # Разовая чистка: если в истории есть DSML-мусор (старые версии
         # кода не фильтровали) — убираем при загрузке.

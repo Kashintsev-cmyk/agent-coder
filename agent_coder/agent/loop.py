@@ -729,11 +729,15 @@ class AgentLoop:
         return WorkStateHandle(self.session.work_state)
 
     def _refresh_system_prompt(self) -> None:
+        # B11.3: audit_scopes — только у AUDIT-сессии; [] → None, чтобы
+        # не инжектить пустой блок «Область аудита».
+        scopes = getattr(self.session, "audit_scopes", None) or None
         prompt = system_prompt(
             self.session.mode,
             self.session.workspace,
             self._work_state_handle(),
             self.session.read_paths,
+            audit_scopes=scopes,
         )
         if (
             not self.session.messages

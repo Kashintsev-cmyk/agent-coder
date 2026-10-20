@@ -31,9 +31,10 @@ def build_audit_prompt(
     domain: str = "—",
     requirements: str = "—",
     priorities: str = "—",
+    scopes: list[str] | None = None,
 ) -> str:
     template = load_audit_standard()
-    return _fill(
+    result = _fill(
         template,
         workspace=workspace,
         project_name=project_name or workspace.rsplit("/", 1)[-1],
@@ -44,3 +45,13 @@ def build_audit_prompt(
         requirements=requirements,
         priorities=priorities,
     )
+    if scopes:
+        block = (
+            "\n\n## Область аудита (B11.3)\n\n"
+            "Аудируй **только** перечисленные ниже пути (относительно workspace). "
+            "Не читай файлы вне списка; если находка ссылается на внешний файл — "
+            "помечай как `[вне области]` и переходи дальше.\n\n"
+            + "\n".join(f"- `{s}`" for s in scopes)
+        )
+        result = result + block
+    return result
