@@ -45,6 +45,10 @@ FIELDS: tuple[str, ...] = (
 # Разумные потолки, чтобы state не разросся и не съел весь контекст.
 MAX_ITEMS_PER_FIELD = 50
 MAX_ITEM_CHARS = 500
+# R11: findings копятся на диске (findings.md), в state НЕ режем — иначе
+# save() diff не видит вытесненных cap'ом и findings.md пухнет (60 vs 50).
+# В prompt — только первые MAX_FINDINGS_IN_PROMPT.
+MAX_FINDINGS_IN_PROMPT = 100
 
 # B9.4: дедуп findings по «файл:строка». Модель пишет «services/pricing.py:13»
 # и «pricing.py:13» — это один finding с разными префиксами; без дедупа
@@ -136,6 +140,8 @@ def normalize(state: dict[str, Any] | None) -> dict[str, list[str]]:
             raw = [raw]
         items: list[str] = []
         seen: set[str] = set()
+        # R11: findings — без cap в state (см. MAX_FINDINGS_IN_PROMPT).
+        limit = None if field_name == "findings" else MAX_ITEMS_PER_FIELD
         for it in raw:
             s = str(it).strip()
             if not s or s in seen:
@@ -144,7 +150,7 @@ def normalize(state: dict[str, Any] | None) -> dict[str, list[str]]:
                 s = s[:MAX_ITEM_CHARS] + "…"
             items.append(s)
             seen.add(s)
-            if len(items) >= MAX_ITEMS_PER_FIELD:
+            if limit is not None and len(items) >= limit:
                 break
         out[field_name] = items
     return out
@@ -245,9 +251,16 @@ def render_for_prompt(state: dict[str, Any] | None) -> str:
             items = _dedup_findings(items)
         if not items:
             continue
+        # R11: в prompt — первые MAX_FINDINGS_IN_PROMPT, полный — в findings.md.
+        hidden = 0
+        if field_name == "findings" and len(items) > MAX_FINDINGS_IN_PROMPT:
+            hidden = len(items) - MAX_FINDINGS_IN_PROMPT
+            items = items[:MAX_FINDINGS_IN_PROMPT]
         lines.append(f"\n{titles[field_name]}:")
         for it in items:
             lines.append(f"- {it}")
+        if hidden:
+            lines.append(f"…ещё {hidden} скрыто (полный список в findings.md)")
     return "\n".join(lines)
 
 

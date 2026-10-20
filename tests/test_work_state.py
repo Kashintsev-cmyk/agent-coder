@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from agent_coder.agent.work_state import (
     FIELDS,
+    MAX_FINDINGS_IN_PROMPT,
     MAX_ITEM_CHARS,
     MAX_ITEMS_PER_FIELD,
     WorkStateHandle,
@@ -41,10 +42,26 @@ def test_normalize_truncates_long_items() -> None:
     assert out["findings"][0].endswith("…")
 
 
-def test_normalize_caps_items_per_field() -> None:
+def test_normalize_caps_todo_at_50() -> None:
+    """todo/done/user_requests режутся на MAX_ITEMS_PER_FIELD."""
     many = [f"item {i}" for i in range(MAX_ITEMS_PER_FIELD + 20)]
+    out = normalize({"todo": many})
+    assert len(out["todo"]) == MAX_ITEMS_PER_FIELD
+
+
+def test_normalize_findings_not_capped() -> None:
+    """R11: findings НЕ режутся в state — иначе save() теряет вытесненные."""
+    many = [f"f.py:{i} — x" for i in range(200)]
     out = normalize({"findings": many})
-    assert len(out["findings"]) == MAX_ITEMS_PER_FIELD
+    assert len(out["findings"]) == 200
+
+
+def test_render_for_prompt_findings_capped_at_100() -> None:
+    """R11: в prompt — первые MAX_FINDINGS_IN_PROMPT + «скрыто»."""
+    many = [f"f.py:{i} — x" for i in range(MAX_FINDINGS_IN_PROMPT + 50)]
+    text = render_for_prompt({"findings": many})
+    assert text.count("- f.py:") == MAX_FINDINGS_IN_PROMPT
+    assert "…ещё 50 скрыто" in text
 
 
 def test_handle_get_returns_copy() -> None:
