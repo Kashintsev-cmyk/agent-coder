@@ -151,3 +151,30 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 раздувает контекст (weather-bot: `.mypy_cache/`, `.venv310/` — 30K+
 символов в одном tool-результате). Кандидат в отдельный коммит после
 B9.1e/B9.2.
+
+## B9.1e — reminder в PLAN (closed 2026-10-20)
+
+**Вердикт: PASS** (замер 2edb9607: todo=5, 2 reminder'а, оба сработали).
+
+PLAN — read-only, как AUDIT: модель читает 10-15 файлов, держит план
+в голове, при compress теряет. B9.1 закрыл AUDIT, PLAN оставался без
+защиты.
+
+- `loop.py`: условие reminder → `Mode.AUDIT | Mode.PLAN`. Метод
+  `_inject_audit_reminder` → `_inject_work_state_reminder(mode, iters)`:
+  в AUDIT просит findings, в PLAN — todo.
+- `prompts.py`: `_WORK_STATE_RULE` — абзац про PLAN (пиши todo по ходу,
+  батч по пачке прочитанного).
+- Guard (`_post_audit_guard`) — **AUDIT-only**, в PLAN не срабатывает
+  (todo может быть пуст легитимно).
+
+**Замер 2edb9607 (--plan weather-bot):**
+- `todo: 5`, `done: 3`, `findings: 7` (побочно) — state записан.
+- 2 reminder (idx 22, idx 42), оба модель отреагировала
+  `update_work_state` (idx 23, idx 43-45).
+- `summary_count: 1` (компактно), cost 4.41₽, cache 66%.
+- Guard не срабатывал — правильно.
+
+**Известное ограничение (то же, что B9.1):** в длинных продолжениях
+(≥5 compress) reminder может «утонуть». B9.1d (N=3 / system-reminder)
+— если понадобится, отдельная задача.
