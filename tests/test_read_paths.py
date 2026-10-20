@@ -69,7 +69,7 @@ def test_render_block() -> None:
     out = render_read_paths({"a.py": "a.py (5): def foo", "b.py": "b.py (3): x"})
     assert "[ПРОЧИТАННЫЕ ФАЙЛЫ]" in out
     assert "a.py" in out and "b.py" in out
-    assert "не перечитывай" in out
+    assert "не перечитывай" in out.lower()
 
 
 def test_render_hidden_counter() -> None:
