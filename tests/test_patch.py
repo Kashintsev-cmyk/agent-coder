@@ -195,3 +195,40 @@ async def test_run_patch_max_iterations(monkeypatch) -> None:
     res = await run_patch(client, s, registry=_registry_with_all())
     assert res.iterations == 2
     assert client.calls == 2
+
+
+async def test_run_patch_excludes_prev_run_findings() -> None:
+    """B9.2e: findings из прошлых patch_results не берутся повторно."""
+    s = _mk_session()
+    s.verify_results = [
+        _confirmed("flaw A", "a.py:10"),
+        _confirmed("flaw B", "b.py:20"),
+    ]
+    # Прошлый прогон уже обработал A
+    s.patch_results = [
+        {
+            "run_id": "old",
+            "findings": [{"text": "flaw A", "evidence": "a.py:10"}],
+        }
+    ]
+    client = _ScriptedClient([_FakeResponse("готово")])
+    res = await run_patch(client, s, registry=_registry_with_all())
+
+    user_msg = client.last_messages[1]["content"]
+    assert "flaw B" in user_msg
+    assert "flaw A" not in user_msg
+    assert res.ok
+
+
+async def test_run_patch_all_already_patched() -> None:
+    """B9.2e: все findings уже патчились → no_confirmed, LLM не зовётся."""
+    s = _mk_session()
+    s.verify_results = [_confirmed("flaw A", "a.py:10")]
+    s.patch_results = [
+        {"run_id": "old", "findings": [{"text": "flaw A", "evidence": "a.py:10"}]}
+    ]
+    client = _ScriptedClient([_FakeResponse("should not be called")])
+    res = await run_patch(client, s, registry=_registry_with_all())
+    assert res.no_confirmed
+    assert "все confirmed уже были" in res.error
+    assert client.calls == 0
