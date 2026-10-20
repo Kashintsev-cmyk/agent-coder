@@ -46,10 +46,26 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     if limit is not None and limit > MAX_LINES:
         return f"limit слишком большой ({limit}). Максимум {MAX_LINES} строк за раз."
 
+    # R13: is_full_read — «читать всё целиком», даже с offset=0 (обход).
+    is_full_read = (offset == 0) and (limit is None)
+
+    # R13: full-read по уже прочитанному файлу отвергаем — модель перечитывает
+    # 28/32 файлов в resume (na_shtile с2, cost 8.19₽). Разрешено: offset/limit
+    # для уточнения конкретных строк.
+    if is_full_read and ctx.read_paths:
+        known = {k.replace("\\", "/").lstrip("./") for k in ctx.read_paths}
+        rel_clean = rel.replace("\\", "/").lstrip("./")
+        if rel_clean in known:
+            return (
+                f"Файл {rel} уже прочитан (см. [ПРОЧИТАННЫЕ ФАЙЛЫ]). "
+                f"НЕ перечитывай целиком — используй offset/limit для "
+                f"конкретных строк (например, offset=285 limit=20) или search."
+            )
+
     size = full.stat().st_size
     # Если пользователь передал offset/limit — это ОК для больших файлов.
     # Блокируем только «читать всё целиком» для слишком больших файлов.
-    if not has_slice and size > MAX_BYTES:
+    if is_full_read and size > MAX_BYTES:
         return (
             f"Файл слишком большой ({size} байт). "
             f"Укажи offset и limit — например, offset=0 limit=100, "

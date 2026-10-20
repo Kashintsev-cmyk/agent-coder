@@ -26,6 +26,10 @@ class ToolContext:
     yolo: bool = False
     session_id: str = ""  # для search_history (архив сжатой истории)
     work_state: Any | None = None  # WorkStateHandle; Any — без цикла импортов
+    # R13: уже прочитанные файлы {path: digest}. read_file с полным чтением
+    # по ним отвергается (только offset/limit). None — для tools/адаптеров,
+    # которым state не нужен (patch, telegram).
+    read_paths: dict[str, str] | None = None
 
 
 @dataclass

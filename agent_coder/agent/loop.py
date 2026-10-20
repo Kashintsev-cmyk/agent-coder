@@ -527,6 +527,7 @@ class AgentLoop:
             yolo=self.yolo,
             session_id=self.session.id,
             work_state=self._work_state_handle(),
+            read_paths=self.session.read_paths,
         )
         try:
             result = await tool.executor(tc.arguments, ctx)

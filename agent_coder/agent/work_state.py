@@ -315,8 +315,10 @@ def render_read_paths(read_paths: dict[str, str] | None) -> str:
         return ""
     lines = [
         (
-            "[ПРОЧИТАННЫЕ ФАЙЛЫ] — уже читал в этой сессии "
-            "(не перечитывай целиком; детали — offset/limit или search_history):"
+            "[ПРОЧИТАННЫЕ ФАЙЛЫ] — уже читал в этой сессии. "
+            "НЕ ПЕРЕЧИТЫВАЙ целиком: read_file по ним отвергается. "
+            "Детали — read_file с offset/limit (например, offset=285 limit=20) "
+            "или search_history:"
         )
     ]
     for path, digest in items:
