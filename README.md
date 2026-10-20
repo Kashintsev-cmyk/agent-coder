@@ -150,6 +150,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 | `/model` | Выбрать модель |
 | `/reasoning` | Уровень reasoning |
 | `/verify [model]` | Проверить findings аудита на модели-фильтре |
+| `/patch [model]` | Починить confirmed findings (дефолт deepseek) |
 | `/help`, `/exit`, `/quit`, `/q` | Справка / выход |
 
 ## Режимы

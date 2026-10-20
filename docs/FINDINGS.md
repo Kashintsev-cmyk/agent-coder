@@ -178,3 +178,42 @@ PLAN — read-only, как AUDIT: модель читает 10-15 файлов, 
 **Известное ограничение (то же, что B9.1):** в длинных продолжениях
 (≥5 compress) reminder может «утонуть». B9.1d (N=3 / system-reminder)
 — если понадобится, отдельная задача.
+
+## B9.2 — /patch по confirmed findings (closed 2026-10-20, core + handler)
+
+**Вердикт: PASS на уровне тестов и интеграции** (замер на реальных
+данных — опционально, после B10).
+
+Цепочка audit → /verify → /patch: confirmed findings из
+`session.verify_results` превращаются в задачу для модели-исполнителя.
+
+- `agent/patch.py`: `run_patch(client, session, model, registry)`,
+  `PatchResult`. Свой цикл (не AgentLoop): compression не нужна,
+  confirmed findings точные, read offset/limit.
+- `PATCH_TOOLS` whitelist: read_file/list_files/search/write_file/
+  edit_file/run_command/git_status/git_diff/git_log. **git_commit НЕ
+  включён** — коммит делает пользователь после ревью.
+- `_collect_confirmed`: только `status=confirmed`, дедуп по
+  `(text, evidence)` — 3 /verify подряд не дают 3×patch.
+- Свой watchdog: `MAX_CONSECUTIVE_ERRORS=5`. Бюджет
+  `MAX_COST_PATCH=50₽`, итерации `MAX_PATCH_ITERATIONS=30`.
+- `files_changed` — из tool-calls write_file/edit_file (уникальные
+  пути) + `git diff --stat` через subprocess (детерминированно).
+- `session.patch_results` append (как verify_results), переживает
+  compress истории.
+- `rules/patch_standard.md`: только confirmed, не рефактори, не трогай
+  rejected/uncertain, read offset/limit, git_commit не вызывай.
+- `config.py`: `PATCH_MODEL_ID` (default = `DEFAULT_MODEL_ID`),
+  `MAX_COST_PATCH=50₽`, `MAX_PATCH_ITERATIONS=30`.
+- Telegram: `cmd_patch` (`ops.py`), `BotCommand("patch", ...)` (меню
+  22→23). CLI: `/patch` (`__main__.py`), `/help` — строка про /patch.
+- `/yolo` **игнорируется** — сам вызов `/patch` = подтверждение.
+
+**Границы:**
+- Не запускается автоматически после `/verify` — явная команда.
+- Только `confirmed`, не `rejected`/`uncertain`.
+- `git_commit` не доступен — коммит пользователь.
+
+**Тесты:** `tests/test_patch.py` — 7 тестов (no_confirmed, только
+confirmed в task, dedup, whitelist без git_commit, files_changed,
+budget_exceeded, max_iterations). 721 → 728 passed.
