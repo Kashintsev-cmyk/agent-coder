@@ -17,8 +17,31 @@ SKIP_DIRS = {
     ".next",
     "dist",
     "build",
+    # B9.5: кеши инструментов и IDE — в 3e2513be list_files отдал
+    # 30K+ символов из .mypy_cache/ и .venv310/ (модель жгла токены).
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".cache",
+    ".tox",
+    ".idea",
+    ".vscode",
+    "htmlcov",
 }
+# B9.5: .venv310/.venv311/... и *.egg-info — по префиксу/суффиксу,
+# чтобы не перечислять все версии Python.
+SKIP_PREFIXES: tuple[str, ...] = (".venv",)
+SKIP_SUFFIXES: tuple[str, ...] = (".egg-info",)
 MAX_ENTRIES = 500
+
+
+def _is_skipped_dir(part: str) -> bool:
+    """Директория в скип-листе (точное имя, префикс .venv*, суффикс *.egg-info)."""
+    if part in SKIP_DIRS:
+        return True
+    if any(part.startswith(p) for p in SKIP_PREFIXES):
+        return True
+    return bool(any(part.endswith(s) for s in SKIP_SUFFIXES))
 
 
 async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
@@ -52,7 +75,7 @@ def _collect_entries(target: Path, base: Path, pattern: str) -> list[str]:
     """Синхронный сбор (в отдельном потоке, чтобы не блокировать loop)."""
     entries: list[str] = []
     for p in sorted(target.rglob(pattern)):
-        if any(part in SKIP_DIRS for part in p.relative_to(target).parts):
+        if any(_is_skipped_dir(part) for part in p.relative_to(target).parts):
             continue
         rel = p.relative_to(base)
         suffix = "/" if p.is_dir() else ""
@@ -67,7 +90,8 @@ list_files_tool = Tool(
     name="list_files",
     description=(
         "Показать файлы и папки в рабочей директории рекурсивно. "
-        "Игнорирует .git, node_modules, __pycache__, .venv и т.п."
+        "Игнорирует .git, node_modules, __pycache__, .venv*, .mypy_cache, "
+        ".pytest_cache, .ruff_cache, *.egg-info и т.п."
     ),
     parameters={
         "type": "object",

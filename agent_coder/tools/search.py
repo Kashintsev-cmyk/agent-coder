@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from agent_coder.tools.list_files import SKIP_DIRS
 from agent_coder.tools.registry import Tool, ToolContext
 
 MAX_MATCHES = 200
@@ -39,6 +40,11 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         "--max-count",
         str(MAX_MATCHES),
     ]
+    # B9.5: не искать в кешах/venv — 3e2513be: rg отдавал .mypy_cache/
+    # .venv310/ (модель жгла токены на мусор).
+    for skip in sorted(SKIP_DIRS):
+        cmd.extend(["--glob", f"!{skip}/**"])
+    cmd.extend(["--glob", "!*.egg-info/**"])
     if args.get("fixed_strings", True):
         cmd.append("--fixed-strings")
     glob = args.get("glob")
