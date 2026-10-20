@@ -162,6 +162,10 @@ async def run_patch(
     res = PatchResult(run_id=uuid.uuid4().hex[:8], model=model)
 
     confirmed = _collect_confirmed(session.verify_results)
+    if not confirmed:
+        res.no_confirmed = True
+        res.error = "нет confirmed findings — сначала /verify"
+        return res
     # B9.2e: вычесть findings, которые УЖЕ были переданы модели в
     # предыдущих patch-прогонах. Без этого повторный /patch снова
     # берёт уже обработанные (в т.ч. неудачно) — тратит итерации.
@@ -171,7 +175,17 @@ async def run_patch(
         for pr in (session.patch_results or [])
         for f in (pr.get("findings") or [])
     }
-    confirmed = [c for c in confirmed if (c["text"], c["evidence"]) not in already]
+    already_files = {
+        fp
+        for pr in (session.patch_results or [])
+        for fp in (pr.get("files_changed") or [])
+    }
+    confirmed = [
+        c
+        for c in confirmed
+        if (c["text"], c["evidence"]) not in already
+        and not any(fp in c.get("evidence", "") for fp in already_files)
+    ]
     if not confirmed:
         res.no_confirmed = True
         res.error = "все confirmed уже были в предыдущих /patch"
