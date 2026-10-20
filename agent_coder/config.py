@@ -153,7 +153,7 @@ class Config:
     PATCH_MODEL_ID: str = os.getenv("PATCH_MODEL_ID", DEFAULT_MODEL_ID)
     MAX_COST_PATCH: float = _env_float("MAX_COST_PATCH", "50.0")
     # Потолок итераций /patch: обычно 5-15 на 10-15 findings. 30 — с запасом.
-    MAX_PATCH_ITERATIONS: int = _env_int("MAX_PATCH_ITERATIONS", "30")
+    MAX_PATCH_ITERATIONS: int = _env_int("MAX_PATCH_ITERATIONS", "60")
 
     # Model catalog (кэш метаданных моделей из RouterAI)
     # TTL дискового кэша каталога моделей, часы (минимум 1)
