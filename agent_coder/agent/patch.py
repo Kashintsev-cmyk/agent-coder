@@ -101,6 +101,12 @@ def _collect_confirmed(verify_results: list[dict[str, Any]]) -> list[dict[str, s
     return out
 
 
+def _is_tests_path(raw: str) -> bool:
+    """Путь относится к tests/? (B9.2g.1 — модель подгоняет assert'ы)."""
+    norm = str(raw or "").strip().strip("./").replace("\\", "/")
+    return norm == "tests" or norm.startswith("tests/")
+
+
 def _build_task(confirmed: list[dict[str, str]], session: Session) -> str:
     """Сформировать user-message: confirmed findings + work_state.todo."""
     lines = ["CONFIRMED FINDINGS (починить только это):", ""]
@@ -285,6 +291,18 @@ async def run_patch(
                     f"Разрешены: {', '.join(PATCH_TOOLS)}."
                 )
                 consecutive_errors += 1
+            elif tc.name in ("write_file", "edit_file") and _is_tests_path(
+                str(tc.arguments.get("path") or "")
+            ):
+                path = str(tc.arguments.get("path") or "")
+                result = (
+                    f"Ошибка: {path} — tests/ не патчим. "
+                    "Модель подгоняет assert'ы под сломанный код, это "
+                    "запрещено. Разрешено: read_file tests/, "
+                    "run_command pytest. Правь исходники, не тесты."
+                )
+                consecutive_errors += 1
+                logger.info("patch: reject tests/ write: %s", path)
             else:
                 try:
                     result = await tool_map[tc.name].executor(tc.arguments, ctx)

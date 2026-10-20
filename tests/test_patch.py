@@ -152,6 +152,34 @@ async def test_run_patch_records_files_changed() -> None:
     assert s.patch_results[0]["run_id"] == res.run_id
 
 
+async def test_run_patch_rejects_tests_write() -> None:
+    """write_file на tests/ — reject, path не в files_changed (B9.2g.1)."""
+    s = _mk_session()
+    s.verify_results = [_confirmed("A", "a.py:1")]
+    client = _ScriptedClient(
+        [
+            _FakeResponse(
+                "",
+                tool_calls=[
+                    ToolCall(
+                        id="c1",
+                        name="write_file",
+                        arguments={"path": "tests/test_x.py", "content": "x"},
+                    )
+                ],
+            ),
+            _FakeResponse("готово"),
+        ]
+    )
+    res = await run_patch(client, s, registry=_registry_with_all())
+
+    assert res.files_changed == [], "tests/ не должен попасть в files_changed"
+    tool_msgs = [m for m in client.last_messages if m.get("role") == "tool"]
+    assert any("tests/ не патчим" in m["content"] for m in tool_msgs), (
+        "ожидали reject-сообщение в tool-message"
+    )
+
+
 async def test_run_patch_budget_exceeded(monkeypatch) -> None:
     """При превышении MAX_COST_PATCH — budget_exceeded=True, break."""
     monkeypatch.setattr(patch_mod.config, "MAX_COST_PATCH", 0.05)
