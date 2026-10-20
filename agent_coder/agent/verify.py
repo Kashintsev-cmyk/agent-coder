@@ -39,6 +39,11 @@ VERIFY_TOOLS: tuple[str, ...] = ("read_file", "list_files")
 
 # Потолок итераций: verify не должен зацикливаться (обычно 1–3).
 MAX_VERIFY_ITERATIONS = 10
+# Последние N итераций — tools=[]: модель физически не может читать,
+# обязана выдать вердикты текстом. Без этого glm-5.3 уходит в
+# read_file-loop до лимита и возвращает 0 вердиктов (замер 3e2513be:
+# 10 итераций, 10₽, 0 вердиктов).
+FINAL_FORCE_ITERATIONS = 2
 
 _VERDICT_RE = re.compile(
     r"^\s*[-*]?\s*[*_`]*(CONFIRMED|REJECTED|UNCERTAIN)[*_`]*\s*:\s*(.+)$",
@@ -156,13 +161,30 @@ async def run_verify(
 
     final_parts: list[str] = []
 
+    force_injected = False
     while res.iterations < MAX_VERIFY_ITERATIONS:
         res.iterations += 1
+        # На последних FINAL_FORCE_ITERATIONS — отключаем tools и
+        # требуем текст. Модель не сможет читать, только вердикты.
+        force_final = res.iterations > MAX_VERIFY_ITERATIONS - FINAL_FORCE_ITERATIONS
+        if force_final and not force_injected:
+            messages.append(
+                {
+                    "role": "user",
+                    "content": (
+                        "[ПРИНУДИТЕЛЬНО] СТОП чтение. Инструменты отключены. "
+                        "Выдай CONFIRMED/REJECTED/UNCERTAIN по тем findings, "
+                        "которые уже проверил, прямо сейчас. Только строки "
+                        "вердиктов, без нарратива."
+                    ),
+                }
+            )
+            force_injected = True
         try:
             response = await client.chat(
                 messages=messages,
                 model=model,
-                tools=schemas,
+                tools=[] if force_final else schemas,
                 reasoning_effort=session.reasoning_effort,
             )
         except Exception as e:
@@ -170,6 +192,9 @@ async def run_verify(
             res.error = f"LLM: {e}"
             break
 
+        # B9.2c: сессионный учёт — MAX_COST_PER_SESSION должен видеть
+        # траты verify (раньше cost шёл только в VerifyResult).
+        session.total_usage = session.total_usage + response.usage
         res.cost += response.usage.cost
         msg = response.message
         if msg.content:
@@ -238,5 +263,20 @@ async def run_verify(
     res.counts = counts
     if not res.raw_text and not res.error:
         res.error = "модель не вернула ни текста, ни вердиктов"
+    elif not verdicts and res.raw_text:
+        # B9.2c: модель вернула текст, но без валидных вердиктов —
+        # сохраняем как unparsed для диагностики.
+        session.verify_results.append(
+            {
+                "run_id": res.run_id,
+                "ts": ts,
+                "model": model,
+                "text": res.raw_text[:2000],
+                "status": "unparsed",
+                "evidence": "",
+            }
+        )
+        counts["unparsed"] = 1
+        res.counts = counts
     session.save()
     return res

@@ -212,6 +212,8 @@ async def run_patch(
             res.error = f"LLM: {e}"
             break
 
+        # B9.2c: сессионный учёт — MAX_COST_PER_SESSION видит траты patch.
+        session.total_usage = session.total_usage + response.usage
         res.cost += response.usage.cost
         msg = response.message
         if msg.content:
