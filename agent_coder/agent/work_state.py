@@ -294,7 +294,10 @@ def render_read_paths(read_paths: dict[str, str] | None) -> str:
     """Блок [ПРОЧИТАННЫЕ ФАЙЛЫ] для system prompt. Пусто -> пустая строка."""
     if not read_paths:
         return ""
-    items = sorted(read_paths.items())[:MAX_READ_PATHS_IN_PROMPT]
+    # Recent-N, не alphabet: read_paths заполняется в порядке чтения
+    # (loop.py:545), а последние прочитанные забываются первыми после
+    # compress — их и показываем. sorted() давал a.py..z.py (старьё).
+    items = list(read_paths.items())[-MAX_READ_PATHS_IN_PROMPT:]
     if not items:
         return ""
     lines = [
