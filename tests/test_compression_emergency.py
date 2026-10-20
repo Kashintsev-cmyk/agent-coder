@@ -17,6 +17,19 @@ from agent_coder.agent.session import Session
 from agent_coder.llm.types import Usage
 
 
+@pytest.fixture(autouse=True)
+def _fixed_history_cap(monkeypatch):
+    """Тесты рассчитаны на soft_limit ≈ 60K (см. комментарии в тестах).
+
+    ``openai/gpt-5.6-luna`` в каталоге: context=0 → ``soft_limit`` =
+    ``MAX_HISTORY_TOKENS``. Локальный .env содержит 60000 (B11.0 поднял
+    дефолт, но .env перебивает); в CI-sim .env нет → 150000 → тест
+    test_emergency_compress_when_total_far_over_soft («150K recent >> soft*2»)
+    ломается. Фиксируем cap, чтобы файл не зависел от окружения.
+    """
+    monkeypatch.setattr("agent_coder.config.config.MAX_HISTORY_TOKENS", 60000)
+
+
 class _FakeMessage:
     def __init__(self, content: str):
         self.content = content
