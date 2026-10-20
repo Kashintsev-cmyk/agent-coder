@@ -25,6 +25,7 @@ BOT_COMMANDS = [
     BotCommand(command="server", description="🖥 Диагностика сервера"),
     BotCommand(command="audit", description="🔒 Аудит проекта"),
     BotCommand(command="verify", description="🔍 Проверить findings аудита"),
+    BotCommand(command="patch", description="🔧 Починить confirmed findings"),
     BotCommand(command="balance", description="💳 Баланс RouterAI"),
     BotCommand(command="new", description="➕ Новый проект"),
     BotCommand(command="ghnew", description="🐙 Проект на GitHub + push"),

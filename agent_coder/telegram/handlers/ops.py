@@ -204,6 +204,92 @@ async def cmd_verify(message: Message) -> None:
     await status_msg.edit_text("\n".join(lines), parse_mode="HTML")
 
 
+@router.message(Command("patch"))
+async def cmd_patch(message: Message) -> None:
+    """Починить confirmed findings из /verify.
+
+    /patch            — config.PATCH_MODEL_ID (deepseek, дёшево)
+    /patch <model_id> — явный override (дорого — осознанно)
+
+    Не наследует session.model / model_manual — как /verify.
+    /yolo игнорируется: сам вызов /patch = подтверждение.
+    """
+    from agent_coder.agent.patch import run_patch
+    from agent_coder.config import config
+    from agent_coder.llm.client import LLMClient
+    from agent_coder.tools import build_registry
+
+    session = _get_active_session(message.chat.id)
+    if not session:
+        await message.answer("Сначала выбери проект: /projects")
+        return
+    confirmed = [v for v in session.verify_results if v.get("status") == "confirmed"]
+    if not confirmed:
+        await message.answer(
+            "⚠ Нет confirmed findings — сначала /verify (после /audit)."
+        )
+        return
+
+    parts = (message.text or "").split(maxsplit=1)
+    arg_model = parts[1].strip() if len(parts) > 1 else ""
+    if arg_model and arg_model not in config.MODEL_IDS:
+        await message.answer(
+            f"❌ Модель <code>{html_escape(arg_model)}</code> не в MODEL_IDS.",
+            parse_mode="HTML",
+        )
+        return
+    used_model = arg_model or config.PATCH_MODEL_ID
+    hint = "" if arg_model else " (дефолт; /patch &lt;model&gt; — сменить)"
+    status_msg = await message.answer(
+        f"🔧 Патчу <b>{len(confirmed)}</b> confirmed на "
+        f"<code>{html_escape(used_model)}</code>{hint}...",
+        parse_mode="HTML",
+    )
+
+    client = LLMClient()
+    await client.start()
+    try:
+        result = await run_patch(
+            client=client,
+            session=session,
+            model=used_model,
+            registry=build_registry(),
+        )
+    finally:
+        await client.close()
+
+    lines = [f"🔧 <b>Patch</b> · <code>{html_escape(result.model)}</code>"]
+    if result.error:
+        lines.append(f"❌ {html_escape(result.error)}")
+    else:
+        lines.append(f"Итераций: {result.iterations} · {result.cost:.2f}₽")
+        if result.files_changed:
+            lines.append(f"\n<b>Изменено файлов:</b> {len(result.files_changed)}")
+            for fp in result.files_changed[:10]:
+                lines.append(f"  • <code>{html_escape(fp)}</code>")
+            if len(result.files_changed) > 10:
+                lines.append(f"  … ещё {len(result.files_changed) - 10}")
+        else:
+            lines.append(
+                "\n⚠ Модель не изменила файлов (возможно, finding не "
+                "подтвердился при чтении)."
+            )
+        if result.git_diff_stat:
+            lines.append(
+                f"\n<b>git diff:</b>\n<pre>{html_escape(result.git_diff_stat[:3000])}</pre>"
+            )
+        if result.budget_exceeded:
+            lines.append(
+                f"\n⚠ Бюджет patch исчерпан "
+                f"(лимит {config.MAX_COST_PATCH:.0f}₽), правки частичные."
+            )
+        if result.raw_text:
+            lines.append(
+                f"\n<b>Отчёт:</b>\n<pre>{html_escape(result.raw_text[:1500])}</pre>"
+            )
+    await status_msg.edit_text("\n".join(lines), parse_mode="HTML")
+
+
 # ---------- Audit menu ----------
 
 AUDIT_TIMEOUT_SEC = 180

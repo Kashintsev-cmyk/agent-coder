@@ -227,6 +227,51 @@ async def _handle_slash(line: str, session: Session) -> bool:
                     )
                     for k, v in (result.counts or {}).items():
                         ui.print_info(f"  {k}: {v}")
+    elif cmd == "patch":
+        from agent_coder.agent.patch import run_patch
+        from agent_coder.llm.client import LLMClient
+        from agent_coder.tools import build_registry
+
+        confirmed = [
+            v for v in session.verify_results if v.get("status") == "confirmed"
+        ]
+        if not confirmed:
+            ui.print_error("Нет confirmed findings — сначала /verify")
+        else:
+            arg_model = arg.strip() if arg else ""
+            if arg_model and arg_model not in config.MODEL_IDS:
+                ui.print_error(f"Модель {arg_model} не в MODEL_IDS")
+            else:
+                used = arg_model or config.PATCH_MODEL_ID
+                ui.print_info(f"Патчу {len(confirmed)} confirmed на {used}...")
+                client = LLMClient()
+                await client.start()
+                try:
+                    result = await run_patch(
+                        client=client,
+                        session=session,
+                        model=used,
+                        registry=build_registry(),
+                    )
+                finally:
+                    await client.close()
+                if result.error:
+                    ui.print_error(result.error)
+                else:
+                    ui.print_success(
+                        f"Готово: {result.iterations} итераций, {result.cost:.2f}₽"
+                    )
+                    if result.files_changed:
+                        ui.print_info(f"Изменено файлов: {len(result.files_changed)}")
+                        for fp in result.files_changed:
+                            ui.print_info(f"  {fp}")
+                    if result.git_diff_stat:
+                        ui.print_info(result.git_diff_stat)
+                    if result.budget_exceeded:
+                        ui.print_info(
+                            f"⚠ Бюджет patch исчерпан "
+                            f"({config.MAX_COST_PATCH:.0f}₽), правки частичные."
+                        )
     elif cmd == "clear":
         session.messages = []
         ui.print_success("История очищена (стоимость сохранена).")
@@ -260,6 +305,7 @@ def _print_help() -> None:
         "\n"
         "Прочее:\n"
         "  /verify [model] — проверить findings аудита (glm-5.3)\n"
+        "  /patch [model]  — починить confirmed findings (deepseek)\n"
         "  /history       — последние сообщения\n"
         "  /help          — справка\n"
         "  /exit          — выход"
