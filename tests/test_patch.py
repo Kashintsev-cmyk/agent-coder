@@ -152,6 +152,32 @@ async def test_run_patch_records_files_changed() -> None:
     assert s.patch_results[0]["run_id"] == res.run_id
 
 
+def test_build_task_includes_previous_runs() -> None:
+    """_build_task показывает files_changed/error прошлых прогонов (B9.2g.3)."""
+    s = _mk_session()
+    s.patch_results = [
+        {
+            "run_id": "r1",
+            "files_changed": ["bot/x.py"],
+            "error": "",
+            "findings": [{"text": "a", "evidence": "a.py:1"}],
+        },
+        {
+            "run_id": "r2",
+            "files_changed": [],
+            "error": "бюджет",
+            "findings": [],
+        },
+    ]
+    task = patch_mod._build_task([{"text": "A", "evidence": "a.py:1"}], s)
+    assert "ПРОШЛЫЕ ПРОГОНЫ" in task
+    assert "bot/x.py" in task
+    assert "Прогон 1" in task
+    assert "Прогон 2" in task
+    assert "НЕ ПОВТОРЯЙ" in task
+    assert "бюджет" in task
+
+
 async def test_run_patch_rejects_tests_write() -> None:
     """write_file на tests/ — reject, path не в files_changed (B9.2g.1)."""
     s = _mk_session()

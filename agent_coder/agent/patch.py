@@ -107,6 +107,44 @@ def _is_tests_path(raw: str) -> bool:
     return norm == "tests" or norm.startswith("tests/")
 
 
+def _render_prev_runs(patch_results: list[dict[str, Any]] | None) -> str:
+    """Секция «ПРОШЛЫЕ ПРОГОНЫ» для _build_task (B9.2g.3).
+
+    Exclusion по findings уже не даёт передать тот же finding дважды, но
+    модель может выбрать ТОТ ЖЕ файл и сломать уже сделанное. Показываем
+    files_changed + ошибки, просим проверить git status перед правкой.
+    """
+    if not patch_results:
+        return ""
+    lines = ["ПРОШЛЫЕ ПРОГОНЫ /patch (не повторяй):"]
+    for i, pr in enumerate(patch_results, 1):
+        run_id = pr.get("run_id", "?")
+        files = pr.get("files_changed") or []
+        err = (pr.get("error") or "").strip()
+        findings = pr.get("findings") or []
+        parts = [f"Прогон {i} (run_id={run_id})"]
+        if files:
+            parts.append(f"изменены: {', '.join(files)}")
+        if err:
+            parts.append(f"ошибка: {err}")
+        if not files and not err:
+            parts.append("без изменений и ошибок")
+        lines.append("- " + "; ".join(parts) + f"; findings передано: {len(findings)}")
+        if files:
+            lines.append(
+                f"  → проверь {', '.join(files)} через git status/diff перед "
+                f"правкой: изменения могли быть ОТКАЧЕНЫ. НЕ ПОВТОРЯЙ ту же "
+                f"правку без причины."
+            )
+    lines.append("")
+    lines.append(
+        "Если правка уже сделана в прогоне выше и оставлена — не повторяй. "
+        "Если откачена и причина не ясна — пропусти с пометкой «требует "
+        "ручной правки»."
+    )
+    return "\n".join(lines)
+
+
 def _build_task(confirmed: list[dict[str, str]], session: Session) -> str:
     """Сформировать user-message: confirmed findings + work_state.todo."""
     lines = ["CONFIRMED FINDINGS (починить только это):", ""]
@@ -117,6 +155,10 @@ def _build_task(confirmed: list[dict[str, str]], session: Session) -> str:
     if ws_text:
         lines.append("")
         lines.append(ws_text)
+    pr_text = _render_prev_runs(session.patch_results)
+    if pr_text:
+        lines.append("")
+        lines.append(pr_text)
     lines.append("")
     lines.append(
         "Действуй по patch_standard.md: минимальные правки, без "
