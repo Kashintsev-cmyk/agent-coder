@@ -471,6 +471,10 @@ def _start_audit(workspace: str, session, *, fresh: bool) -> dict:
     from agent_coder.agent.work_state import WorkStateHandle
 
     loaded = _audit_storage.prepare(workspace, fresh=fresh)
+    # R15: всего .py в scope — для прогресса «покрыто X/Y».
+    loaded["total_files"] = _audit_storage._count_py_files(
+        workspace, session.audit_scopes or None
+    )
     handle = WorkStateHandle(session.work_state)
     if loaded["findings"]:
         handle.update({"findings+": loaded["findings"]})
@@ -479,9 +483,12 @@ def _start_audit(workspace: str, session, *, fresh: bool) -> dict:
     session.work_state = handle.get()
     if loaded["coverage"]:
         session.read_paths.update(loaded["coverage"])
+    covered = len(loaded["coverage"])
+    remaining = max(0, loaded["total_files"] - covered)
     ui.print_info(
         f"AUDIT state: findings={len(loaded['findings'])}, "
-        f"coverage={len(loaded['coverage'])}, todo={len(loaded['todo'])}"
+        f"coverage={covered}/{loaded['total_files']} "
+        f"(осталось {remaining}), todo={len(loaded['todo'])}"
     )
     return loaded
 

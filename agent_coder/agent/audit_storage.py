@@ -185,13 +185,19 @@ def save(workspace: str, session, loaded: dict[str, Any]) -> None:
                 f.write(f"- [ ] {item}\n")
 
     loaded_meta = (loaded.get("meta") or {}) if loaded else {}
+    coverage_count = len(loaded_cov) + len(new_cov)
+    total_files = int(loaded.get("total_files", 0)) if loaded else 0
     meta = {
         "workspace": str(Path(workspace).resolve()),
         "slug": _slug(workspace),
         "updated": time.time(),
         "sessions": int(loaded_meta.get("sessions", 0)) + 1,
         "findings_count": len(loaded_findings) + len(new_findings),
-        "coverage_count": len(loaded_cov) + len(new_cov),
+        "coverage_count": coverage_count,
+        "total_files": total_files,
+        "coverage_remaining": max(0, total_files - coverage_count)
+        if total_files
+        else 0,
     }
     _atomic_write_json(pd / "meta.json", meta)
 
@@ -205,6 +211,27 @@ def mark_read(workspace: str, paths: dict[str, str]) -> None:
     with cm.open("a", encoding="utf-8") as f:
         for path, digest in paths.items():
             f.write(f"- {path} — {digest}\n" if digest else f"- {path}\n")
+
+
+def _count_py_files(workspace: str, scopes: list[str] | None = None) -> int:
+    """Сколько .py в scope (R15: прогресс «покрыто X/Y»).
+
+    scopes — относительные пути от workspace (как session.audit_scopes).
+    None/[] — весь workspace. Prunning через _is_skipped_dir (SKIP_DIRS из
+    list_files): .venv, .venv310, __pycache__, .agent-coder и т.п.
+    """
+    from agent_coder.tools.list_files import _is_skipped_dir
+
+    root = Path(workspace).resolve()
+    roots = [root / s for s in scopes] if scopes else [root]
+    total = 0
+    for r in roots:
+        if not r.is_dir():
+            continue
+        for _dirpath, dirnames, filenames in os.walk(r):
+            dirnames[:] = [d for d in dirnames if not _is_skipped_dir(d)]
+            total += sum(1 for f in filenames if f.endswith(".py"))
+    return total
 
 
 def prepare(workspace: str, *, fresh: bool = False) -> dict[str, Any]:

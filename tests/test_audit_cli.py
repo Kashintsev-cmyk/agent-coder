@@ -69,3 +69,12 @@ def test_start_audit_fresh_ignores_state(tmp_path):
 
     assert loaded["findings"] == []
     assert s2.work_state.get("findings") in (None, [])
+
+
+def test_start_audit_sets_total_files(tmp_path):
+    (tmp_path / "a.py").write_text("x")
+    (tmp_path / "b.py").write_text("y")
+    workspace = str(tmp_path)
+    s = _new_audit_session(workspace)
+    loaded = _start_audit(workspace, s, fresh=True)
+    assert loaded["total_files"] == 2

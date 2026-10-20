@@ -108,3 +108,41 @@ def test_prepare_resume_loads_state(tmp_path):
 
     state = storage.prepare(str(tmp_path), fresh=False)
     assert state["findings"] == ["a.py:1 — x"]
+
+
+def test_count_py_files_all_workspace(tmp_path):
+    (tmp_path / "a.py").write_text("x = 1")
+    (tmp_path / "b.py").write_text("y = 2")
+    (tmp_path / "c.txt").write_text("z")
+    venv = tmp_path / ".venv" / "lib"
+    venv.mkdir(parents=True)
+    (venv / "skip.py").write_text("no")
+    assert storage._count_py_files(str(tmp_path)) == 2
+
+
+def test_count_py_files_scope(tmp_path):
+    (tmp_path / "bot").mkdir()
+    (tmp_path / "bot" / "a.py").write_text("x")
+    (tmp_path / "bot" / "b.py").write_text("y")
+    (tmp_path / "other").mkdir()
+    (tmp_path / "other" / "c.py").write_text("z")
+    assert storage._count_py_files(str(tmp_path), ["bot"]) == 2
+    assert storage._count_py_files(str(tmp_path), ["other"]) == 1
+    assert storage._count_py_files(str(tmp_path)) == 3
+
+
+def test_save_meta_total_files(tmp_path):
+    (tmp_path / "a.py").write_text("x")
+    (tmp_path / "b.py").write_text("y")
+    session = _session(str(tmp_path), findings=["a.py:1 — x"])
+    session.read_paths = {"a.py": "digest"}
+    loaded = storage.load(str(tmp_path))
+    loaded["total_files"] = storage._count_py_files(str(tmp_path))
+    storage.save(str(tmp_path), session, loaded)
+
+    meta = json.loads(
+        (storage.project_dir(str(tmp_path)) / "meta.json").read_text(encoding="utf-8")
+    )
+    assert meta["total_files"] == 2
+    assert meta["coverage_count"] == 1
+    assert meta["coverage_remaining"] == 1
