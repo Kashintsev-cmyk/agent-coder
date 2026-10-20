@@ -154,6 +154,12 @@ class Config:
     MAX_COST_PATCH: float = _env_float("MAX_COST_PATCH", "50.0")
     # Потолок итераций /patch: обычно 5-15 на 10-15 findings. 30 — с запасом.
     MAX_PATCH_ITERATIONS: int = _env_int("MAX_PATCH_ITERATIONS", "60")
+    # B9.2e: patch — механическая задача, reasoning="low" (medium даёт
+    # 10-15K reasoning-токенов на сложных finding'ах без действия).
+    PATCH_REASONING_EFFORT: str = os.getenv("PATCH_REASONING_EFFORT", "low")
+    # Таймаут одного LLM-вызова в patch (сек). Без него при зависшем
+    # провайдере цикл ждёт бесконечно.
+    PATCH_CHAT_TIMEOUT: float = _env_float("PATCH_CHAT_TIMEOUT", "180.0")
 
     # Model catalog (кэш метаданных моделей из RouterAI)
     # TTL дискового кэша каталога моделей, часы (минимум 1)

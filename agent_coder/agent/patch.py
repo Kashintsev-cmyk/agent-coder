@@ -201,12 +201,26 @@ async def run_patch(
     while res.iterations < config.MAX_PATCH_ITERATIONS:
         res.iterations += 1
         try:
-            response = await client.chat(
-                messages=messages,
-                model=model,
-                tools=schemas,
-                reasoning_effort=session.reasoning_effort,
+            # B9.2e: patch — механическая задача (найти, поправить, тесты).
+            # reasoning="low": deepseek v4-flash на medium уходил в 10-15K
+            # reasoning-токенов на сложных BLOCKER'ах (_span, _direction_consensus)
+            # и не писал файлы (замер: 26 итераций, 2.5₽, 0 write).
+            # timeout=180: без него при зависшем провайдере цикл ждал 15 мин.
+            import asyncio as _aio
+
+            response = await _aio.wait_for(
+                client.chat(
+                    messages=messages,
+                    model=model,
+                    tools=schemas,
+                    reasoning_effort=config.PATCH_REASONING_EFFORT,
+                ),
+                timeout=config.PATCH_CHAT_TIMEOUT,
             )
+        except TimeoutError:
+            logger.warning("patch: chat timeout %.0fs", config.PATCH_CHAT_TIMEOUT)
+            res.error = f"LLM timeout {config.PATCH_CHAT_TIMEOUT:.0f}s"
+            break
         except Exception as e:
             logger.exception("patch: chat failed")
             res.error = f"LLM: {e}"
