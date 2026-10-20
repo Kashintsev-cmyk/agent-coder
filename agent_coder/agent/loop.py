@@ -241,15 +241,19 @@ class AgentLoop:
             # актуальные факты, иначе смысл structured memory теряется.
             self._refresh_system_prompt()
 
-            # B9.1: напоминание в AUDIT — модель уходит в цикл чтения и
-            # не пишет findings. Каждые N=5 итераций без изменения state
+            # B9.1/B9.1e: напоминание в read-only режимах. Модель уходит в
+            # цикл чтения и не пишет state: в AUDIT — findings, в PLAN —
+            # todo (план). Каждые N=5 итераций без изменения state
             # добавляем user-reminder, чтобы вернуть к update_work_state.
+            # ACT не трогаем: мутации = естественный прогресс.
             if (
-                self.session.mode == Mode.AUDIT
+                self.session.mode in (Mode.AUDIT, Mode.PLAN)
                 and iterations_since_ws_update >= 5
                 and self.session.read_paths
             ):
-                self._inject_audit_reminder(iterations_since_ws_update)
+                self._inject_work_state_reminder(
+                    self.session.mode, iterations_since_ws_update
+                )
                 iterations_since_ws_update = 0
 
             # Запомнить длину messages ПЕРЕД запросом: на следующей итерации
@@ -567,18 +571,31 @@ class AgentLoop:
         )
         self.session.save()
 
-    def _inject_audit_reminder(self, iters_no_ws: int) -> None:
-        """B9.1: напомнить модели записать findings, не читая дальше."""
+    def _inject_work_state_reminder(self, mode: Mode, iters_no_ws: int) -> None:
+        """B9.1/B9.1e: напомнить модели записать state, не читая дальше.
+
+        AUDIT — findings (аудит нашёл проблемы, а не записал).
+        PLAN — todo (план/шаги, которые потеряются при compress).
+        ACT — не инжектится (мутации = естественный прогресс).
+        """
+        if mode == Mode.AUDIT:
+            field = "findings"
+            tail = "Если проблем не нашёл — запиши это в open_questions."
+        else:  # Mode.PLAN
+            field = "todo"
+            tail = (
+                "Запиши в todo текущий план и что уже выяснил — иначе при "
+                "compress план потеряется."
+            )
         self.session.add_message(
             {
                 "role": "user",
                 "content": (
-                    f"[НАПОМИНАНИЕ B9.1] Ты не записывал findings уже "
+                    f"[НАПОМИНАНИЕ B9.1] Ты не записывал {field} уже "
                     f"{iters_no_ws} итераций, хотя прочитал файлов: "
                     f"{len(self.session.read_paths)}. "
-                    "Вызови update_work_state с findings СЕЙЧАС, до "
-                    "следующего read_file. Если проблем не нашёл — "
-                    "запиши это в open_questions."
+                    f"Вызови update_work_state с {field} СЕЙЧАС, до "
+                    f"следующего read_file. {tail}"
                 ),
             }
         )

@@ -310,3 +310,75 @@ async def test_work_state_updates_counter_in_act(monkeypatch) -> None:
     assert res.work_state_updates == 2
     assert res.iterations_used == 3
     assert s.work_state["findings"] == ["f1", "f2"]
+
+
+# --- B9.1e: PLAN reminder --------------------------------------------
+
+
+@pytest.mark.asyncio
+async def test_plan_reminder_injected_after_5_iterations(monkeypatch) -> None:
+    """B9.1e: PLAN — после 5 итераций без ws_update напоминание."""
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_PLAN", 50)
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 100)
+
+    responses = [_read(f"f{i}.py") for i in range(1, 8)] + [_done()]
+    client = _ScriptedClient(responses)
+
+    s = Session.new(workspace="/tmp", model="m", mode=Mode.PLAN)
+    s.messages = [{"role": "system", "content": "S"}]
+    loop = AgentLoop(client=client, registry=_WsRegistry(), session=s, events=_events())
+    res = await loop.run("план")
+
+    reminder_msgs = [
+        m
+        for m in s.messages
+        if m.get("role") == "user" and "[НАПОМИНАНИЕ B9.1]" in (m.get("content") or "")
+    ]
+    assert len(reminder_msgs) == 1, "PLAN: напоминание один раз"
+    assert res.work_state_updates == 0
+
+
+@pytest.mark.asyncio
+async def test_plan_reminder_text_mentions_todo(monkeypatch) -> None:
+    """B9.1e: в PLAN reminder просит todo, а не findings."""
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_PLAN", 50)
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 100)
+
+    responses = [_read(f"f{i}.py") for i in range(1, 8)] + [_done()]
+    client = _ScriptedClient(responses)
+
+    s = Session.new(workspace="/tmp", model="m", mode=Mode.PLAN)
+    s.messages = [{"role": "system", "content": "S"}]
+    loop = AgentLoop(client=client, registry=_WsRegistry(), session=s, events=_events())
+    await loop.run("план")
+
+    reminder = next(
+        m["content"]
+        for m in s.messages
+        if m.get("role") == "user" and "[НАПОМИНАНИЕ B9.1]" in (m.get("content") or "")
+    )
+    assert "todo" in reminder, "PLAN: reminder должен просить todo"
+    assert "findings" not in reminder, "PLAN: reminder НЕ про findings"
+
+
+@pytest.mark.asyncio
+async def test_plan_guard_not_triggered(monkeypatch) -> None:
+    """B9.1e: guard в PLAN не срабатывает (только AUDIT)."""
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_PLAN", 50)
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 100)
+
+    responses = [
+        _read("a.py"),
+        _read("b.py"),
+        _done(),
+    ]
+    client = _ScriptedClient(responses, fallback=_update({"todo+": ["bug"]}))
+
+    s = Session.new(workspace="/tmp", model="m", mode=Mode.PLAN)
+    s.messages = [{"role": "system", "content": "S"}]
+    loop = AgentLoop(client=client, registry=_WsRegistry(), session=s, events=_events())
+    res = await loop.run("план")
+
+    # 2 read + 1 done = 3; guard не для PLAN → 4-го вызова нет
+    assert client.calls == 3
+    assert res.work_state_updates == 0

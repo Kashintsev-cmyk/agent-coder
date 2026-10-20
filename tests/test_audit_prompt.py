@@ -132,3 +132,12 @@ def test_work_state_rule_hardens_audit() -> None:
     assert "В AUDIT — особо жёстко" in text
     assert "после КАЖДОГО turn" in text
     assert "не батчи на конец аудита" in text
+
+
+def test_work_state_rule_mentions_plan_todo() -> None:
+    """B9.1e: _WORK_STATE_RULE просит todo в PLAN."""
+    from agent_coder.agent.prompts import _WORK_STATE_RULE
+
+    text = " ".join(_WORK_STATE_RULE.split())
+    assert "В PLAN — пиши `todo` по ходу" in text
+    assert "todo+" in text
