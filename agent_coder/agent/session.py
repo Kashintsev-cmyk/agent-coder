@@ -90,6 +90,12 @@ class Session:
     #  "ts": float, "run_id": str}. Не переживает compress в messages
     # (это отдельное поле), но переживает compress истории.
     verify_results: list[dict[str, Any]] = field(default_factory=list)
+    # Результаты /patch (B9.2): история прогонов, append. Каждый элемент:
+    # {"run_id": str, "ts": float, "model": str, "iterations": int,
+    #  "cost": float, "files_changed": list[str], "git_diff_stat": str,
+    #  "error": str, "budget_exceeded": bool}. Как verify_results —
+    # переживает compress истории (отдельное поле).
+    patch_results: list[dict[str, Any]] = field(default_factory=list)
     # Статистика сжатия истории (B5.1: только собираем)
     last_input_tokens: int = 0  # usage.input_tokens последнего запроса
     summary_count: int = 0  # сколько раз сжимали историю
@@ -272,6 +278,8 @@ class Session:
             data["read_paths"] = {}
         if "verify_results" not in data:
             data["verify_results"] = []
+        if "patch_results" not in data:
+            data["patch_results"] = []
 
         # Разовая чистка: если в истории есть DSML-мусор (старые версии
         # кода не фильтровали) — убираем при загрузке.

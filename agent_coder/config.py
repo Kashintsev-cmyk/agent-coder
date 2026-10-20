@@ -147,6 +147,14 @@ class Config:
     # Отдельный бюджет на verify, не съедает MAX_COST_PER_TASK.
     MAX_COST_VERIFY: float = _env_float("MAX_COST_VERIFY", "50.0")
 
+    # /patch (B9.2): модель-исполнитель по confirmed findings. Механическая
+    # задача — дешёвая модель. /patch <model> — override. Бюджет отдельный,
+    # не съедает MAX_COST_PER_TASK (как MAX_COST_VERIFY).
+    PATCH_MODEL_ID: str = os.getenv("PATCH_MODEL_ID", DEFAULT_MODEL_ID)
+    MAX_COST_PATCH: float = _env_float("MAX_COST_PATCH", "50.0")
+    # Потолок итераций /patch: обычно 5-15 на 10-15 findings. 30 — с запасом.
+    MAX_PATCH_ITERATIONS: int = _env_int("MAX_PATCH_ITERATIONS", "30")
+
     # Model catalog (кэш метаданных моделей из RouterAI)
     # TTL дискового кэша каталога моделей, часы (минимум 1)
     MODELS_CACHE_TTL: int = _env_int("MODELS_CACHE_TTL", "24")
@@ -218,13 +226,14 @@ class Config:
     # «залип». 10 — эмпирически: read_file-loop упирался за 9 перечитываний.
     MAX_ITERATIONS_NO_PROGRESS: int = int(os.getenv("MAX_ITERATIONS_NO_PROGRESS", "10"))
 
-
     # B9.4: дедуп findings по «файл:строка» в WorkStateHandle.update/render.
     # Схлопывает «services/pricing.py:13» и «pricing.py:13» в один
     # (оставляет более информативный: severity > длина). Default: 1 (вкл).
-    WORK_STATE_DEDUP: bool = (
-        os.getenv("WORK_STATE_DEDUP", "1").strip().lower()
-        not in ("0", "false", "no", "off")
+    WORK_STATE_DEDUP: bool = os.getenv("WORK_STATE_DEDUP", "1").strip().lower() not in (
+        "0",
+        "false",
+        "no",
+        "off",
     )
 
     # Логи
