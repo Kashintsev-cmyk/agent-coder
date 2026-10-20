@@ -14,6 +14,7 @@ SKIP_DIRS = {
     "__pycache__",
     ".venv",
     "venv",
+    ".agent-coder",
     ".next",
     "dist",
     "build",
