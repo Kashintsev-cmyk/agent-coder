@@ -150,7 +150,12 @@ class Config:
     # /patch (B9.2): модель-исполнитель по confirmed findings. Механическая
     # задача — дешёвая модель. /patch <model> — override. Бюджет отдельный,
     # не съедает MAX_COST_PER_TASK (как MAX_COST_VERIFY).
-    PATCH_MODEL_ID: str = os.getenv("PATCH_MODEL_ID", DEFAULT_MODEL_ID)
+    # B9.2g: glm-5.3 вместо deepseek v4-flash. В /verify glm следовал
+    # промпту (7 итераций, 29 вердиктов); deepseek не тянет архитектурные
+    # findings (B9.2: 3 прогона, 17.4₽, 2 BLOCKER не починены, ручной фикс).
+    # Fallback — kimi-k2.7-code, если glm не тянет. env PATCH_MODEL_ID
+    # для override (в .env не задан — дефолт из этой строки).
+    PATCH_MODEL_ID: str = os.getenv("PATCH_MODEL_ID", "z-ai/glm-5.3")
     MAX_COST_PATCH: float = _env_float("MAX_COST_PATCH", "50.0")
     # Потолок итераций /patch: обычно 5-15 на 10-15 findings. 30 — с запасом.
     MAX_PATCH_ITERATIONS: int = _env_int("MAX_PATCH_ITERATIONS", "60")
