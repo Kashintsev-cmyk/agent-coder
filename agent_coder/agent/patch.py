@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import subprocess
 import time
 import uuid
@@ -101,10 +102,39 @@ def _collect_confirmed(verify_results: list[dict[str, Any]]) -> list[dict[str, s
     return out
 
 
-def _is_tests_path(raw: str) -> bool:
-    """Путь относится к tests/? (B9.2g.1 — модель подгоняет assert'ы)."""
-    norm = str(raw or "").strip().strip("./").replace("\\", "/")
-    return norm == "tests" or norm.startswith("tests/")
+def _is_tests_path(raw: str, workspace: str | None = None) -> bool:
+    """Путь относится к tests/? (B9.2g.1 — модель подгоняет assert'ы).
+
+    B9.2g.1-fix: resolve() + relative_to. Старая версия сравнивала
+    строковый префикс — `src/../tests/x.py` и абсолютный
+    `<ws>/tests/x.py` проходили мимо.
+    """
+    from pathlib import Path
+
+    s = str(raw or "").strip()
+    if not s:
+        return False
+    if workspace is None:
+        norm = os.path.normpath(s.replace("\\", "/"))
+        return "tests" in Path(norm).parts
+    try:
+        ws = Path(workspace).resolve()
+    except OSError:
+        return False
+    target = Path(s)
+    if not target.is_absolute():
+        target = ws / target
+    try:
+        lex = target.relative_to(ws)
+        if "tests" in lex.parts:
+            return True
+    except ValueError:
+        pass
+    try:
+        real = target.resolve(strict=False).relative_to(ws)
+        return "tests" in real.parts
+    except (ValueError, OSError):
+        return False
 
 
 def _render_prev_runs(patch_results: list[dict[str, Any]] | None) -> str:
@@ -334,7 +364,7 @@ async def run_patch(
                 )
                 consecutive_errors += 1
             elif tc.name in ("write_file", "edit_file") and _is_tests_path(
-                str(tc.arguments.get("path") or "")
+                str(tc.arguments.get("path") or ""), str(ctx.workspace)
             ):
                 path = str(tc.arguments.get("path") or "")
                 result = (
@@ -348,11 +378,16 @@ async def run_patch(
             else:
                 try:
                     result = await tool_map[tc.name].executor(tc.arguments, ctx)
-                    if tc.name in ("write_file", "edit_file"):
+                    # B9.2g.3: files_changed.add — только после error-check.
+                    # Раньше write с ошибкой (путь вне workspace и т.п.)
+                    # попадал в files_changed → exclusion в _build_task
+                    # терял findings для следующего прогона.
+                    is_error = result.lstrip().startswith("Ошибка")
+                    if tc.name in ("write_file", "edit_file") and not is_error:
                         path = str(tc.arguments.get("path") or "").strip()
                         if path:
                             files_changed.add(path)
-                    if result.lstrip().startswith("Ошибка"):
+                    if is_error:
                         consecutive_errors += 1
                     else:
                         consecutive_errors = 0

@@ -286,3 +286,20 @@ async def test_run_patch_all_already_patched() -> None:
     assert res.no_confirmed
     assert "все confirmed уже были" in res.error
     assert client.calls == 0
+
+
+def test_is_tests_path_resolve_bypass(tmp_path) -> None:
+    """B9.2g.1-fix: `src/../tests/x.py` и абсолютный путь — обход закрыт."""
+    from agent_coder.agent.patch import _is_tests_path
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    (ws / "tests").mkdir()
+    (ws / "src").mkdir()
+    assert _is_tests_path("tests/x.py", str(ws)) is True
+    assert _is_tests_path("src/../tests/x.py", str(ws)) is True
+    assert _is_tests_path(str(ws / "tests" / "x.py"), str(ws)) is True
+    assert _is_tests_path("src/x.py", str(ws)) is False
+    assert _is_tests_path(str(ws / "src" / "x.py"), str(ws)) is False
+    # вне workspace — не tests (write_file отвергнет отдельно)
+    assert _is_tests_path("/tmp/tests/x.py", str(ws)) is False
