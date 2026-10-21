@@ -160,7 +160,39 @@ _ALLOWED_PIPES = re.compile(
     r"systemctl|journalctl|docker|lsof|du|smem|pmap|vmstat|iostat|mpstat|"
     r"which|uname|id|whoami|hostname|date|findmnt|stat|file|"
     r"lsblk|blkid|swapon|pstree|tree|readlink|realpath|locale|"
-    r"find|sort|column|nl|rev|xxd|od|hexdump)\s+",
+    r"find|sort|column|nl|rev|xxd|od|hexdump)(?:\s+|$)",
+    re.IGNORECASE,
+)
+
+
+# B9.2g.2 (BLOCKER): мутирующие подкоманды в pipe — запрещены.
+# _ALLOWED_PIPES матчил только basename (docker, systemctl, ip, sort,
+# find), поэтому `docker rm -f X | cat`, `systemctl restart foo | cat`,
+# `ip link set eth0 down | cat`, `sort -o out.txt | ...`,
+# `find . -delete | ...` проходили pipe-ветку без _SAFE_PATTERNS.
+_MUTATING_PIPE_PATTERNS = re.compile(
+    r"^(?:"
+    r"docker\s+(?:rm|rmi|kill|stop|restart|start|run|exec|create|commit|"
+    r"build|push|pull|tag|update|prune|system|volume|network|secret|"
+    r"config|swarm|stack|node|service|image|container|plugin|context|"
+    r"trust|rename|pause|unpause|attach|cp|diff|export|import|load|"
+    r"save|login|logout|wait|events)\b"
+    r"|systemctl\s+(?:start|stop|restart|reload|try-restart|"
+    r"reload-or-restart|force-reload|enable|disable|reenable|preset|"
+    r"mask|unmask|kill|link|revert|set-property|edit|isolate|halt|"
+    r"poweroff|reboot|suspend|hibernate|hybrid-sleep|sleep|"
+    r"daemon-reload|daemon-reexec|switch-root|exit|freeze|cancel|"
+    r"clean|reset-failed|set-environment|unset-environment|"
+    r"import-environment)\b"
+    r"|ip\s+(?:link|addr|address|route|rule|neigh|netns|tunnel|"
+    r"maddress|mroute|vrf|xdp)\s+(?:add|del|delete|set|change|replace|"
+    r"flush|append|prepend|save|restore)\b"
+    r"|date\s+-s\b"
+    r"|timedatectl\s+set-\w+"
+    r"|nvidia-smi\s+-(?:pl|pm|lgc|ac|rac|am)\b"
+    r"|find\b[^\n;|&]*\s-(?:delete|exec(?:dir)?|ok(?:dir)?)\b"
+    r"|sort\b[^\n;|&]*(?:\s-o\b|\s--output\b)"
+    r")",
     re.IGNORECASE,
 )
 
@@ -219,6 +251,12 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
     if _FORBIDDEN_PATHS.search(cmd):
         return False
 
+    # B9.2g.2 (BLOCKER): hard-block ДО pipe-split. Раньше `rm -rf / | cat`
+    # проходил pipe-ветку (она не звала _HARD_BLOCK), а _execute блокировал
+    # только после того, как is_call_allowed в PLAN/AUDIT уже вернул True.
+    if _HARD_BLOCK.search(cmd):
+        return False
+
     # Pipe — если есть `|` (не только внутри кавычек), разбираем аккуратно
     if "|" in cmd:
         parts = _split_pipes_safe(cmd)
@@ -229,8 +267,14 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
                 return False
             if not _ALLOWED_PIPES.match(part):
                 return False
-            # Внутри части запрещены: ; & ` $ < > ( ) { } (| уже разделили)
-            if re.search(r"[;&`$<>(){}]", part):
+            # B9.2g.2: мутирующие подкоманды (docker rm, systemctl restart,
+            # ip link set, date -s, sort -o, find -delete, ...) — reject.
+            if _MUTATING_PIPE_PATTERNS.match(part):
+                return False
+            # Внутри части запрещены: ; & ` $ < > ( ) { } и \n (B9.2g.2:
+            # `\n` — разделитель команд в shell, per-part regex его пропускал
+            # → `ls | cat\nrm -rf X` шёл в shell).
+            if re.search(r"[;&`$<>(){}\n]", part):
                 return False
         return True
 
