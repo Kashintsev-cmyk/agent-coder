@@ -401,7 +401,9 @@ class AgentLoop:
                         content = last.get("content") or ""
                         if last.get(
                             "role"
-                        ) == "tool" and not content.lstrip().startswith("Ошибка"):
+                        ) == "tool" and not content.lstrip().startswith(
+                            ("Ошибка", "Отклонено пользователем")
+                        ):
                             progress_made = True
             ws_changed = (
                 json.dumps(self.session.work_state, sort_keys=True, ensure_ascii=False)
