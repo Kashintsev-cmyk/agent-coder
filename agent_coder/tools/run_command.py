@@ -50,6 +50,75 @@ _HARD_BLOCK = re.compile(
 )
 
 
+# B9.2g.4: rm с -r И -f на критичный путь. Regex _HARD_BLOCK
+# (`-[a-z]*[rf][a-z]*`) матчил только слитный кластер `-rf`/`-fr` —
+# `rm -r -f /` (раздельные флаги) проходил. Хелпер парсит токены.
+_RM_CRITICAL_PATHS = frozenset(
+    {
+        "/",
+        "/bin",
+        "/boot",
+        "/dev",
+        "/etc",
+        "/home",
+        "/lib",
+        "/lib64",
+        "/opt",
+        "/proc",
+        "/root",
+        "/run",
+        "/sbin",
+        "/srv",
+        "/sys",
+        "/usr",
+        "/var",
+    }
+)
+_RM_INVOCATION = re.compile(r"(?:^|[\s;|&()])rm\s+([^\n;|&()]+)")
+
+
+def _is_destructive_rm(command: str) -> bool:
+    """rm с -r/-R (recursive) И -f/--force на критичный путь."""
+    for m in _RM_INVOCATION.finditer(command):
+        tokens = m.group(1).split()
+        has_r = has_f = False
+        targets: list[str] = []
+        after_ddash = False
+        for tok in tokens:
+            if after_ddash:
+                targets.append(tok)
+                continue
+            if tok == "--":
+                after_ddash = True
+                continue
+            if tok.startswith("--"):
+                low = tok.lower()
+                if low == "--recursive":
+                    has_r = True
+                elif low == "--force":
+                    has_f = True
+                continue
+            if tok.startswith("-") and len(tok) > 1:
+                if "r" in tok or "R" in tok:
+                    has_r = True
+                if "f" in tok:
+                    has_f = True
+                continue
+            targets.append(tok)
+        if not (has_r and has_f):
+            continue
+        for t in targets:
+            base = t.rstrip("/*")
+            if (
+                t in _RM_CRITICAL_PATHS
+                or base in _RM_CRITICAL_PATHS
+                or t.startswith(("/*", "~/"))
+                or t in ("~", "$HOME")
+            ):
+                return True
+    return False
+
+
 # Каждый шаблон — regex, заякоренный с начала строки (^).
 _SAFE_PATTERNS: list[re.Pattern] = [
     # --- Ресурсы ---
@@ -254,7 +323,7 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
     # B9.2g.2 (BLOCKER): hard-block ДО pipe-split. Раньше `rm -rf / | cat`
     # проходил pipe-ветку (она не звала _HARD_BLOCK), а _execute блокировал
     # только после того, как is_call_allowed в PLAN/AUDIT уже вернул True.
-    if _HARD_BLOCK.search(cmd):
+    if _HARD_BLOCK.search(cmd) or _is_destructive_rm(cmd):
         return False
 
     # Pipe — если есть `|` (не только внутри кавычек), разбираем аккуратно
@@ -290,7 +359,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         return "Ошибка: пустая команда"
 
     # Hard-block: никогда не выполняем — ни с yolo, ни с approval.
-    if _HARD_BLOCK.search(command):
+    if _HARD_BLOCK.search(command) or _is_destructive_rm(command):
         return (
             "🛑 Команда заблокирована на уровне безопасности: "
             "потенциально разрушительная операция "
