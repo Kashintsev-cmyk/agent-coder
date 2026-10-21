@@ -1,0 +1,17 @@
+[
+  {
+    "id": "audit-agent-coder",
+    "category": "audit",
+    "title": "B11 audit: agent_coder/ (74 .py) — persist state + coverage",
+    "prompt": "Проведи аудит agent_coder/. Сохраняй findings сразу после каждого файла через update_work_state (findings+), не батчи на конец. Формат: файл:строка — проблема [severity]. Останавливайся на архитектурных (BLOCKER/MAJOR) и механических (None-check, version sync, fsync, warning). НЕ задавай уточняющих вопросов — работай до конца, неясное отмечай как «unknown» в findings. Не останавливайся на подтверждение плана.",
+    "setup": "audit_agent_coder_fixture.py",
+    "extra_args": [
+      "--fresh-audit",
+      "--scope", "agent_coder/agent",
+      "--scope", "agent_coder/tools"
+    ],
+    "min_findings": 15,
+    "max_iterations": 25,
+    "success": "rc=0, findings >= 15, coverage >= 20/25, changed_files = [], compress <= 1"
+  }
+]

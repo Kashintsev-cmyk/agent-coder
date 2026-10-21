@@ -22,7 +22,7 @@ curated_models_routerai_raw.json
 AUDIT_REPORT.md
 
 # Внутренние файлы для подгонки моделей (не для репозитория)
-benchmark/
+benchmark/results/
 
 # Правила workspace для agent-coder (локальные, не для репозитория)
 AGENTS.md

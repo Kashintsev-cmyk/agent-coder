@@ -1,0 +1,113 @@
+[
+  {
+    "id": "create-01",
+    "category": "create",
+    "title": "Add bounded retry helper",
+    "prompt": "Implement a small, well-tested async retry helper in the target repository. Add a public module-level function retry_async(operation, attempts=3, base_delay=0.01) that awaits a zero-argument callable, retries only on Exception, uses exponential backoff, raises the last exception, and rejects attempts < 1. Add focused tests. Do not change unrelated behavior. Run the relevant tests.",
+    "setup": "create_retry_fixture.py",
+    "success": "The helper exists, validates attempts, retries with exponential backoff, and tests pass."
+  },
+  {
+    "id": "create-02",
+    "category": "create",
+    "title": "Add CLI JSON output",
+    "prompt": "Add a --json flag to the repository CLI's single-task execution. When supplied, emit one valid JSON object containing at least status, model, and usage fields instead of human-readable completion output; preserve existing behavior without the flag. Add tests for argument parsing and output shape. Run relevant tests.",
+    "setup": "create_cli_fixture.py",
+    "success": "JSON mode works without breaking the default CLI mode and tests pass."
+  },
+  {
+    "id": "create-03",
+    "category": "create",
+    "title": "Add strict environment parser",
+    "prompt": "Implement a typed parser for a comma-separated environment setting of KEY=VALUE pairs. Whitespace around keys and values is ignored, empty entries are ignored, duplicate keys are rejected, and malformed entries raise ValueError. Add tests including unicode values and empty input. Run relevant tests.",
+    "setup": "create_parser_fixture.py",
+    "success": "The parser has clear behavior for valid and invalid input and tests pass."
+  },
+  {
+    "id": "refactor-01",
+    "category": "refactor",
+    "title": "Deduplicate validation",
+    "prompt": "Refactor the target module to remove duplicated validation logic while preserving its public API and exact error behavior. Keep the change focused, add or update regression tests, and run the relevant test suite.",
+    "setup": "refactor_validation_fixture.py",
+    "success": "Duplication is reduced, public behavior is unchanged, and tests pass."
+  },
+  {
+    "id": "refactor-02",
+    "category": "refactor",
+    "title": "Improve typing without runtime changes",
+    "prompt": "Improve type annotations in the target module using modern Python typing, without changing runtime behavior or public signatures. Add a small regression test if useful and run tests.",
+    "setup": "refactor_typing_fixture.py",
+    "success": "Typing is materially improved, runtime behavior is preserved, and tests pass."
+  },
+  {
+    "id": "refactor-03",
+    "category": "refactor",
+    "title": "Extract pure formatter",
+    "prompt": "Extract the repeated formatting logic in the target module into a small pure helper, update all call sites, preserve output byte-for-byte, and add regression coverage. Do not modify unrelated files. Run tests.",
+    "setup": "refactor_formatter_fixture.py",
+    "success": "The helper is used consistently, output is unchanged, and tests pass."
+  },
+  {
+    "id": "audit-01",
+    "category": "audit",
+    "title": "Audit subprocess boundary",
+    "prompt": "Perform a read-only security audit of the target repository, concentrating on subprocess invocation, shell injection, path traversal, and secret leakage. Do not modify files. Report findings with severity, file/line, exploit scenario, and concrete remediation; explicitly state checked areas with no findings.",
+    "setup": "audit_subprocess_fixture.py",
+    "success": "The report is specific, evidence-based, and contains no file changes."
+  },
+  {
+    "id": "audit-02",
+    "category": "audit",
+    "title": "Audit async lifecycle",
+    "prompt": "Perform a read-only audit of async resource lifecycle and retry/error handling. Look for leaked clients, swallowed exceptions, infinite retries, cancellation bugs, and inconsistent cleanup. Do not modify files. Report severity and exact evidence.",
+    "setup": "audit_async_fixture.py",
+    "success": "The report identifies real lifecycle risks without making changes."
+  },
+  {
+    "id": "audit-03",
+    "category": "audit",
+    "title": "Audit configuration exposure",
+    "prompt": "Perform a read-only audit of configuration and logging for accidental exposure of API keys, tokens, personal data, or unsafe defaults. Do not modify files. Give exact locations, impact, confidence, and remediation, and distinguish confirmed issues from hypotheses.",
+    "setup": "audit_config_fixture.py",
+    "success": "The report distinguishes confirmed findings from hypotheses and makes no changes."
+  },
+  {
+    "id": "fix-01",
+    "category": "fix",
+    "title": "Fix failing regression",
+    "prompt": "Investigate the failing test in the target repository, identify the root cause rather than weakening the test, implement the minimal fix, and run the relevant tests plus the full suite if practical.",
+    "setup": "fix_regression_fixture.py",
+    "success": "The original failing test passes with a minimal root-cause fix."
+  },
+  {
+    "id": "fix-02",
+    "category": "fix",
+    "title": "Fix boundary handling",
+    "prompt": "Fix the documented edge-case bug in the target module. Preserve normal behavior, add a regression test for the boundary, and run the relevant tests.",
+    "setup": "fix_boundary_fixture.py",
+    "success": "The boundary case and existing behavior are both covered and passing."
+  },
+  {
+    "id": "fix-03",
+    "category": "fix",
+    "title": "Fix async cancellation",
+    "prompt": "Fix the async cancellation bug in the target module so cancellation propagates correctly and resources are still cleaned up. Add a regression test and run relevant tests.",
+    "setup": "fix_cancellation_fixture.py",
+    "success": "Cancellation semantics are correct, cleanup is reliable, and tests pass."
+  },
+  {
+    "id": "patch-01",
+    "category": "patch",
+    "title": "Patch na_shtile — 34 confirmed findings",
+    "prompt": "Починить confirmed findings из сессии a6a74ebf (na_shtile). Приоритет: BLOCKER → MAJOR → MINOR. Не трогай tests/, не ломай существующее поведение. Механические правки делай, архитектурные (крупный рефакторинг) — пропусти с пометкой 'требует ручной правки'.",
+    "setup": "patch_na_shtile_fixture.py",
+    "extra_args": [
+      "--patch",
+      "--resume",
+      "a6a74ebf",
+      "--verbose"
+    ],
+    "success": "BLOCKER починены или 'требует ручной правки', tests/ не тронут, cost < 5₽",
+    "max_iterations": 25
+  }
+]

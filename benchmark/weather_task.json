@@ -1,0 +1,10 @@
+[
+  {
+    "id": "weather-bot-create",
+    "category": "create",
+    "title": "Create a minimal Telegram weather bot",
+    "prompt": "Build a small, production-minded Telegram bot in this empty Python repository. It should respond to /start and /help, and let a user request current weather by city (for example /weather Helsinki). Fetch data from the Open-Meteo geocoding and forecast APIs using async httpx; no API key should be required. Use TELEGRAM_BOT_TOKEN from environment, validate missing configuration clearly, handle unknown cities, API/network errors and timeouts gracefully, and format temperature, conditions and local time in a readable reply. Keep modules focused, add unit tests with mocked HTTP and Telegram-facing logic (never make real network calls in tests), document setup/run/test steps in README, and run the tests. Do not commit secrets or add unrelated features.",
+    "setup": "weather_bot_fixture.py",
+    "success": "Bot entry point and handlers are implemented, Open-Meteo calls are async and testable, error cases and configuration are handled, tests pass, and README explains usage."
+  }
+]
