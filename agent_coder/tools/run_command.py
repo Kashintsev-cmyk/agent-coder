@@ -141,7 +141,11 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^id(\s+\S+)*$"),
     re.compile(r"^hostname(\s+-\w+)*$"),
     re.compile(r"^uname(\s+-\w+)*$"),
-    re.compile(r"^date(\s+[+\-\d\s:%A-Za-z]+)?$"),
+    re.compile(
+        r"^date(?:\s+(?:-u|--utc|--universal|--rfc-email|-R|"
+        r"--rfc-3339=\w+|-I(?:seconds|secs|ns|date|hours|minutes)?|"
+        r"--iso-8601=\S+|--debug|--date=\S+|-d\s+\S+|\+\S+))*$"
+    ),
     re.compile(r"^timedatectl(\s+status)?$"),
     re.compile(r"^locale(\s+-\w+)?$"),
     # --- /proc: глобальные ---
@@ -194,7 +198,12 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     # --- Сеть ---
     re.compile(r"^ss(\s+-\w+)*$"),
     re.compile(r"^netstat\s+-t\w*$"),
-    re.compile(r"^ip\s+(-br\s+)?(a|addr|route|link|neigh)(\s+\S+)*$"),
+    re.compile(
+        r"^ip(?:\s+-br)?\s+"
+        r"(?:a|addr|address|link|l|neigh|neighbor|n|route|r|rule|"
+        r"netns|net|maddr|maddress|mroute|tunnel|tun|vrf|xfrm)"
+        r"(?:\s+(?:show|list|get)(?:\s+\S+)*)?$"
+    ),
     re.compile(r"^ping\s+-c\s+\d+\s+\S+$"),
     # --- Логи ---
     re.compile(
@@ -213,7 +222,12 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^tree(\s+-\w+)*(\s+\S+)?$"),
     # --- Утилиты ---
     re.compile(r"^which\s+\S+$"),
-    re.compile(r"^nvidia-smi(\s+\S+)*$"),
+    re.compile(
+        r"^nvidia-smi(?:\s+(?:-q|--query|--query-gpu=\S+|"
+        r"--query-compute-apps=\S+|--format=\S+|-L|--list-gpus|"
+        r"-l\s+\d+|--loop=\d+|-i\s+\S+|--id=\S+|"
+        r"--filename=\S+|-h|--help))*$"
+    ),
     re.compile(r"^lsof\s+-p\s+\d+$"),
     re.compile(r"^pmap(\s+-x)?\s+\d+$"),
     re.compile(r"^smem(\s+-\w+)*$"),
