@@ -376,6 +376,10 @@ async def run_patch(
                 consecutive_errors += 1
                 logger.info("patch: reject tests/ write: %s", path)
             else:
+                # B9.2g.bench: INFO-лог tool_calls — иначе в --verbose видно
+                # только LLM/HTTP, а что модель делает — нет.
+                if tc.name in ("write_file", "edit_file"):
+                    logger.info("patch: %s %s", tc.name, tc.arguments.get("path", "?"))
                 try:
                     result = await tool_map[tc.name].executor(tc.arguments, ctx)
                     # B9.2g.3: files_changed.add — только после error-check.
