@@ -16,6 +16,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 import re
@@ -180,13 +181,23 @@ async def run_verify(
                 }
             )
             force_injected = True
+        # B9.2g.6: таймаут chat — как в patch.py. Без wait_for verify
+        # висел бесконечно при провайдере/сети (roadmap: Уроки).
+        _timeout_sec = 180
         try:
-            response = await client.chat(
-                messages=messages,
-                model=model,
-                tools=[] if force_final else schemas,
-                reasoning_effort=session.reasoning_effort,
+            response = await asyncio.wait_for(
+                client.chat(
+                    messages=messages,
+                    model=model,
+                    tools=[] if force_final else schemas,
+                    reasoning_effort=session.reasoning_effort,
+                ),
+                timeout=_timeout_sec,
             )
+        except TimeoutError:  # py3.11+: asyncio.TimeoutError = builtin
+            logger.error("verify: chat timeout after %ss", _timeout_sec)
+            res.error = f"LLM: timeout after {_timeout_sec}s"
+            break
         except Exception as e:
             logger.exception("verify: chat failed")
             res.error = f"LLM: {e}"
