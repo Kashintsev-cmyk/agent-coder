@@ -393,6 +393,7 @@ def main() -> int:
                     base,
                     args.max_iterations,
                     case_timeout=args.case_timeout or None,
+                    keep_worktree=args.keep_worktree,
                 )
             )
             (run_dir / "results.json").write_text(

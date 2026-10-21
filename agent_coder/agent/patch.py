@@ -376,12 +376,17 @@ async def run_patch(
                 consecutive_errors += 1
                 logger.info("patch: reject tests/ write: %s", path)
             else:
-                # B9.2g.bench: INFO-лог tool_calls — иначе в --verbose видно
-                # только LLM/HTTP, а что модель делает — нет.
-                if tc.name in ("write_file", "edit_file"):
-                    logger.info("patch: %s %s", tc.name, tc.arguments.get("path", "?"))
+                # B9.2g.bench: INFO-лог ВСЕХ tool_calls — иначе в --verbose
+                # видно только LLM/HTTP, а что модель делает — нет. Ошибки
+                # tools (anchor not found, path outside) терялись: модель
+                # получала error-string, но лог молчал.
+                _hint = tc.arguments.get("path") or tc.arguments.get("command") or ""
+                logger.info("patch: %s %s", tc.name, str(_hint)[:120])
                 try:
                     result = await tool_map[tc.name].executor(tc.arguments, ctx)
+                    logger.info(
+                        "patch: %s -> %s", tc.name, str(result)[:200].replace("\n", " ")
+                    )
                     # B9.2g.3: files_changed.add — только после error-check.
                     # Раньше write с ошибкой (путь вне workspace и т.п.)
                     # попадал в files_changed → exclusion в _build_task
