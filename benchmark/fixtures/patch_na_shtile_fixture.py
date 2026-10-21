@@ -62,6 +62,26 @@ def main(workspace: str, sessions_dir: str | None = None) -> None:
         else:
             child.unlink()
     shutil.copytree(_SRC, ws, ignore=_IGNORE, dirs_exist_ok=True)
+    # Pytest в worktree запускается без .venv (в _IGNORE) → ImportError
+    # на aiogram/pydantic-settings. Симлинк на venv na_shtile — 0 байт,
+    # зависимости резолвятся. Иначе все модели "ломают" тесты на импорте.
+    _venv_src = _SRC / ".venv"
+    _venv_dst = ws / ".venv"
+    if _venv_src.is_dir() and not _venv_dst.exists():
+        _venv_dst.symlink_to(_venv_src, target_is_directory=True)
+    # pytest импортирует bot/config.py → Settings() требует BOT_TOKEN,
+    # ADMIN_ID, WEATHER_API_KEY. Без .env все тесты кроме test_import_bot
+    # падают на ValidationError. Копируем .env из na_shtile (в _IGNORE),
+    # но дописываем в .gitignore worktree — иначе fixture-commit подхватит
+    # секреты и .env попадёт в changed_files модели.
+    _env_src = _SRC / ".env"
+    if _env_src.is_file():
+        shutil.copy2(_env_src, ws / ".env")
+        _gi = ws / ".gitignore"
+        _gi_text = _gi.read_text(encoding="utf-8") if _gi.is_file() else ""
+        if ".env" not in _gi_text.splitlines():
+            with _gi.open("a", encoding="utf-8") as _f:
+                _f.write("\n.env\n")
     subprocess.run(["git", "init", "-q"], cwd=ws, check=True)
     _git("add", "-A", cwd=ws)
     subprocess.run(

@@ -257,8 +257,13 @@ def run_case(
         }
         if task["category"] != "audit" and git_stats["changed_files"]:
             try:
+                # B9.2g.bench: worktree venv (symlink из fixture) — иначе
+                # системный python без aiogram/pydantic-settings → ImportError
+                # на test_imports.py. Fallback на sys.executable.
+                _ws_venv_py = workspace / ".venv" / "bin" / "python"
+                _py = str(_ws_venv_py) if _ws_venv_py.exists() else sys.executable
                 proc = subprocess.run(
-                    [sys.executable, "-m", "pytest", "-q", "--no-header"],
+                    [_py, "-m", "pytest", "-q", "--no-header"],
                     cwd=workspace,
                     text=True,
                     capture_output=True,
