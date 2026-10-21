@@ -35,3 +35,4 @@ dist/
 # Шаблоны проекта (templates/) — исключение из AGENTS.md-ignore
 !agent_coder/templates/AGENTS.md
 /roadmap.md
+/docs/roadmap-archive-*.md
