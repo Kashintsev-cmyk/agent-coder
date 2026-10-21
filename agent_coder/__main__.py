@@ -31,6 +31,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--plan", action="store_true", help="Plan-режим")
     p.add_argument("--audit", action="store_true", help="Audit-режим: только чтение")
     p.add_argument(
+        "--patch",
+        action="store_true",
+        help="One-shot /patch: починить confirmed findings (требует /verify)",
+    )
+    p.add_argument(
         "--resume-audit",
         action="store_true",
         help="Восстановить persistent audit state (.agent-coder/)",
@@ -414,6 +419,10 @@ def _validate_audit_flags(args) -> str | None:
         return "--scope / --scope-file требуют --audit"
     if scope and scope_file:
         return "--scope и --scope-file взаимоисключающие"
+    if getattr(args, "patch", False) and (
+        getattr(args, "audit", False) or getattr(args, "plan", False)
+    ):
+        return "--patch несовместим с --audit/--plan"
     return None
 
 
@@ -493,6 +502,44 @@ def _start_audit(workspace: str, session, *, fresh: bool) -> dict:
     return loaded
 
 
+async def _run_patch_cli(args, session) -> int:
+    """One-shot /patch: confirmed findings через PATCH_MODEL_ID (B9.2g).
+
+    Без REPL: загружает сессию (--resume/--continue/latest), берёт
+    verify_results со status=confirmed, зовёт run_patch. Результат
+    дописывается в session.patch_results. Используется benchmark'ом и
+    из терминала: `agent-coder --patch --cwd na_shtile --model glm-5.3`.
+    """
+    from agent_coder.agent.patch import run_patch
+    from agent_coder.llm.client import LLMClient
+
+    confirmed = [
+        v for v in (session.verify_results or []) if v.get("status") == "confirmed"
+    ]
+    if not confirmed:
+        ui.print_error("нет confirmed findings — сначала /verify")
+        return 2
+    model = args.model or config.PATCH_MODEL_ID
+    ui.print_info(f"Патчу {len(confirmed)} confirmed на {model}...")
+    client = LLMClient()
+    await client.start()
+    try:
+        result = await run_patch(client, session, model=args.model or "")
+    finally:
+        close = getattr(client, "close", None)
+        if close is not None:
+            await close()
+    ui.print_info(
+        f"patch: {result.iterations} iter, {result.cost:.2f}₽, "
+        f"files={len(result.files_changed)}, "
+        f"error={result.error or 'нет'}"
+    )
+    if result.error:
+        ui.print_error(result.error)
+        return 1
+    return 0
+
+
 def main() -> int:
     args = parse_args()
 
@@ -555,6 +602,9 @@ def main() -> int:
             model_manual=args.model is not None,
             mode=mode,
         )
+
+    if args.patch:
+        return asyncio.run(_run_patch_cli(args, session))
 
     audit_loaded = None
     if args.audit and session.mode == Mode.AUDIT:
