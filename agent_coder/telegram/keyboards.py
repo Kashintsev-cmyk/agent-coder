@@ -296,7 +296,6 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
     rows.append(
         [
             InlineKeyboardButton(text="🔒 Audit", callback_data=f"mode:audit:{sid}"),
-            InlineKeyboardButton(text="💬 Chat", callback_data=f"mode:chat:{sid}"),
         ]
     )
     rows.append(
@@ -325,10 +324,6 @@ def continue_keyboard(session_id: str) -> InlineKeyboardMarkup:
                 )
             ],
             [
-                InlineKeyboardButton(
-                    text="💬 Chat",
-                    callback_data=f"mode:chat:{session_id}",
-                ),
                 InlineKeyboardButton(
                     text="🟡 Plan",
                     callback_data=f"mode:plan:{session_id}",

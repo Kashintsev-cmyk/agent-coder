@@ -89,7 +89,7 @@ async def cmd_start(message: Message) -> None:
         "⚙️ <b>Настройки сессии:</b>\n"
         "  /model — выбрать модель\n"
         "  /reasoning — уровень thinking\n"
-        "  /mode plan | act | audit | chat — режим\n"
+        "  /mode plan | act | audit — режим\n"
         "  /yolo [on|off] — без подтверждений (⚡ осторожно)\n"
         "\n"
         "💰 <b>Информация:</b>\n"
@@ -267,11 +267,10 @@ async def cmd_mode(message: Message) -> None:
     if len(parts) < 2 or parts[1].strip() not in valid:
         await message.answer(
             f"Текущий режим: <b>{session.mode.value}</b>\n\n"
-            f"Сменить: /mode plan | /mode act | /mode audit | /mode chat\n\n"
+            f"Сменить: /mode plan | /mode act | /mode audit\n\n"
             f"• <b>plan</b> — планирование (только чтение)\n"
             f"• <b>act</b> — работа с кодом (правки, команды)\n"
-            f"• <b>audit</b> — строгий аудит (только отчёт)\n"
-            f"• <b>chat</b> — обсуждение без правок (read-only tools)",
+            f"• <b>audit</b> — строгий аудит (только отчёт)",
             parse_mode="HTML",
         )
         return

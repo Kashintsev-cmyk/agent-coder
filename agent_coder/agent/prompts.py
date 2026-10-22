@@ -136,7 +136,6 @@ def system_prompt(
     непустой work_state, блок [WORK_STATE]. Специфика режима — в его
     SYSTEM_* / audit_standard.md, не здесь.
 
-    CHAT — без правила и без state: там нет инструментов (см. for_mode).
     AUDIT — без _with_rules (AGENTS.md): аудит идёт по audit_standard.md,
     это отдельное решение, не часть structured memory.
 

@@ -181,8 +181,6 @@ class AgentLoop:
                 )
                 self.session.model = routed
 
-        # В CHAT нет агентного цикла (нет tools) — max_iter не используется,
-        # но на всякий случай даём ему безопасное значение.
         max_iter = {
             Mode.PLAN: config.MAX_ITERATIONS_PLAN,
             Mode.ACT: config.MAX_ITERATIONS_ACT,
