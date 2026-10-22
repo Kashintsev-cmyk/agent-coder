@@ -303,3 +303,49 @@ def test_is_tests_path_resolve_bypass(tmp_path) -> None:
     assert _is_tests_path(str(ws / "src" / "x.py"), str(ws)) is False
     # вне workspace — не tests (write_file отвергнет отдельно)
     assert _is_tests_path("/tmp/tests/x.py", str(ws)) is False
+
+
+async def test_run_patch_error_not_in_files_changed() -> None:
+    """B9.2g.3: write с ошибкой не попадает в files_changed."""
+    from agent_coder.tools import build_registry
+    from agent_coder.tools.registry import Tool
+
+    async def _err_executor(args, ctx):
+        return "Ошибка: path outside workspace"
+
+    reg = build_registry()
+    orig = reg.get("write_file")
+    assert orig is not None, "write_file должен быть в build_registry"
+    reg._tools["write_file"] = Tool(
+        name=orig.name,
+        description=orig.description,
+        parameters=orig.parameters,
+        executor=_err_executor,
+        requires_approval=False,
+        read_only=False,
+    )
+
+    s = _mk_session()
+    s.verify_results = [_confirmed("A", "a.py:1")]
+    client = _ScriptedClient(
+        [
+            _FakeResponse(
+                "",
+                tool_calls=[
+                    ToolCall(
+                        id="c1",
+                        name="write_file",
+                        arguments={"path": "a.py", "content": "x"},
+                    )
+                ],
+            ),
+            _FakeResponse("готово"),
+        ]
+    )
+    res = await run_patch(client, s, registry=reg)
+
+    assert res.files_changed == [], "error-write не должен попасть в files_changed"
+    tool_msgs = [m for m in client.last_messages if m.get("role") == "tool"]
+    assert any("Ошибка" in m["content"] for m in tool_msgs), (
+        "ожидали error-сообщение в tool-message"
+    )
