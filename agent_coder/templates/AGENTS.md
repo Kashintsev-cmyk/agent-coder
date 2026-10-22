@@ -10,7 +10,7 @@ Bootstrap нового проекта: `agent-coder scaffold --project <name>`.
 
 ## Если проект ещё не оформлен
 
-При первом открытии проекта в agent-coder (PLAN/ACT/CHAT) — проверь
+При первом открытии проекта в agent-coder (PLAN/ACT) — проверь
 наличие и корректность:
 
 - pyproject.toml — секции [project], [tool.pytest.ini_options],

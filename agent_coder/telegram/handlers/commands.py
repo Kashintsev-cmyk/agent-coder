@@ -41,7 +41,6 @@ from .shared import (
     _list_projects,
     _running,
     _session_summary,
-    _should_preserve_history,
     router,
 )
 
@@ -135,15 +134,6 @@ async def cmd_projects(message: Message) -> None:
 
 
 # ---------- /new ----------
-
-
-@router.message(Command("chat"))
-async def cmd_chat(message: Message) -> None:
-    """B10.a: CHAT удалён, редирект на /mode plan."""
-    await message.answer(
-        "💬 Режим CHAT удалён (B10). Используй /mode plan для обсуждения "
-        "без изменений или /mode act для работы с кодом.",
-    )
 
 
 @router.message(Command("new"))
@@ -276,11 +266,9 @@ async def cmd_mode(message: Message) -> None:
         return
     new_mode = valid[parts[1].strip()]
     if session.mode != new_mode:
-        old_mode = session.mode
         session.mode = new_mode
         _apply_recommended_model(session)
-        if not _should_preserve_history(old_mode, new_mode):
-            session.messages = []
+        session.messages = []
         session.save()
     extra = _audit_reasoning_warning(session) if new_mode == Mode.AUDIT else ""
     await message.answer(
@@ -507,11 +495,9 @@ async def cb_mode(query: CallbackQuery) -> None:
         await query.answer("Неизвестный режим", show_alert=True)
         return
     if session.mode != new_mode:
-        old_mode = session.mode
         session.mode = new_mode
         _apply_recommended_model(session)
-        if not _should_preserve_history(old_mode, new_mode):
-            session.messages = []
+        session.messages = []
         session.save()
     extra = _audit_reasoning_warning(session) if new_mode == Mode.AUDIT else ""
     await query.message.edit_text(

@@ -78,9 +78,6 @@ from .commands import (
     cmd_cancel as cmd_cancel,
 )
 from .commands import (
-    cmd_chat as cmd_chat,
-)
-from .commands import (
     cmd_cost as cmd_cost,
 )
 from .commands import (
@@ -166,9 +163,6 @@ from .shared import (
 )
 from .shared import (
     _running as _running,
-)
-from .shared import (
-    _should_preserve_history as _should_preserve_history,
 )
 from .shared import (
     _shutting_down as _shutting_down,

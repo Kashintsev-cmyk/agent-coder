@@ -144,7 +144,7 @@ class AgentLoop:
         # a1b0a44b: 12 read_file, 12 уникальных, work_state пуст).
         seen_paths: set[str] = set()
         # Длина messages ПЕРЕД прошлым client.chat (без ответа и tool-результатов).
-        # Нужна для pre-check: после chat добавились assistant + tool-результаты,
+        # Нужна для pre-check: после запроса добавились assistant + tool-результаты,
         # которых LLM не видел. Их оценка + last_input_tokens = effective size
         # следующего запроса (Cline-паттерн max(estimate, actual)).
         last_llm_messages_len = 0

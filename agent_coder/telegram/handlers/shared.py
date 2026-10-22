@@ -17,7 +17,6 @@ from pathlib import Path
 
 from aiogram import Bot, F, Router
 
-from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
 from agent_coder.config import config
 from agent_coder.telegram import state as tg_state
@@ -132,21 +131,3 @@ def _audit_reasoning_warning(session: Session) -> str:
         f"Аудит без thinking будет поверхностным. Для глубокого анализа "
         f"выбери модель с бейджем ⚙/🧠 (например, Claude Sonnet или DeepSeek Flash)."
     )
-
-
-def _should_preserve_history(old_mode: Mode, new_mode: Mode) -> bool:
-    """Сохранять ли историю при смене режима.
-
-    Правило: если хотя бы одна сторона — CHAT, история сохраняется.
-    Между plan/act/audit — история очищается (смена контекста задачи).
-
-    Примеры:
-      act → chat  : сохранить (обсуждаем только что сделанное)
-      chat → act  : сохранить (идеи из чата → в работу)
-      plan → chat : сохранить
-      chat → audit: сохранить
-      plan → act  : очистить (как было)
-      act → audit : очистить (как было)
-    """
-    # B10.a: CHAT удалён, все переходы plan↔act↔audit чистят историю.
-    return False

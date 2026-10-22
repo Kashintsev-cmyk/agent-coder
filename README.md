@@ -12,7 +12,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 
 **Агент**
 - Три режима работы: `plan` (только чтение), `act` (полный доступ),
-  `audit` (строгий аудитор), `chat` (обсуждение без правок)
+  `audit` (строгий аудитор)
 - 10 инструментов: чтение/запись/правки файлов, поиск (`ripgrep`),
   shell с whitelist, git
 - Подтверждения на опасные операции; безопасные read-only команды — без вопросов
@@ -31,8 +31,6 @@ remote-helper'ов, с точным учётом стоимости каждой
 - Verbosity, reasoning, temperature — с per-session настройкой
 - Сжатие истории: старые сообщения резюмируются дешёвой моделью
 - Приём изображений (vision-модели): фото передаётся как `image_url`
-- Быстрый вопрос: сообщение, заканчивающееся на `?` (< 200 символов), —
-  ответ без агентного цикла, с CHAT-промптом
 
 **Проекты и GitHub**
 - `/new <name>` — создать проект с нуля (`git init` + `README.md` +
@@ -139,7 +137,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 
 | Команда | Действие |
 |---|---|
-| `/plan`, `/act`, `/audit`, `/chat` | Сменить режим |
+| `/plan`, `/act`, `/audit` | Сменить режим |
 | `/cost` | Стоимость и число запросов |
 | `/session` | Информация о текущей сессии |
 | `/sessions` | Список сессий (до 20, свежие сверху) |
@@ -160,20 +158,17 @@ remote-helper'ов, с точным учётом стоимости каждой
 | `plan` | read-only инструменты + whitelist-команды | `MAX_ITERATIONS_PLAN` (30) |
 | `act` | всё: запись, правки, любые команды, git-коммит | `MAX_ITERATIONS_ACT` (50) |
 | `audit` | как `plan`, но с промптом строгого аудитора; в Telegram — Markdown-отчёт | `MAX_ITERATIONS_AUDIT` (100) |
-| `chat` | только `read_file`, `list_files`, `search`; обсуждение без изменений | `MAX_ITERATIONS_CHAT` (5) |
 
-По умолчанию — `act`. В `plan`/`audit`/`chat` попытки изменить файлы
+По умолчанию — `act`. В `plan`/`audit` попытки изменить файлы
 отбиваются на уровне реестра инструментов.
 
 **История сообщений при смене режима:**
-- Переходы `plan↔act`, `act↔audit`, `plan↔audit` — история **очищается**
-- Переходы с участием `chat` — история **сохраняется**
-  (`act → chat`, `chat → act`, `plan → chat` и т.п.)
+- Любой переход между `plan`/`act`/`audit` — история **очищается**
 
 ### Правила workspace (AGENTS.md)
 
 Если в workspace есть файл `AGENTS.md`, его содержимое добавляется
-в конец system prompt для режимов `plan`, `act` и `chat` — отдельной
+в конец system prompt для режимов `plan` и `act` — отдельной
 секцией `--- AGENTS.md ---` … `--- end AGENTS.md ---`. Файла нет —
 поведение не меняется. `audit` его не подхватывает (структурный
 промт аудитора).
@@ -190,7 +185,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 
 Агент знает стандарт Python-проектов в `/home/botuser/bots/`. Текст —
 `agent_coder/rules/project_standard.md` (~2 KB); попадает в system prompt
-для `plan`, `act` и `chat`.
+для `plan` и `act`.
 
 Приоритет: `workspace/AGENTS.md` > builtin. Если в workspace есть
 `AGENTS.md` (даже пустой) — вставляется только он, стандарт не
@@ -200,8 +195,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 обязательные файлы, секции `pyproject.toml` (`testpaths`, `ruff`
 `line-length=88`, `select ⊇ {E, F, I}`, `coverage source != "app"`),
 `tests/`, CI при наличии git remote. Возвращает JSON
-`{score, majors, minors, issues}`. Доступен в `plan`, `audit`, `act`;
-в `chat` tools нет по дизайну.
+`{score, majors, minors, issues}`. Доступен в `plan`, `audit`, `act`.
 
 Шаблоны для копирования — в `SHARED_DEV_DIR` (default
 `/home/botuser/bots/_shared-dev/project-template/`):
@@ -260,7 +254,7 @@ RouterAI и кэшируются на диск.
 
 | Группа | Когда используется | Цепочка |
 |---|---|---|
-| `CODING_MODEL_IDS` | `act` / `plan` / `chat`, когда модель не выбрана вручную | `deepseek/deepseek-v4.1-flash` → `z-ai/glm-5.3-flash` → `qwen/qwen3-coder-next` |
+| `CODING_MODEL_IDS` | `act` / `plan`, когда модель не выбрана вручную | `deepseek/deepseek-v4.1-flash` → `z-ai/glm-5.3-flash` → `qwen/qwen3-coder-next` |
 | `AUDIT_MODEL_IDS` | `audit`, когда модель не выбрана вручную | `z-ai/glm-5.3` → `moonshotai/kimi-k2.7-code` → `deepseek/deepseek-r1` |
 
 Логика (вариант «б» — ручной выбор приоритетен):
@@ -304,7 +298,7 @@ RouterAI и кэшируются на диск.
 | `MODEL_FAST` | `MODEL_MAIN` | Зарезервировано |
 | `CURATED_MODEL_IDS` | 8 id через запятую | Список для UI |
 | `DEFAULT_MODEL_ID` | `deepseek/deepseek-v4.1-flash` | Должна входить в `CURATED_MODEL_IDS` |
-| `CODING_MODEL_IDS` | 3 id | Группа coding: дефолт `act`/`plan`/`chat` + fallback |
+| `CODING_MODEL_IDS` | 3 id | Группа coding: дефолт `act`/`plan` + fallback |
 | `AUDIT_MODEL_IDS` | 3 id | Группа audit: дефолт `audit` + fallback |
 | `MODEL_ROUTER_ENABLED` | `1` | Подставлять модель группы, если не выбрана вручную |
 | `CONTEXT_FILL_RATIO` | `0.8` | Доля `context_limit` под входные токены (0.1–1.0) |
@@ -336,7 +330,6 @@ RouterAI и кэшируются на диск.
 | `MAX_ITERATIONS_PLAN` | `30` | Plan |
 | `MAX_ITERATIONS_ACT` | `50` | Act |
 | `MAX_ITERATIONS_AUDIT` | `100` | Audit |
-| `MAX_ITERATIONS_CHAT` | `5` | Chat |
 | `LOG_LEVEL` | `INFO` | Зарезервировано |
 
 **Telegram**
@@ -363,7 +356,7 @@ RouterAI и кэшируются на диск.
 
 **Команды:** `/start`, `/help`, `/projects`, `/new <name>`, `/clone <url>`,
 `/ghnew <name>`, `/migrate <name>`, `/sessions`, `/current`, `/history`,
-`/delete [id]`, `/model`, `/reasoning`, `/mode plan|act|audit|chat`,
+`/delete [id]`, `/model`, `/reasoning`, `/mode plan|act|audit`,
 `/cost`, `/balance`, `/server`, `/audit`, `/cancel`, `/yolo [on|off]`.
 
 > `/new <name>` создаёт проект **по стандарту** (scaffold: pyproject,
@@ -381,7 +374,7 @@ RouterAI и кэшируются на диск.
 - **🌐 Web search** — toggle встроенного поиска (только у моделей с ним).
 - **⚡ Tier** — циклическое `default → flex → priority`.
 - **📏 Verbosity** — уровень многословности.
-- **Plan / Act / Audit / Chat**, **Стоимость**, **Новая**, **История**,
+- **Plan / Act / Audit**, **Стоимость**, **Новая**, **История**,
   **Удалить**.
 
 **Меню `/projects`:**
@@ -397,7 +390,7 @@ RouterAI и кэшируются на диск.
 - **Фото** — прикладывается как `image_url` (base64). Модель должна
   поддерживать vision, иначе бот предупредит.
 - **Вопрос** (заканчивается на `?`, < 200 символов) — быстрый ответ
-  без агентного цикла, с CHAT-промптом.
+
 
 **Меню `/server` и `/audit`** выполняют read-only команды напрямую, минуя
 LLM — бесплатно, сгруппированы по категориям.
@@ -441,7 +434,7 @@ ID сессии — 8 hex-символов.
     │   ├── session.py       # история, стоимость, save/load
     │   ├── session_index.py # sidecar-индекс
     │   ├── compression.py   # сжатие истории
-    │   └── prompts.py       # системные промпты (PLAN/ACT/AUDIT/CHAT)
+    │   └── prompts.py       # системные промпты (PLAN/ACT/AUDIT)
     ├── llm/
     │   ├── client.py        # AsyncOpenAI + retry
     │   └── types.py         # Usage, ToolCall, format_cost
