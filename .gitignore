@@ -36,3 +36,4 @@ dist/
 !agent_coder/templates/AGENTS.md
 /roadmap.md
 /docs/roadmap-archive-*.md
+/docs/roadmap-benchmarks-*.md
