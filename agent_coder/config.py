@@ -153,9 +153,11 @@ class Config:
     # B9.2g: glm-5.3 вместо deepseek v4-flash. В /verify glm следовал
     # промпту (7 итераций, 29 вердиктов); deepseek не тянет архитектурные
     # findings (B9.2: 3 прогона, 17.4₽, 2 BLOCKER не починены, ручной фикс).
-    # Fallback — kimi-k2.7-code, если glm не тянет. env PATCH_MODEL_ID
+    # B9.2g patch-bench 2026-10-22: winner deepseek-v4.1-flash
+    # (patch-01 na_shtile: 1.88₽/50 строк/20 iter/108s). kimi не гонять
+    # (50₽/патч), mimo удаляет код, qwen 0 files. env PATCH_MODEL_ID
     # для override (в .env не задан — дефолт из этой строки).
-    PATCH_MODEL_ID: str = os.getenv("PATCH_MODEL_ID", "z-ai/glm-5.3")
+    PATCH_MODEL_ID: str = os.getenv("PATCH_MODEL_ID", "deepseek/deepseek-v4.1-flash")
     MAX_COST_PATCH: float = _env_float("MAX_COST_PATCH", "50.0")
     # Потолок итераций /patch: обычно 5-15 на 10-15 findings. 30 — с запасом.
     MAX_PATCH_ITERATIONS: int = _env_int("MAX_PATCH_ITERATIONS", "60")
