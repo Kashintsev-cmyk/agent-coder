@@ -300,3 +300,84 @@ async def test_list_files_path_is_progress(monkeypatch) -> None:
     res = await loop.run("аудит")
     assert not res.no_progress, "6 разных папок — прогресс, не loop"
     assert client.calls == 7
+
+
+class _WriteRegistry:
+    """write_file — мутирующий, требует approval."""
+
+    class _Tool:
+        name = "write_file"
+        read_only = False
+        requires_approval = True
+
+        def needs_approval(self, args):
+            return True
+
+        async def executor(self, args, ctx):
+            return "ok"  # недостижимо при reject
+
+    def openai_schemas(self, mode):
+        return []
+
+    def get(self, name):
+        return self._Tool() if name == "write_file" else None
+
+    def is_call_allowed(self, mode, tool, args):
+        return True
+
+
+class _AlwaysWriteClient:
+    """Всегда просит write_file — loop без прогресса при reject."""
+
+    def __init__(self):
+        self.calls = 0
+
+    async def chat(self, messages, **kwargs):
+        self.calls += 1
+        return ChatResponse(
+            message=AssistantMessage(
+                content="",
+                tool_calls=[
+                    ToolCall(
+                        id=f"c{self.calls}",
+                        name="write_file",
+                        arguments={"path": "x.py", "content": "y"},
+                    )
+                ],
+            ),
+            usage=Usage(input_tokens=10, output_tokens=5, cost=0.0),
+        )
+
+
+@pytest.mark.asyncio
+async def test_user_rejection_not_progress(monkeypatch) -> None:
+    """B9.2g.7: 'Отклонено пользователем' не считается прогрессом."""
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 3)
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_TASK", 10_000.0)
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_SESSION", 10_000.0)
+
+    async def _reject(tc):
+        return False  # пользователь всегда отклоняет
+
+    events = LoopEvents(
+        on_assistant_text=lambda *a: None,
+        on_tool_call=lambda *a: None,
+        on_tool_result=lambda *a: None,
+        on_usage=lambda *a: None,
+        on_error=lambda *a: None,
+        request_approval=_reject,
+    )
+
+    s = Session.new(workspace="/tmp", model="m", mode=Mode.ACT)
+    s.messages = [{"role": "system", "content": "S"}]
+    client = _AlwaysWriteClient()
+    loop = AgentLoop(client=client, registry=_WriteRegistry(), session=s, events=events)
+    res = await loop.run("правка")
+
+    assert res.no_progress, "reject write не должен считаться прогрессом"
+    assert "прогресса" in res.error_message
+    # reject не прогресс → счётчик растёт с 1-й итерации → стоп на 3-й
+    assert client.calls == 3
+    # tool-сообщения содержат reject-текст (sanity)
+    tool_msgs = [m for m in s.messages if m.get("role") == "tool"]
+    assert any("Отклонено пользователем" in (m.get("content") or "") for m in tool_msgs)
