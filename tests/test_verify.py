@@ -226,3 +226,28 @@ def test_verify_tools_whitelist_is_read_only():
         tool = reg.get(name)
         assert tool is not None, name
         assert tool.read_only, f"{name} не read-only"
+
+
+@pytest.mark.asyncio
+async def test_run_verify_timeout(monkeypatch):
+    """B9.2g.6: таймаут chat → res.error='LLM: timeout after 180s', не raise."""
+    import asyncio
+
+    real_wait_for = asyncio.wait_for
+
+    async def _fast_wait_for(coro, timeout):
+        # Сжимаем 180s → 0.01s, чтобы тест не ждал 3 минуты.
+        # Проверяем, что run_verify реально оборачивает chat в wait_for.
+        return await real_wait_for(coro, timeout=0.01)
+
+    monkeypatch.setattr(asyncio, "wait_for", _fast_wait_for)
+
+    class _HangingClient:
+        async def chat(self, messages, **kwargs):
+            await asyncio.sleep(3600)
+            raise AssertionError("unreachable")
+
+    s = _session()
+    res = await run_verify(client=_HangingClient(), session=s)
+    assert res.error == "LLM: timeout after 180s"
+    assert not res.ok
