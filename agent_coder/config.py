@@ -190,7 +190,13 @@ class Config:
     TEMPERATURE: float = _env_float("TEMPERATURE", "0.2")
     # Модель для суммаризации старых сообщений. Должна быть в MODEL_IDS
     # (или в _FALLBACK_CATALOG). Дешёвая — для вспомогательной задачи.
-    SUMMARY_MODEL: str = os.getenv("SUMMARY_MODEL", "moonshotai/kimi-k2.7-code")
+    # B9.2g summary-bench 2026-10-22: winner haiku-5.5.
+    # e4045517 (248 msgs, 163K tokens): 25/364 paths, 0.73₽, 1394 tok summary.
+    # vs kimi 21/364 / 6.16₽ (8.4×); glm-flash 20/364 / 1.07₽.
+    # ds-flash 8/364 / 0.46₽ — теряет больше половины фактов.
+    # qwen 8/364 / 2.82₽ — дорого+плохо. 201K > context limit haiku
+    # (~200K) — падает, для >200K fallback на kimi.
+    SUMMARY_MODEL: str = os.getenv("SUMMARY_MODEL", "anthropic/claude-haiku-5.5")
 
     # Retention медиа-вложений сессий: файлы старше N дней удаляются
     # фоновой задачей бота (раз в сутки + один раз при старте).
