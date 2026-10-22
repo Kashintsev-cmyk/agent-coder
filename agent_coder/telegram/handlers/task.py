@@ -276,7 +276,9 @@ def _should_answer_directly(session, text: str) -> bool:
     В PLAN/ACT/AUDIT — всегда полный агентный цикл: вопрос может
     требовать tool-вызовов (прочитать файл, найти код и т.п.).
     """
-    return session.mode == Mode.CHAT and _is_question(text)
+    # B10.a: CHAT удалён, прямой ответ больше не активируется.
+    # B10.b удалит Mode.CHAT и _answer_question/_is_question.
+    return False
 
 
 async def _answer_question(

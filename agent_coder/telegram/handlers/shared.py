@@ -148,4 +148,5 @@ def _should_preserve_history(old_mode: Mode, new_mode: Mode) -> bool:
       plan → act  : очистить (как было)
       act → audit : очистить (как было)
     """
-    return old_mode == Mode.CHAT or new_mode == Mode.CHAT
+    # B10.a: CHAT удалён, все переходы plan↔act↔audit чистят историю.
+    return False

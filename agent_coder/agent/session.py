@@ -259,7 +259,11 @@ class Session:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> Session:
         data = dict(data)
-        data["mode"] = Mode(data["mode"])
+        # B10.a: CHAT удалён, legacy-сессии грузятся как PLAN.
+        _raw_mode = data.get("mode", "act")
+        if _raw_mode == "chat":
+            _raw_mode = "plan"
+        data["mode"] = Mode(_raw_mode)
         data["total_usage"] = Usage(**data["total_usage"])
         if "title" not in data or not data["title"]:
             data["title"] = _make_default_title(data.get("messages", []))

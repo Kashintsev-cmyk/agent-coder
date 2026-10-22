@@ -79,7 +79,6 @@ async def cmd_start(message: Message) -> None:
         "🚀 <b>Основное:</b>\n"
         "  /projects — список проектов\n"
         "  /new &lt;name&gt; — создать/открыть проект в <code>~/bots/</code>\n"
-        "  /chat — обсуждение без проекта\n"
         "  /sessions — все сессии\n"
         "  /current — текущая сессия\n"
         "\n"
@@ -140,56 +139,10 @@ async def cmd_projects(message: Message) -> None:
 
 @router.message(Command("chat"))
 async def cmd_chat(message: Message) -> None:
-    """Открыть chat-сессию для обсуждений без проекта.
-
-    Если уже есть активная chat-сессия — переключается на неё.
-    Иначе создаёт новую в config.DEFAULT_WORKSPACE.
-    """
-    chat_id = message.chat.id
-    current = _get_active_session(chat_id)
-
-    # Уже в chat-режиме — просто напомнить
-    if current is not None and current.mode == Mode.CHAT:
-        await message.answer(
-            f"💬 <b>Chat-сессия уже открыта</b>\n"
-            f"   <code>{current.id}</code> · {current.workspace}\n\n"
-            f"Просто пиши сообщение — отвечу без изменений в файлах.",
-            reply_markup=keyboards.session_menu_keyboard(current),
-            parse_mode="HTML",
-        )
-        return
-
-    # Найти существующую chat-сессию в DEFAULT_WORKSPACE или создать
-    workspace = config.DEFAULT_WORKSPACE
-    if not Path(workspace).is_dir():
-        await message.answer(
-            f"❌ Рабочая директория не найдена: <code>{html_escape(workspace)}</code>",
-            parse_mode="HTML",
-        )
-        return
-
-    # Ищем среди всех сессий — активную chat-сессию в этой workspace
-    for s in Session.list_all():
-        if s.mode == Mode.CHAT and s.workspace == workspace:
-            tg_state.set_active_session(chat_id, s.id)
-            # Перезагружаем полную сессию (list_all возвращает лёгкую)
-            full = Session.load(s.id) or s
-            await message.answer(
-                f"💬 <b>Chat-сессия восстановлена</b>\n"
-                f"   <code>{full.id}</code> · {full.title}\n\n"
-                f"Просто пиши сообщение.",
-                reply_markup=keyboards.session_menu_keyboard(full),
-                parse_mode="HTML",
-            )
-            return
-
-    # Создаём новую
-    await _create_session(
-        chat_id,
-        message,
-        workspace,
-        mode=Mode.CHAT,
-        title="Обсуждение",
+    """B10.a: CHAT удалён, редирект на /mode plan."""
+    await message.answer(
+        "💬 Режим CHAT удалён (B10). Используй /mode plan для обсуждения "
+        "без изменений или /mode act для работы с кодом.",
     )
 
 
@@ -310,7 +263,6 @@ async def cmd_mode(message: Message) -> None:
         "plan": Mode.PLAN,
         "act": Mode.ACT,
         "audit": Mode.AUDIT,
-        "chat": Mode.CHAT,
     }
     if len(parts) < 2 or parts[1].strip() not in valid:
         await message.answer(
@@ -550,7 +502,6 @@ async def cb_mode(query: CallbackQuery) -> None:
         "plan": Mode.PLAN,
         "act": Mode.ACT,
         "audit": Mode.AUDIT,
-        "chat": Mode.CHAT,
     }
     new_mode = mode_map.get(mode_str)
     if new_mode is None:
