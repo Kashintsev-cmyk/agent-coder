@@ -79,15 +79,13 @@ class Config:
     CURATED_MODEL_IDS: ClassVar[list[str]] = [
         mid.strip() for mid in _curated_raw.split(",") if mid.strip()
     ] or [
+        # B9.2g cleanup 2026-10-22: убраны glm-5.3, mimo, qwen, gpt-sol,
+        # sonnet (по данным audit/patch/verify бенчмарков, нигде не winner).
+        # Вернуть — через env CURATED_MODEL_IDS в .env (без правок кода).
         "deepseek/deepseek-v4-flash",
         "deepseek/deepseek-v4.1-flash",
-        "qwen/qwen3-coder-next",
         "moonshotai/kimi-k2.7-code",
-        "z-ai/glm-5.3",
-        "xiaomi/mimo-v2.6-flash",
         "deepseek/deepseek-r1",
-        "openai/gpt-6.1-sol",
-        "anthropic/claude-sonnet-5.5",
         "anthropic/claude-haiku-5.5",
         "x-ai/grok-4.20",
     ]
@@ -121,13 +119,8 @@ class Config:
     MODEL_MODE_FIT: ClassVar[dict[str, list[str]]] = {
         "deepseek/deepseek-v4-flash": ["act", "plan", "audit"],
         "deepseek/deepseek-v4.1-flash": ["act", "plan"],
-        "qwen/qwen3-coder-next": ["act", "plan"],
         "moonshotai/kimi-k2.7-code": ["audit"],
-        "z-ai/glm-5.3": ["audit", "act"],
-        "xiaomi/mimo-v2.6-flash": ["act", "plan"],
         "deepseek/deepseek-r1": ["audit"],
-        "openai/gpt-6.1-sol": ["act", "audit"],
-        "anthropic/claude-sonnet-5.5": ["act", "audit"],
         "anthropic/claude-haiku-5.5": ["act", "audit"],
         "x-ai/grok-4.20": ["act"],
     }
