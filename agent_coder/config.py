@@ -88,6 +88,7 @@ class Config:
         "deepseek/deepseek-r1",
         "openai/gpt-6.1-sol",
         "anthropic/claude-sonnet-5.5",
+        "anthropic/claude-haiku-5.5",
         "x-ai/grok-4.20",
     ]
 
@@ -127,6 +128,7 @@ class Config:
         "deepseek/deepseek-r1": ["audit"],
         "openai/gpt-6.1-sol": ["act", "audit"],
         "anthropic/claude-sonnet-5.5": ["act", "audit"],
+        "anthropic/claude-haiku-5.5": ["act", "audit"],
         "x-ai/grok-4.20": ["act"],
     }
 
@@ -142,8 +144,10 @@ class Config:
     # /verify: модель-верификатор по умолчанию. Не наследует
     # session.model/model_manual: цель verify — ДЕШЁВЫЙ фильтр ложных
     # findings. Для дорогой проверки — /verify <model_id> явно.
-    # glm-5.3: 152₽/1M, 1048k контекст, есть в FIT["audit"].
-    VERIFY_MODEL_ID: str = os.getenv("VERIFY_MODEL_ID", "z-ai/glm-5.3")
+    # B9.2g verify-bench 2026-10-22: winner haiku-5.5.
+    # 1.05₽/34 findings, 0 FP/FN на консенсусе, 0 галлюцинаций (audit-A 19/19).
+    # glm-5.3 — 27.37₽ (26×) — заменён. glm-5.3-flash исключён (галлюцинации).
+    VERIFY_MODEL_ID: str = os.getenv("VERIFY_MODEL_ID", "anthropic/claude-haiku-5.5")
     # Отдельный бюджет на verify, не съедает MAX_COST_PER_TASK.
     MAX_COST_VERIFY: float = _env_float("MAX_COST_VERIFY", "50.0")
 
