@@ -232,6 +232,32 @@ def run_case(
                 rc = 124
                 stream.write("\n[benchmark] case timeout exceeded\n")
         session = _latest_session(workspace, run_dir / "sessions") or {}
+        # B9.2g.bench: snapshot — следующий прогон (другая модель)
+        # перезаписывает run_dir/sessions/a6a74ebf.json через fixture.
+        # Без snapshot остаётся только последняя модель (verify-01: 6 → 1).
+        _snap_dir = run_dir / "sessions" / "snapshots"
+        _snap_dir.mkdir(parents=True, exist_ok=True)
+        (_snap_dir / f"{case_id}.json").write_text(
+            json.dumps(
+                {
+                    "case_id": case_id,
+                    "model": model,
+                    "task_id": task["id"],
+                    "category": task["category"],
+                    "baseline_verify_count": baseline_verify_count,
+                    "baseline_patch_count": baseline_patch_count,
+                    "verify_results_new": (session.get("verify_results") or [])[
+                        baseline_verify_count:
+                    ],
+                    "patch_results_new": (session.get("patch_results") or [])[
+                        baseline_patch_count:
+                    ],
+                },
+                ensure_ascii=False,
+                indent=2,
+            ),
+            encoding="utf-8",
+        )
         raw_usage = session.get("total_usage") or {}
         usage = {
             k: max(0, raw_usage.get(k, 0) - baseline_usage.get(k, 0))
