@@ -228,8 +228,6 @@ def test_tool_registered_and_read_only() -> None:
     assert "check_project_standard" in names_plan
     names_audit = {t.name for t in reg.for_mode(Mode.AUDIT)}
     assert "check_project_standard" in names_audit
-    names_chat = {t.name for t in reg.for_mode(Mode.CHAT)}
-    assert "check_project_standard" not in names_chat
 
 
 # --- расширение: новые проверки (3.12 / license / target-version / packages / CI) ---

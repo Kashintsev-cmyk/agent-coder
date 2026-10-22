@@ -1,43 +1,43 @@
-"""B10.a: CHAT deprecated — история всегда чистится, tools пусты, enum остаётся."""
+"""B10.b: CHAT удалён из enum, legacy 'chat' грузится как PLAN."""
 
 from __future__ import annotations
 
+import pytest
+
 from agent_coder.agent.prompts import Mode
+from agent_coder.agent.session import Session
 from agent_coder.telegram.handlers import _should_preserve_history
-from agent_coder.tools import build_registry
 
 
-def test_mode_chat_still_in_enum() -> None:
-    """B10.a: enum остаётся (import не падает), B10.b удалит."""
-    assert Mode.CHAT.value == "chat"
+def test_mode_chat_not_in_enum() -> None:
+    assert not hasattr(Mode, "CHAT")
+    assert "chat" not in [m.value for m in Mode]
 
 
-def test_chat_tools_are_empty() -> None:
-    r = build_registry()
-    assert r.for_mode(Mode.CHAT) == []
-
-
-def test_chat_call_allowed_nothing() -> None:
-    r = build_registry()
-    for name, args in (
-        ("read_file", {"path": "x"}),
-        ("write_file", {"path": "x"}),
-        ("run_command", {"command": "ls"}),
-    ):
-        tool = r.get(name)
-        assert r.is_call_allowed(Mode.CHAT, tool, args) is False
+def test_legacy_chat_session_loads_as_plan() -> None:
+    data = {
+        "id": "x",
+        "workspace": "/tmp",
+        "model": "m",
+        "mode": "chat",
+        "messages": [],
+        "total_usage": {"input_tokens": 0, "output_tokens": 0, "cost": 0.0},
+    }
+    s = Session.from_dict(data)
+    assert s.mode == Mode.PLAN
 
 
 def test_history_always_cleared() -> None:
-    """B10.a: CHAT удалён, все переходы чистят историю."""
-    pairs = [
+    for old, new in [
         (Mode.PLAN, Mode.ACT),
         (Mode.ACT, Mode.AUDIT),
         (Mode.PLAN, Mode.AUDIT),
-        (Mode.ACT, Mode.CHAT),
-        (Mode.CHAT, Mode.ACT),
-        (Mode.PLAN, Mode.CHAT),
-        (Mode.CHAT, Mode.AUDIT),
-    ]
-    for old, new in pairs:
+        (Mode.AUDIT, Mode.PLAN),
+    ]:
         assert _should_preserve_history(old, new) is False
+
+
+@pytest.mark.parametrize("mode", [Mode.PLAN, Mode.ACT, Mode.AUDIT])
+def test_preserve_self(mode: Mode) -> None:
+    """Смена на тот же режим — тоже False (по текущей логике)."""
+    assert _should_preserve_history(mode, mode) is False

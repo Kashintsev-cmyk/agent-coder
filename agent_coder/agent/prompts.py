@@ -12,7 +12,6 @@ class Mode(str, Enum):
     PLAN = "plan"
     ACT = "act"
     AUDIT = "audit"
-    CHAT = "chat"
 
 
 SYSTEM_PLAN = """\
@@ -72,25 +71,6 @@ SYSTEM_ACT = """\
     не проверки. Меняй ровно то, что просили; не расширяй scope.
     Если вывод показывает автофикс (например, `[*] N fixable with
     --fix`) — покажи его, но НЕ применяй без явной просьбы.
-"""
-
-
-SYSTEM_CHAT = """\
-Ты — AI-ассистент для свободного обсуждения в режиме CHAT.
-
-Ты НЕ изменяешь файлы и НЕ запускаешь команды — доступны только read-only
-инструменты: read_file, list_files, search. Твоя задача — обсуждать,
-объяснять, задавать вопросы, помогать пользователю думать.
-
-Рабочая директория: {workspace}
-
-Правила:
-1. Если нужно посмотреть файл — используй read_file / list_files / search.
-2. Отвечай по существу, без воды. Уточняющие вопросы приветствуются.
-3. Если пользователь готов перейти к действиям — предложи переключиться
-   в ACT (кнопка 💬 → 🟢 или /mode act).
-4. Обсуждая идею — предлагай варианты, взвешивай за/против.
-5. Обсуждая промежуточный итог сессии — опирайся на историю сообщений.
 """
 
 
@@ -169,9 +149,6 @@ def system_prompt(
     audit_scopes — B11.3: относительные пути из --scope/--scope-file.
     Только для AUDIT: встраивается блок «Область аудита» в audit_standard.
     """
-    if mode == Mode.CHAT:
-        return _with_rules(SYSTEM_CHAT.format(workspace=workspace), workspace)
-
     if mode == Mode.AUDIT:
         from agent_coder.agent.audit_prompt import build_audit_prompt
 

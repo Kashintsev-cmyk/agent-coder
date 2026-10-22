@@ -180,13 +180,7 @@ from .shared import (
     shutdown as shutdown,
 )
 from .task import (
-    _answer_question as _answer_question,
-)
-from .task import (
     _generate_and_send_audit as _generate_and_send_audit,
-)
-from .task import (
-    _is_question as _is_question,
 )
 from .task import (
     _run_task as _run_task,

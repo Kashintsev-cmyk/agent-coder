@@ -90,8 +90,8 @@ def test_models_keyboard_marks_fit() -> None:
         for row in kb.inline_keyboard
         if row and row[0].callback_data.startswith("info:")
     ]
-    assert any("🎯 act/plan/chat/audit" in t for t in texts), (
-        "нет пометки 🎯 act/plan/chat/audit (deepseek-v4-flash)"
+    assert any("🎯 act/plan/audit" in t for t in texts), (
+        "нет пометки 🎯 act/plan/audit (deepseek-v4-flash)"
     )
     assert any("🎯 audit" in t for t in texts), (
         "нет пометки 🎯 audit (kimi, glm, r1, ...)"
@@ -100,7 +100,7 @@ def test_models_keyboard_marks_fit() -> None:
 
 def test_model_mode_fit_valid() -> None:
     """MODEL_MODE_FIT: все модели ∈ MODEL_IDS, режимы — известные."""
-    known = {"act", "plan", "chat", "audit"}
+    known = {"act", "plan", "audit"}
     for mid, modes in config.MODEL_MODE_FIT.items():
         assert mid in config.MODEL_IDS, f"{mid!r} не в MODEL_IDS"
         for m in modes:

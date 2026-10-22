@@ -27,7 +27,7 @@ def test_resolve_manual_overrides_everything(fresh_router):
 
 
 def test_resolve_uses_recommended_for_all_modes(fresh_router):
-    for mode in ("act", "plan", "chat", "audit"):
+    for mode in ("act", "plan", "audit"):
         rec = config.RECOMMENDED_MODEL_BY_MODE[mode]
         assert fresh_router.resolve(mode) == rec
 

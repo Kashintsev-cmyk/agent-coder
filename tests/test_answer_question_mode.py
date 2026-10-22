@@ -1,18 +1,11 @@
-"""B10.a: _should_answer_directly всегда False (CHAT удалён)."""
+"""B10.b: _should_answer_directly/_answer_question/_is_question удалены."""
 
 from __future__ import annotations
 
-from agent_coder.agent.prompts import Mode
-from agent_coder.telegram.handlers.task import _should_answer_directly
 
+def test_helpers_removed() -> None:
+    import agent_coder.telegram.handlers.task as t
 
-class _FakeSession:
-    def __init__(self, mode: Mode) -> None:
-        self.mode = mode
-
-
-def test_always_false() -> None:
-    """B10.a: прямой ответ отключён во всех режимах."""
-    for mode in (Mode.PLAN, Mode.ACT, Mode.AUDIT, Mode.CHAT):
-        assert _should_answer_directly(_FakeSession(mode), "как дела?") is False
-        assert _should_answer_directly(_FakeSession(mode), "x" * 250) is False
+    assert not hasattr(t, "_should_answer_directly")
+    assert not hasattr(t, "_answer_question")
+    assert not hasattr(t, "_is_question")

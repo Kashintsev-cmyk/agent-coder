@@ -319,7 +319,6 @@ def _print_help() -> None:
         "  /plan          — Plan (только чтение)\n"
         "  /act           — Act (можно менять)\n"
         "  /audit         — Audit (строгий аудитор)\n"
-        "  /chat          — Chat (обсуждение без правок)\n"
         "\n"
         "Сессия:\n"
         "  /session       — текущая сессия\n"

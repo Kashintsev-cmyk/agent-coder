@@ -54,7 +54,7 @@ def _recommended_from_fit(
             (mid for mid in model_ids if mode in fit.get(mid, [])),
             default,
         )
-        for mode in ("act", "plan", "chat", "audit")
+        for mode in ("act", "plan", "audit")
     }
 
 
@@ -118,16 +118,16 @@ class Config:
     # не блокирует добавление новых моделей).
     # Порядок MODEL_IDS = приоритет авто-выбора (не порядок этого dict).
     MODEL_MODE_FIT: ClassVar[dict[str, list[str]]] = {
-        "deepseek/deepseek-v4-flash": ["act", "plan", "chat", "audit"],
-        "deepseek/deepseek-v4.1-flash": ["act", "plan", "chat"],
-        "qwen/qwen3-coder-next": ["act", "plan", "chat"],
+        "deepseek/deepseek-v4-flash": ["act", "plan", "audit"],
+        "deepseek/deepseek-v4.1-flash": ["act", "plan"],
+        "qwen/qwen3-coder-next": ["act", "plan"],
         "moonshotai/kimi-k2.7-code": ["audit"],
         "z-ai/glm-5.3": ["audit", "act"],
         "xiaomi/mimo-v2.6-flash": ["act", "plan"],
         "deepseek/deepseek-r1": ["audit"],
         "openai/gpt-6.1-sol": ["act", "audit"],
         "anthropic/claude-sonnet-5.5": ["act", "audit"],
-        "x-ai/grok-4.20": ["act", "chat"],
+        "x-ai/grok-4.20": ["act"],
     }
 
     # Рекомендованная модель по режиму: ПЕРВАЯ в MODEL_IDS, для которой
@@ -322,7 +322,7 @@ class Config:
                 )
 
             # MODEL_MODE_FIT: ключи ∈ MODEL_IDS, режимы — известные.
-            known_modes = {"act", "plan", "chat", "audit"}
+            known_modes = {"act", "plan", "audit"}
             for mid, modes in cls.MODEL_MODE_FIT.items():
                 if mid not in seen:
                     errors.append(

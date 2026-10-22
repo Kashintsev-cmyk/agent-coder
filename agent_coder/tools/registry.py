@@ -81,15 +81,8 @@ class ToolRegistry:
         """Набор инструментов под режим.
 
         - PLAN / AUDIT: read-only + run_command (whitelisted-вызовы)
-        - CHAT: только read_file / list_files / search (без run_command)
         - ACT: все инструменты
         """
-        if mode == Mode.CHAT:
-            # Chat — чистое обсуждение, без инструментов.
-            # Причина: с урезанным набором tools DeepSeek уходил в нативный
-            # DSML-формат (<||DSML||invoke>) вместо OpenAI tool_calls, и
-            # сырой XML утекал в ответ пользователю.
-            return []
         if mode in (Mode.PLAN, Mode.AUDIT):
             out = [t for t in self._tools.values() if t.read_only]
             rc = self._tools.get("run_command")
@@ -102,9 +95,6 @@ class ToolRegistry:
         """Разрешён ли вызов инструмента в этом режиме."""
         if mode == Mode.ACT:
             return True
-        if mode == Mode.CHAT:
-            # Chat — без инструментов (см. for_mode).
-            return False
         # Plan и Audit
         if tool.read_only:
             return True

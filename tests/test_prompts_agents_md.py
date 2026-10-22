@@ -1,4 +1,4 @@
-"""Сквозные тесты: AGENTS.md попадает в system_prompt для PLAN/ACT/CHAT."""
+"""Сквозные тесты: AGENTS.md попадает в system_prompt для PLAN/ACT."""
 
 from __future__ import annotations
 
@@ -9,7 +9,6 @@ import pytest
 from agent_coder.agent import workspace_rules
 from agent_coder.agent.prompts import (
     SYSTEM_ACT,
-    SYSTEM_CHAT,
     SYSTEM_PLAN,
     Mode,
     system_prompt,
@@ -34,8 +33,8 @@ def _write(tmp_path: Path, text: str) -> None:
     (tmp_path / "AGENTS.md").write_text(text, encoding="utf-8")
 
 
-# (а) есть AGENTS.md — содержимое в промте PLAN, ACT и CHAT
-@pytest.mark.parametrize("mode", [Mode.PLAN, Mode.ACT, Mode.CHAT])
+# (а) есть AGENTS.md — содержимое в промте PLAN, ACT
+@pytest.mark.parametrize("mode", [Mode.PLAN, Mode.ACT])
 def test_agents_md_added_to_prompt(tmp_path: Path, mode: Mode) -> None:
     _write(tmp_path, "use ruff and pytest")
     out = system_prompt(mode, str(tmp_path))
@@ -50,7 +49,6 @@ def test_agents_md_added_to_prompt(tmp_path: Path, mode: Mode) -> None:
     [
         (Mode.PLAN, SYSTEM_PLAN),
         (Mode.ACT, SYSTEM_ACT),
-        (Mode.CHAT, SYSTEM_CHAT),
     ],
 )
 def test_no_rules_backward_compat(
@@ -59,14 +57,13 @@ def test_no_rules_backward_compat(
     template: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Без AGENTS.md и builtin: PLAN/ACT = template + _WORK_STATE_RULE, CHAT — как был."""
+    """Без AGENTS.md и builtin: PLAN/ACT = template + _WORK_STATE_RULE."""
     from agent_coder.agent.prompts import _WORK_STATE_RULE
 
     monkeypatch.setattr(workspace_rules, "append_builtin_standard", lambda p: p)
     ws = str(tmp_path)
     expected = template.format(workspace=ws)
-    if mode != Mode.CHAT:
-        expected = expected + "\n\n" + _WORK_STATE_RULE
+    expected = expected + "\n\n" + _WORK_STATE_RULE
     assert system_prompt(mode, ws) == expected
 
 
@@ -109,15 +106,6 @@ def test_truncated_through_prompt(tmp_path: Path) -> None:
     assert len(out.encode("utf-8")) <= upper
 
 
-# (г) CHAT теперь тоже подхватывает, хвост — базовый SYSTEM_CHAT
-def test_chat_gets_agents_md(tmp_path: Path) -> None:
-    _write(tmp_path, "SECRET_RULE_XYZ")
-    ws = str(tmp_path)
-    out = system_prompt(Mode.CHAT, ws)
-    assert "SECRET_RULE_XYZ" in out
-    assert out.startswith(SYSTEM_CHAT.format(workspace=ws))
-
-
 # AUDIT не тронут
 def test_audit_not_touched(tmp_path: Path) -> None:
     _write(tmp_path, "SECRET_RULE_XYZ")
@@ -131,13 +119,12 @@ def test_audit_not_touched(tmp_path: Path) -> None:
     assert "SECRET_RULE_XYZ" not in system_prompt(Mode.AUDIT, ws)
 
 
-# (д) падение workspace_rules -> откат на base, для PLAN/ACT/CHAT
+# (д) падение workspace_rules -> откат на base, для PLAN/ACT
 @pytest.mark.parametrize(
     "mode,template",
     [
         (Mode.PLAN, SYSTEM_PLAN),
         (Mode.ACT, SYSTEM_ACT),
-        (Mode.CHAT, SYSTEM_CHAT),
     ],
 )
 def test_failure_falls_back_to_base(
@@ -157,19 +144,17 @@ def test_failure_falls_back_to_base(
     from agent_coder.agent.prompts import _WORK_STATE_RULE
 
     expected = template.format(workspace=ws)
-    if mode != Mode.CHAT:
-        expected = expected + "\n\n" + _WORK_STATE_RULE
+    expected = expected + "\n\n" + _WORK_STATE_RULE
     assert out == expected
 
 
 def test_work_state_rule_is_shared_across_modes() -> None:
-    """Единое правило structured memory инжектится в PLAN/ACT/AUDIT, не в CHAT."""
+    """Единое правило structured memory инжектится в PLAN/ACT/AUDIT."""
     from agent_coder.agent.prompts import _WORK_STATE_RULE
 
     assert "update_work_state" in _WORK_STATE_RULE
     for mode in (Mode.PLAN, Mode.ACT, Mode.AUDIT):
         assert "update_work_state" in system_prompt(mode, "/tmp")
-    assert "update_work_state" not in system_prompt(Mode.CHAT, "/tmp")
 
 
 def test_system_act_no_duplicate_rule() -> None:
