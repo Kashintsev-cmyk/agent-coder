@@ -109,5 +109,19 @@
     ],
     "success": "BLOCKER починены или 'требует ручной правки', tests/ не тронут, cost < 5₽",
     "max_iterations": 25
+  },
+  {
+    "id": "verify-01",
+    "category": "verify",
+    "title": "Verify na_shtile findings — 34 confirmed",
+    "prompt": "Верифицировать findings из work_state (na_shtile audit). Для каждого — CONFIRMED/REJECTED/UNCERTAIN с evidence. Не задавай вопросов, работай до конца.",
+    "setup": "patch_na_shtile_fixture.py",
+    "extra_args": [
+      "--resume",
+      "a6a74ebf"
+    ],
+    "min_confirmed": 1,
+    "max_iterations": 25,
+    "success": "confirmed>=1, файлы не тронуты"
   }
 ]

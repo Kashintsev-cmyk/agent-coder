@@ -36,6 +36,11 @@ def parse_args() -> argparse.Namespace:
         help="One-shot /patch: починить confirmed findings (требует /verify)",
     )
     p.add_argument(
+        "--verify",
+        action="store_true",
+        help="One-shot /verify: прогнать work_state.findings через VERIFY_MODEL_ID",
+    )
+    p.add_argument(
         "--resume-audit",
         action="store_true",
         help="Восстановить persistent audit state (.agent-coder/)",
@@ -540,6 +545,41 @@ async def _run_patch_cli(args, session) -> int:
     return 0
 
 
+async def _run_verify_cli(args, session) -> int:
+    """One-shot /verify: прогнать work_state.findings через VERIFY_MODEL_ID.
+
+    Без REPL: загружает сессию (--resume/--continue/latest), зовёт
+    run_verify. Результат дописывается в session.verify_results.
+    Используется benchmark'ом и из терминала.
+    """
+    from agent_coder.agent.verify import run_verify
+    from agent_coder.llm.client import LLMClient
+
+    findings = (session.work_state or {}).get("findings") or []
+    if not findings:
+        ui.print_error("work_state пуст — сначала /audit или update_work_state")
+        return 2
+    model = args.model or config.VERIFY_MODEL_ID
+    ui.print_info(f"Верифицирую {len(findings)} findings на {model}...")
+    client = LLMClient()
+    await client.start()
+    try:
+        result = await run_verify(client, session, model=args.model or "")
+    finally:
+        close = getattr(client, "close", None)
+        if close is not None:
+            await close()
+    ui.print_info(
+        f"verify: {result.iterations} iter, {result.cost:.2f}₽, "
+        f"confirmed={result.counts.get('confirmed', 0)}, "
+        f"error={result.error or 'нет'}"
+    )
+    if result.error:
+        ui.print_error(result.error)
+        return 1
+    return 0
+
+
 def main() -> int:
     args = parse_args()
 
@@ -602,6 +642,9 @@ def main() -> int:
             model_manual=args.model is not None,
             mode=mode,
         )
+
+    if args.verify:
+        return asyncio.run(_run_verify_cli(args, session))
 
     if args.patch:
         return asyncio.run(_run_patch_cli(args, session))

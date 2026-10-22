@@ -183,6 +183,7 @@ def run_case(
         baseline_session = _latest_session(workspace, run_dir / "sessions") or {}
         baseline_usage = dict(baseline_session.get("total_usage") or {})
         baseline_patch_count = len(baseline_session.get("patch_results") or [])
+        baseline_verify_count = len(baseline_session.get("verify_results") or [])
         # Baseline — после fixture: её файлы не «изменения модели».
         baseline_changed = set(_git("diff", "--name-only", cwd=workspace).splitlines())
         baseline_files = {
@@ -210,6 +211,8 @@ def run_case(
         ]
         if task["category"] == "audit":
             command.append("--audit")
+        elif task["category"] == "verify":
+            command.append("--verify")
         command.extend(task.get("extra_args", []))
         with log.open("w", encoding="utf-8") as stream:
             try:
@@ -242,6 +245,15 @@ def run_case(
         }
         new_patch_results = (session.get("patch_results") or [])[baseline_patch_count:]
         patch_iterations = sum(int(pr.get("iterations", 0)) for pr in new_patch_results)
+        new_verify_results = (session.get("verify_results") or [])[
+            baseline_verify_count:
+        ]
+        verify_iterations = sum(
+            int(vr.get("iterations", 0)) for vr in new_verify_results
+        )
+        verify_confirmed = sum(
+            1 for vr in new_verify_results if vr.get("status") == "confirmed"
+        )
         git_stats = _git_stats(
             workspace, benchmark_base, baseline_files, baseline_changed
         )
@@ -287,7 +299,7 @@ def run_case(
             "duration_seconds": round(time.monotonic() - started, 3),
             # B9.2g.bench: run_patch не пишет в session.messages/request_count,
             # берём из patch_results (сумма итераций новых прогонов).
-            "iterations": patch_iterations,
+            "iterations": patch_iterations + verify_iterations,
             "tool_calls": 0,
             "usage": usage,
             "git": git_stats,
@@ -315,6 +327,15 @@ def run_case(
                 and not git_stats["changed_files"]
                 and result.get("audit", {}).get("findings", 0) >= min_findings
             )
+        elif task["category"] == "verify":
+            # verify — read-only: файлы не меняются, ценим confirmed findings.
+            min_confirmed = int(task.get("min_confirmed", 1))
+            result["success"] = (
+                rc == 0
+                and not git_stats["changed_files"]
+                and verify_confirmed >= min_confirmed
+            )
+            result["verify"] = {"confirmed": verify_confirmed}
         else:
             result["success"] = (
                 rc == 0 and bool(git_stats["changed_files"]) and tests["passed"]
