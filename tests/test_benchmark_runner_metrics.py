@@ -50,6 +50,47 @@ def test_count_missing_archive_returns_zero(tmp_path):
     assert _count_iterations_and_tools(tmp_path / "nope.jsonl") == (0, 0)
 
 
+def test_count_from_json_uses_request_count(tmp_path):
+    session = tmp_path / "s.json"
+    session.write_text(
+        json.dumps(
+            {
+                "request_count": 5,
+                "messages": [
+                    {"role": "user"},
+                    {"role": "assistant"},
+                    {"role": "tool"},
+                    {"role": "assistant"},
+                    {"role": "tool"},
+                ],
+            }
+        ),
+        encoding="utf-8",
+    )
+    # request_count wins even though only 2 assistant messages are present
+    assert _count_iterations_and_tools(session) == (5, 2)
+
+
+def test_count_from_json_falls_back_to_assistant_count(tmp_path):
+    session = tmp_path / "s.json"
+    session.write_text(
+        json.dumps(
+            {
+                "messages": [
+                    {"role": "user"},
+                    {"role": "assistant"},
+                    {"role": "tool"},
+                    {"role": "assistant"},
+                    {"role": "tool"},
+                    {"role": "assistant"},
+                ]
+            }
+        ),
+        encoding="utf-8",
+    )
+    assert _count_iterations_and_tools(session) == (3, 2)
+
+
 def test_count_skips_malformed_lines(tmp_path):
     archive = tmp_path / "s.jsonl"
     archive.write_text(
@@ -59,19 +100,40 @@ def test_count_skips_malformed_lines(tmp_path):
     assert _count_iterations_and_tools(archive) == (1, 1)
 
 
-def test_find_case_archive_returns_newest(tmp_path):
-    archive_dir = tmp_path / "archive"
-    archive_dir.mkdir()
+def test_find_case_archive_prefers_json_over_jsonl(tmp_path):
+    older_json = tmp_path / "old.json"
+    older_json.write_text('{"messages": []}', encoding="utf-8")
+    newer_jsonl_dir = tmp_path / "archive"
+    newer_jsonl_dir.mkdir()
+    newer_jsonl = newer_jsonl_dir / "new.jsonl"
+    _write_jsonl(newer_jsonl, [{"role": "tool", "content": "x"}])
 
-    older = archive_dir / "a.jsonl"
-    _write_jsonl(older, [{"role": "user", "content": "old"}])
-    newer = archive_dir / "b.jsonl"
-    _write_jsonl(newer, [{"role": "user", "content": "new"}])
+    os.utime(older_json, (time.time() - 10, time.time() - 10))
+    os.utime(newer_jsonl, (time.time(), time.time()))
+
+    # .json wins even if older — it carries request_count
+    assert _find_case_archive(tmp_path) == older_json
+
+
+def test_find_case_archive_newest_json(tmp_path):
+    older = tmp_path / "a.json"
+    older.write_text('{"messages": []}', encoding="utf-8")
+    newer = tmp_path / "b.json"
+    newer.write_text('{"messages": []}', encoding="utf-8")
 
     os.utime(older, (time.time() - 10, time.time() - 10))
     os.utime(newer, (time.time(), time.time()))
 
     assert _find_case_archive(tmp_path) == newer
+
+
+def test_find_case_archive_excludes_index_json(tmp_path):
+    (tmp_path / "index.json").write_text('{"sessions": []}', encoding="utf-8")
+    session = tmp_path / "abc.json"
+    session.write_text('{"messages": []}', encoding="utf-8")
+
+    # index.json must never be picked as the case transcript
+    assert _find_case_archive(tmp_path) == session
 
 
 def test_find_case_archive_empty_dir_returns_none(tmp_path):

@@ -388,24 +388,49 @@ def run_case(
             )
 
 
-def _count_iterations_and_tools(archive_path: Path) -> tuple[int, int]:
-    """Count assistant turns and tool messages in archived session jsonl.
+def _count_iterations_and_tools(session_path: Path) -> tuple[int, int]:
+    """Count iterations and tool calls from a session file.
 
-    ACT/PLAN/AUDIT modes leave patch_results/verify_results empty, so
-    iterations/tool_calls would otherwise be hardcoded 0. Parse the archived
-    session transcript to recover them. Missing/unreadable archive -> (0, 0).
+    Prefers `.json` (sessions/<uuid>.json — full transcript with
+    `request_count` and `messages`). `request_count` is the CLI's own counter
+    and is the canonical iteration count; falls back to counting assistant
+    messages if absent. `.jsonl` (sessions/archive/<uuid>.jsonl — the
+    search_history index) has only tool results in practice, assistant
+    messages are counted defensively. Missing/unreadable -> (0, 0).
     """
+    if not session_path.exists():
+        return 0, 0
+
+    if session_path.suffix == ".json":
+        try:
+            data = json.loads(session_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            return 0, 0
+        if not isinstance(data, dict):
+            return 0, 0
+        messages = data.get("messages") or []
+        tool_calls = sum(
+            1 for m in messages if isinstance(m, dict) and m.get("role") == "tool"
+        )
+        request_count = data.get("request_count")
+        if isinstance(request_count, int) and request_count >= 0:
+            return request_count, tool_calls
+        iterations = sum(
+            1 for m in messages if isinstance(m, dict) and m.get("role") == "assistant"
+        )
+        return iterations, tool_calls
+
     iterations = 0
     tool_calls = 0
-    if not archive_path.exists():
-        return 0, 0
-    for line in archive_path.read_text(encoding="utf-8").splitlines():
+    for line in session_path.read_text(encoding="utf-8").splitlines():
         line = line.strip()
         if not line:
             continue
         try:
             msg = json.loads(line)
         except json.JSONDecodeError:
+            continue
+        if not isinstance(msg, dict):
             continue
         role = msg.get("role")
         if role == "assistant":
@@ -416,22 +441,29 @@ def _count_iterations_and_tools(archive_path: Path) -> tuple[int, int]:
 
 
 def _find_case_archive(sessions_dir: Path) -> Path | None:
-    """Newest .jsonl under sessions/archive (the just-finished case).
+    """Session file for the just-finished case.
 
-    run_dir is unique per benchmark invocation and run_case calls are strictly
-    sequential (for task -> for model -> run_case), so the freshest archive in
-    this run_dir belongs to the case that just finished. Matching by content
-    (task_id/model) does not work: transcripts carry messages only, no model
-    field, and task_id can appear in tool output of a sibling task. Missing
-    dir or empty dir -> None.
+    Prefers sessions/*.json (full transcript: messages + request_count) and
+    falls back to sessions/archive/*.jsonl (tool results only, iterations
+    usually 0). run_dir is unique per invocation and run_case runs strictly
+    sequentially, so the freshest matching file is the current case.
+    `sessions/index.json` is the session catalog, not a case — excluded.
+    Missing dir or empty dir -> None.
     """
+    if not sessions_dir.exists():
+        return None
+    json_files = [
+        p for p in sessions_dir.glob("*.json") if p.is_file() and p.name != "index.json"
+    ]
+    if json_files:
+        return max(json_files, key=lambda p: p.stat().st_mtime)
     archive_dir = sessions_dir / "archive"
     if not archive_dir.exists():
         return None
-    files = [p for p in archive_dir.glob("*.jsonl") if p.is_file()]
-    if not files:
+    jsonl_files = [p for p in archive_dir.glob("*.jsonl") if p.is_file()]
+    if not jsonl_files:
         return None
-    return max(files, key=lambda p: p.stat().st_mtime)
+    return max(jsonl_files, key=lambda p: p.stat().st_mtime)
 
 
 def main() -> int:
