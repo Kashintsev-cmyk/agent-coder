@@ -46,6 +46,37 @@ MAX_VERIFY_ITERATIONS = 10
 # 10 итераций, 10₽, 0 вердиктов).
 FINAL_FORCE_ITERATIONS = 2
 
+# Оценка output-токенов одного verify-вызова для pre-check бюджета:
+# первый вызов — либо tool_call, либо черновые вердикты; 2000 с запасом.
+_VERIFY_EST_OUTPUT_TOKENS = 2000
+
+
+def _estimate_cost_rub(messages: list[dict[str, Any]], model: str) -> float | None:
+    """Оценка стоимости следующего chat-вызова (input + типичный output).
+
+    None — если цену модели узнать нельзя (модель не в каталоге,
+    placeholder, fallback, нулевая цена). Тогда pre-check пропускается,
+    а пост-чек после client.chat остаётся как страховка.
+    """
+    from agent_coder.agent.compression import estimate_tokens
+    from agent_coder.model_catalog import catalog
+
+    getter = getattr(catalog, "get", None)
+    if getter is None:
+        return None
+    info = getter(model)
+    if info is None:
+        return None
+    price_in = getattr(info, "input_price", 0.0) or 0.0
+    price_out = getattr(info, "output_price", 0.0) or 0.0
+    if price_in <= 0:
+        return None
+    return (
+        estimate_tokens(messages) * price_in / 1_000_000
+        + _VERIFY_EST_OUTPUT_TOKENS * price_out / 1_000_000
+    )
+
+
 _VERDICT_RE = re.compile(
     r"^\s*[-*]?\s*[*_`]*(CONFIRMED|REJECTED|UNCERTAIN)[*_`]*\s*:\s*(.+)$",
     re.IGNORECASE,
@@ -181,6 +212,21 @@ async def run_verify(
                 }
             )
             force_injected = True
+        # B11.x: pre-check бюджета — пост-чек ниже ловит уже сделанный
+        # перерасход (инцидент sonnet: 65.76₽ при лимите 50₽).
+        # Оцениваем стоимость следующего вызова ДО client.chat.
+        est_next = _estimate_cost_rub(messages, model)
+        if est_next is not None and res.cost + est_next > config.MAX_COST_VERIFY:
+            res.budget_exceeded = True
+            logger.warning(
+                "verify: pre-check бюджета — est %.2f₽ (cost %.2f + next %.2f) > %.2f₽",
+                res.cost + est_next,
+                res.cost,
+                est_next,
+                config.MAX_COST_VERIFY,
+            )
+            break
+
         # B9.2g.6: таймаут chat — как в patch.py. Без wait_for verify
         # висел бесконечно при провайдере/сети (roadmap: Уроки).
         _timeout_sec = 180

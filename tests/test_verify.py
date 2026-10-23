@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import pytest
 
+from agent_coder.agent import verify as verify_mod
 from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
 from agent_coder.agent.verify import (
@@ -251,3 +252,107 @@ async def test_run_verify_timeout(monkeypatch):
     res = await run_verify(client=_HangingClient(), session=s)
     assert res.error == "LLM: timeout after 180s"
     assert not res.ok
+
+
+# --------------------------------------------------------------------------
+# B11.x: pre-check MAX_COST_VERIFY перед client.chat.
+# Контракт: est(cost + next) > MAX_COST_VERIFY -> budget_exceeded, chat не
+# вызывается. est is None (цена неизвестна) -> пропуск, работает post-check.
+# Граница: est == MAX_COST_VERIFY не блокирует (строгое >).
+# --------------------------------------------------------------------------
+
+
+class _PreTool:
+    name = "read_file"
+    read_only = True
+
+    def to_openai_schema(self):
+        return {"type": "function", "function": {"name": "read_file"}}
+
+    async def executor(self, args, ctx):
+        return ""
+
+
+class _PreReg:
+    def get(self, name):
+        return _PreTool() if name in verify_mod.VERIFY_TOOLS else None
+
+
+class _PreResp:
+    def __init__(self):
+        self.usage = Usage(input_tokens=100, output_tokens=50, cost=0.5)
+        self.message = AssistantMessage(content="- CONFIRMED: fake", tool_calls=[])
+
+
+class _PreClient:
+    def __init__(self):
+        self.calls = 0
+
+    async def chat(self, **kw):
+        self.calls += 1
+        return _PreResp()
+
+
+class _PreSession:
+    id = "pre-test"
+    workspace = "/tmp"
+    reasoning_effort = "none"
+
+    def __init__(self):
+        self.work_state = {"k": "v"}
+        self.verify_results = []
+        self.total_usage = Usage()
+
+    def save(self):
+        pass
+
+
+def _patch_verify_inputs(monkeypatch):
+    """Обойти work_state/standard-промпт, оставить pre-check живым."""
+    monkeypatch.setattr(verify_mod, "render_for_prompt", lambda _: "fake ws")
+    monkeypatch.setattr(verify_mod, "load_verify_standard", lambda: "fake system")
+
+
+@pytest.mark.asyncio
+async def test_verify_precheck_blocks(monkeypatch):
+    _patch_verify_inputs(monkeypatch)
+    monkeypatch.setattr(verify_mod, "_estimate_cost_rub", lambda *_: 60.0)
+    monkeypatch.setattr(verify_mod.config, "MAX_COST_VERIFY", 50.0)
+    client = _PreClient()
+    res = await verify_mod.run_verify(client, _PreSession(), registry=_PreReg())
+    assert res.budget_exceeded is True
+    assert client.calls == 0
+    assert res.iterations == 1
+
+
+@pytest.mark.asyncio
+async def test_verify_precheck_passes(monkeypatch):
+    _patch_verify_inputs(monkeypatch)
+    monkeypatch.setattr(verify_mod, "_estimate_cost_rub", lambda *_: 1.0)
+    monkeypatch.setattr(verify_mod.config, "MAX_COST_VERIFY", 50.0)
+    client = _PreClient()
+    res = await verify_mod.run_verify(client, _PreSession(), registry=_PreReg())
+    assert res.budget_exceeded is False
+    assert client.calls >= 1
+
+
+@pytest.mark.asyncio
+async def test_verify_precheck_skips_when_unknown_price(monkeypatch):
+    _patch_verify_inputs(monkeypatch)
+    monkeypatch.setattr(verify_mod, "_estimate_cost_rub", lambda *_: None)
+    monkeypatch.setattr(verify_mod.config, "MAX_COST_VERIFY", 50.0)
+    client = _PreClient()
+    await verify_mod.run_verify(client, _PreSession(), registry=_PreReg())
+    assert client.calls >= 1  # pre-check пропущен, chat вызван
+
+
+@pytest.mark.asyncio
+async def test_verify_precheck_boundary_strict_gt(monkeypatch):
+    """est == MAX_COST_VERIFY не блокирует: контракт строгого >."""
+    _patch_verify_inputs(monkeypatch)
+    monkeypatch.setattr(verify_mod.config, "MAX_COST_VERIFY", 50.0)
+    monkeypatch.setattr(verify_mod, "_estimate_cost_rub", lambda *_: 50.0)
+    client = _PreClient()
+    res = await verify_mod.run_verify(client, _PreSession(), registry=_PreReg())
+    assert res.budget_exceeded is False
+    assert client.calls >= 1
