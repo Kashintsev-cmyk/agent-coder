@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import logging
+import math
 import os
 import time
 from dataclasses import asdict, dataclass
@@ -75,6 +76,8 @@ class SessionMeta:
         cost = 0.0
         try:
             cost = float(getattr(getattr(s, "total_usage", None), "cost", 0.0))
+            if not math.isfinite(cost):
+                cost = 0.0
         except (TypeError, ValueError):
             cost = 0.0
         return cls(
@@ -132,6 +135,8 @@ class SessionIndex:
             raw = self._path.read_text(encoding="utf-8")
         except OSError as exc:
             logger.warning("Не удалось прочитать индекс сессий %s: %s", self._path, exc)
+            self._sessions = {}
+            self._loaded = False
             return False
 
         try:
@@ -171,13 +176,16 @@ class SessionIndex:
             if not isinstance(data, dict):
                 continue
             try:
+                cost_val = float(data.get("cost", 0.0) or 0.0)
+                if not math.isfinite(cost_val):
+                    cost_val = 0.0
                 parsed[sid] = SessionMeta(
                     id=str(data.get("id", sid)),
                     title=str(data.get("title", "") or ""),
                     workspace=str(data.get("workspace", "") or ""),
                     model=str(data.get("model", "") or ""),
                     mode=str(data.get("mode", "act") or "act"),
-                    cost=float(data.get("cost", 0.0) or 0.0),
+                    cost=cost_val,
                     request_count=int(data.get("request_count", 0) or 0),
                     created_at=float(data.get("created_at", 0.0) or 0.0),
                     updated_at=float(data.get("updated_at", 0.0) or 0.0),

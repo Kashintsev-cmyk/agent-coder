@@ -184,3 +184,90 @@ def test_session_meta_from_session():
     assert m.mode == "act"
     assert isinstance(m.cost, float)
     assert m.cost == 0.0
+
+
+# --------------------------------------------------------------------------
+# B2: OSError в load() сбрасывает state; NaN/inf cost -> 0.0 в мете.
+# --------------------------------------------------------------------------
+
+
+def test_load_oserror_resets_state(tmp_path):
+    """OSError при read_text -> _loaded=False, _sessions={} (как в других
+    error-ветках). Иначе stale in-memory + save() поверх."""
+    from agent_coder.agent.session_index import SessionIndex, SessionMeta
+
+    idx = SessionIndex(path=tmp_path / "index.json")
+    assert idx.load() is True  # missing -> ok, _loaded=True
+    idx._sessions["s1"] = SessionMeta(
+        id="s1",
+        title="",
+        workspace="",
+        model="",
+        mode="act",
+        cost=0.0,
+        request_count=0,
+        created_at=0.0,
+        updated_at=0.0,
+    )
+    assert idx._loaded is True
+    # превращаем index.json в директорию -> IsADirectoryError (OSError)
+    (tmp_path / "index.json").mkdir()
+    assert idx.load() is False
+    assert idx._loaded is False
+    assert idx._sessions == {}
+
+
+def test_meta_cost_nonfinite_is_zero():
+    """SessionMeta.from_session: NaN/inf cost -> 0.0, конечное — как есть."""
+    from agent_coder.agent.prompts import Mode
+    from agent_coder.agent.session import Session
+    from agent_coder.agent.session_index import SessionMeta
+
+    s = Session.new(workspace="/tmp", model="openai/gpt-5.6-luna", mode=Mode.ACT)
+    s.total_usage.cost = float("nan")
+    assert SessionMeta.from_session(s).cost == 0.0
+    s.total_usage.cost = float("inf")
+    assert SessionMeta.from_session(s).cost == 0.0
+    s.total_usage.cost = 1.5
+    assert SessionMeta.from_session(s).cost == 1.5
+
+
+def test_load_nonfinite_cost_from_json(tmp_path):
+    """Индекс с "NaN"/"inf" в cost: load не падает, мета с cost=0.0."""
+    import json as _json
+
+    from agent_coder.agent.session_index import INDEX_VERSION, SessionIndex
+
+    payload = {
+        "_version": INDEX_VERSION,
+        "_updated_at": 0.0,
+        "sessions": {
+            "s1": {
+                "id": "s1",
+                "title": "",
+                "workspace": "",
+                "model": "",
+                "mode": "act",
+                "cost": "NaN",
+                "request_count": 0,
+                "created_at": 0.0,
+                "updated_at": 0.0,
+            },
+            "s2": {
+                "id": "s2",
+                "title": "",
+                "workspace": "",
+                "model": "",
+                "mode": "act",
+                "cost": "Infinity",
+                "request_count": 0,
+                "created_at": 0.0,
+                "updated_at": 0.0,
+            },
+        },
+    }
+    (tmp_path / "index.json").write_text(_json.dumps(payload))
+    idx = SessionIndex(path=tmp_path / "index.json")
+    assert idx.load() is True
+    assert idx._sessions["s1"].cost == 0.0
+    assert idx._sessions["s2"].cost == 0.0
