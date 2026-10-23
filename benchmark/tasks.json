@@ -123,5 +123,21 @@
     "min_confirmed": 1,
     "max_iterations": 25,
     "success": "confirmed>=1, файлы не тронуты"
+  },
+  {
+    "id": "audit-04",
+    "category": "audit",
+    "title": "Audit na_shtile — full security (bot/, 32 .py)",
+    "prompt": "Проведи read-only security аудит na_shtile (bot/, 32 .py). Фокус: BLOCKER (потеря данных, security bypass), MAJOR (race, silent failures, dead code, hardcoded values), MINOR (style). Формат: файл:строка — проблема [severity] — evidence. Явно укажи проверенные области без findings. НЕ задавай вопросов — работай до конца, неясное помечай как 'unknown'.",
+    "setup": "audit_na_shtile_fixture.py",
+    "extra_args": [
+      "--audit",
+      "--scope",
+      "bot/",
+      "--fresh-audit"
+    ],
+    "min_findings": 25,
+    "max_iterations": 25,
+    "success": "rc=0, findings>=25, changed_files=[], 0 файлов вне bot/"
   }
 ]
