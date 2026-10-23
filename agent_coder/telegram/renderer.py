@@ -81,3 +81,50 @@ def _short_args(args: dict) -> str:
             s = s[:47] + "…"
         out.append(f"{k}={s!r}")
     return ", ".join(out)
+
+
+# --- Результаты операций (/verify, /patch, ...) ---
+#
+# Единый формат «итога» после LLM-операций. cmd_verify и cmd_patch были
+# почти-копиями, но разошлись: bullet-префикс («• » vs «  • »), места
+# ⚠-предупреждений, формат ошибок. Helpers — один источник правды.
+# <pre> для raw-контента сохранён (git diff, отчёт) — не унифицируется.
+
+
+def render_result_header(icon: str, name: str, model: str) -> str:
+    """`🔍 <b>Verify</b> · <code>model</code>` — единая шапка результата."""
+    return f"{icon} <b>{html_escape(name)}</b> · <code>{html_escape(model)}</code>"
+
+
+def render_result_error(error: str) -> str:
+    """`❌ <текст>` — единая строка ошибки."""
+    return f"❌ {html_escape(error)}"
+
+
+def render_result_metrics(iterations: int, cost: float) -> str:
+    """`Итераций: N · X.XX₽` — единая строка метрик."""
+    return f"Итераций: {iterations} · {cost:.2f}₽"
+
+
+def render_bullet_list(
+    items: list[str], *, limit: int = 10, more_label: str = "… ещё"
+) -> list[str]:
+    """Bullet-список с усечением: `  • item` × limit + `  … ещё N`.
+
+    items — уже отформатированные строки (caller делает html_escape и
+    разметку), helper только добавляет префикс и усечение.
+    """
+    lines = [f"  • {it}" for it in items[:limit]]
+    if len(items) > limit:
+        lines.append(f"  {more_label} {len(items) - limit}")
+    return lines
+
+
+def render_pre_block(title: str, content: str, *, limit: int) -> str:
+    """`\n<b>title:</b>\n<pre>escaped[:limit]</pre>` — raw-контент в <pre>."""
+    return f"\n<b>{html_escape(title)}:</b>\n<pre>{html_escape(content[:limit])}</pre>"
+
+
+def render_warning(message: str) -> str:
+    """`\n⚠ message` — единая строка предупреждения."""
+    return f"\n⚠ {html_escape(message)}"

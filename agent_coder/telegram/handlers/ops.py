@@ -16,7 +16,15 @@ from aiogram.types import CallbackQuery, Message
 
 from agent_coder.shell_runner import run_shell
 from agent_coder.telegram import keyboards
-from agent_coder.telegram.renderer import html_escape
+from agent_coder.telegram.renderer import (
+    html_escape,
+    render_bullet_list,
+    render_pre_block,
+    render_result_error,
+    render_result_header,
+    render_result_metrics,
+    render_warning,
+)
 
 from .shared import _get_active_session, router
 
@@ -172,11 +180,11 @@ async def cmd_verify(message: Message) -> None:
     finally:
         await client.close()
 
-    lines = [f"🔍 <b>Verify</b> · <code>{html_escape(result.model)}</code>"]
+    lines = [render_result_header("🔍", "Verify", result.model)]
     if result.error:
-        lines.append(f"❌ {html_escape(result.error)}")
+        lines.append(render_result_error(result.error))
     else:
-        lines.append(f"Итераций: {result.iterations} · {result.cost:.2f}₽")
+        lines.append(render_result_metrics(result.iterations, result.cost))
         counts = result.counts or {}
         total = sum(counts.values())
         lines.append(f"Вердиктов: {total}")
@@ -190,17 +198,17 @@ async def cmd_verify(message: Message) -> None:
         ]
         if conf:
             lines.append("\n<b>Подтверждено:</b>")
-            for v in conf[:10]:
+            conf_items = []
+            for v in conf:
                 ev = (
                     f" — <code>{html_escape(v['evidence'])}</code>"
                     if v.get("evidence")
                     else ""
                 )
-                lines.append(f"• {html_escape(v['text'])}{ev}")
-            if len(conf) > 10:
-                lines.append(f"… ещё {len(conf) - 10}")
+                conf_items.append(f"{html_escape(v['text'])}{ev}")
+            lines.extend(render_bullet_list(conf_items, limit=10))
         if result.budget_exceeded:
-            lines.append("\n⚠ Бюджет verify исчерпан, вердикты частичные.")
+            lines.append(render_warning("Бюджет verify исчерпан, вердикты частичные."))
     await status_msg.edit_text("\n".join(lines), parse_mode="HTML")
 
 
@@ -258,35 +266,37 @@ async def cmd_patch(message: Message) -> None:
     finally:
         await client.close()
 
-    lines = [f"🔧 <b>Patch</b> · <code>{html_escape(result.model)}</code>"]
+    lines = [render_result_header("🔧", "Patch", result.model)]
     if result.error:
-        lines.append(f"❌ {html_escape(result.error)}")
+        lines.append(render_result_error(result.error))
     else:
-        lines.append(f"Итераций: {result.iterations} · {result.cost:.2f}₽")
+        lines.append(render_result_metrics(result.iterations, result.cost))
         if result.files_changed:
             lines.append(f"\n<b>Изменено файлов:</b> {len(result.files_changed)}")
-            for fp in result.files_changed[:10]:
-                lines.append(f"  • <code>{html_escape(fp)}</code>")
-            if len(result.files_changed) > 10:
-                lines.append(f"  … ещё {len(result.files_changed) - 10}")
+            lines.extend(
+                render_bullet_list(
+                    [f"<code>{html_escape(fp)}</code>" for fp in result.files_changed],
+                    limit=10,
+                )
+            )
         else:
             lines.append(
-                "\n⚠ Модель не изменила файлов (возможно, finding не "
-                "подтвердился при чтении)."
+                render_warning(
+                    "Модель не изменила файлов (возможно, finding не "
+                    "подтвердился при чтении)."
+                )
             )
         if result.git_diff_stat:
-            lines.append(
-                f"\n<b>git diff:</b>\n<pre>{html_escape(result.git_diff_stat[:3000])}</pre>"
-            )
+            lines.append(render_pre_block("git diff", result.git_diff_stat, limit=3000))
         if result.budget_exceeded:
             lines.append(
-                f"\n⚠ Бюджет patch исчерпан "
-                f"(лимит {config.MAX_COST_PATCH:.0f}₽), правки частичные."
+                render_warning(
+                    f"Бюджет patch исчерпан (лимит {config.MAX_COST_PATCH:.0f}₽), "
+                    f"правки частичные."
+                )
             )
         if result.raw_text:
-            lines.append(
-                f"\n<b>Отчёт:</b>\n<pre>{html_escape(result.raw_text[:1500])}</pre>"
-            )
+            lines.append(render_pre_block("Отчёт", result.raw_text, limit=1500))
     await status_msg.edit_text("\n".join(lines), parse_mode="HTML")
 
 

@@ -100,3 +100,60 @@ def test_tool_icon_known_and_fallback():
     assert tool_icon("read_file") == "📖"
     assert tool_icon("run_command") == "⚡"
     assert tool_icon("totally-made-up") == "🔧"
+
+
+# --- render_result_* (унификация итога /verify, /patch) ---
+
+
+def test_render_result_header():
+    from agent_coder.telegram.renderer import render_result_header
+
+    out = render_result_header("🔍", "Verify", "anthropic/claude-haiku-5.5")
+    assert out == "🔍 <b>Verify</b> · <code>anthropic/claude-haiku-5.5</code>"
+
+
+def test_render_result_error_escapes():
+    from agent_coder.telegram.renderer import render_result_error
+
+    out = render_result_error("boom <bad> & worse")
+    assert out == "❌ boom &lt;bad&gt; &amp; worse"
+
+
+def test_render_result_metrics():
+    from agent_coder.telegram.renderer import render_result_metrics
+
+    assert render_result_metrics(3, 0.05) == "Итераций: 3 · 0.05₽"
+
+
+def test_render_bullet_list_truncates():
+    from agent_coder.telegram.renderer import render_bullet_list
+
+    items = [f"item{i}" for i in range(12)]
+    out = render_bullet_list(items, limit=10)
+    assert out[0] == "  • item0"
+    assert len(out) == 11
+    assert out[-1] == "  … ещё 2"
+
+
+def test_render_bullet_list_no_truncation():
+    from agent_coder.telegram.renderer import render_bullet_list
+
+    out = render_bullet_list(["a", "b"], limit=10)
+    assert out == ["  • a", "  • b"]
+
+
+def test_render_pre_block():
+    from agent_coder.telegram.renderer import render_pre_block
+
+    out = render_pre_block("git diff", "+ line <x>", limit=100)
+    assert out == "\n<b>git diff:</b>\n<pre>+ line &lt;x&gt;</pre>"
+    # усечение
+    out2 = render_pre_block("t", "abcdef", limit=3)
+    assert out2 == "\n<b>t:</b>\n<pre>abc</pre>"
+
+
+def test_render_warning():
+    from agent_coder.telegram.renderer import render_warning
+
+    out = render_warning("Бюджет <исчерпан>")
+    assert out == "\n⚠ Бюджет &lt;исчерпан&gt;"
