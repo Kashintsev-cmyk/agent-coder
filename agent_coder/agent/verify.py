@@ -8,7 +8,7 @@
 - выход — структурированные вердикты CONFIRMED/REJECTED/UNCERTAIN,
   сохраняются в session.verify_results (append, история прогонов).
 
-Модель по умолчанию — config.VERIFY_MODEL_ID (glm-5.3, дешёвый фильтр).
+Модель по умолчанию — config.VERIFY_MODEL_ID (haiku-5.5, дешёвый фильтр).
 НЕ наследует session.model / session.model_manual: смысл verify —
 экономия, а не «проверить дорогой моделью». Для дорогой проверки —
 явно /verify <model_id>.
