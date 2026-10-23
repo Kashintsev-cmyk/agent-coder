@@ -540,6 +540,10 @@ async def compress(session, client) -> CompressionResult | None:
             )
 
     text = (getattr(resp.message, "content", None) or "").strip()
+    # B11.x: cost summary-вызова должен попадать в session.total_usage,
+    # иначе /cost и MAX_COST_PER_SESSION его не видят.
+    # Учитываем ДО возможного return None ниже — деньги уже потрачены.
+    session.add_usage(resp.usage)
     if not text:
         logger.warning("compress: пустой ответ модели — пропускаю")
         _register_failure(session.id)

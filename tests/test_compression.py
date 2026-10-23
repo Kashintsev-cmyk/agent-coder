@@ -216,6 +216,8 @@ async def test_compress_replaces_old():
         s.messages.append({"role": "assistant", "content": f"ответ {i}"})
 
     before = len(s.messages)
+    pre_cost = s.total_usage.cost
+    pre_count = s.request_count
     client = _FakeClient(reply="СЖАТО")
     comp = await compress(s, client)
     assert comp is not None
@@ -236,6 +238,12 @@ async def test_compress_replaces_old():
     assert len(s.messages) < before
     assert s.summary_count == 1
     assert s.last_input_tokens == 0
+    # B11.x: cost summary-вызова учтён в session.total_usage.
+    # Инварианта: add_usage вызван ровно один раз (request_count +1),
+    # cost вырос. Точная величина cost — свойство мока (resp.usage),
+    # не compress, поэтому не привязываемся к 0.01.
+    assert s.total_usage.cost > pre_cost
+    assert s.request_count == pre_count + 1
 
 
 @pytest.mark.asyncio
@@ -562,3 +570,24 @@ async def test_compress_validates_summary_against_transcript() -> None:
     comp = await compress(s, client)
     assert comp is not None
     assert "deadbeef1 (не подтверждено)" in s.messages[1]["content"]
+
+
+@pytest.mark.asyncio
+async def test_compress_empty_reply_still_counts_usage():
+    """Пустой ответ LLM → compress вернул None, но cost учтён.
+
+    Деньги потрачены на chat-вызов, даже если summary непригоден.
+    Контракт: add_usage должен стоять ДО `if not text: return None`.
+    """
+    s = _mk_session()
+    s.messages = [{"role": "system", "content": "SYSTEM"}]
+    for i in range(14):
+        s.messages.append({"role": "user", "content": f"задача {i}"})
+        s.messages.append({"role": "assistant", "content": f"ответ {i}"})
+    pre_cost = s.total_usage.cost
+    pre_count = s.request_count
+    client = _FakeClient(reply="")
+    comp = await compress(s, client)
+    assert comp is None
+    assert s.total_usage.cost > pre_cost
+    assert s.request_count == pre_count + 1
