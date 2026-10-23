@@ -135,6 +135,13 @@ class LLMClient:
             verbosity=verbosity,
         )
 
+        # B9.2g cache 2026-10-23: Anthropic кэширует только с явным
+        # cache_control в extra_body (RouterAI пропускает, проверено:
+        # второй запрос 3627 cached из 3643 input, cost в 4× ниже).
+        # GPT-6 и DeepSeek кэшируют автоматически — им ничего не нужно.
+        if model.startswith("anthropic/"):
+            kwargs.setdefault("extra_body", {})["cache_control"] = {"type": "ephemeral"}
+
         logger.info(
             "LLM → model=%s msgs=%d tools=%d reasoning=%s",
             model,

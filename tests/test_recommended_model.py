@@ -37,9 +37,9 @@ def test_audit_recommended_is_cheap_deepseek() -> None:
     с "audit" в MODEL_MODE_FIT.
     """
     assert config.RECOMMENDED_MODEL_BY_MODE["audit"] == "deepseek/deepseek-v4-flash"
-    # kimi остаётся в FIT["audit"] — виден в UI как 🎯 audit.
-    assert "moonshotai/kimi-k2.7-code" in config.MODEL_MODE_FIT
-    assert "audit" in config.MODEL_MODE_FIT["moonshotai/kimi-k2.7-code"]
+    # argon остаётся в FIT["audit"] — виден в UI как 🎯 audit.
+    assert "google/gemini-4-argon" in config.MODEL_MODE_FIT
+    assert "audit" in config.MODEL_MODE_FIT["google/gemini-4-argon"]
 
 
 def test_apply_on_mode_change_sets_recommended() -> None:

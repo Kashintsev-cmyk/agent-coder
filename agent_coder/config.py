@@ -79,15 +79,13 @@ class Config:
     CURATED_MODEL_IDS: ClassVar[list[str]] = [
         mid.strip() for mid in _curated_raw.split(",") if mid.strip()
     ] or [
-        # B9.2g cleanup 2026-10-22: убраны glm-5.3, mimo, qwen, gpt-sol,
-        # sonnet (по данным audit/patch/verify бенчмарков, нигде не winner).
-        # Вернуть — через env CURATED_MODEL_IDS в .env (без правок кода).
-        "deepseek/deepseek-v4-flash",
-        "deepseek/deepseek-v4.1-flash",
-        "moonshotai/kimi-k2.7-code",
-        "deepseek/deepseek-r1",
-        "anthropic/claude-haiku-5.5",
-        "x-ai/grok-4.20",
+        # B9.2g cleanup 2026-10-23: 4 модели — все winners.
+        # kimi/r1/grok → _FALLBACK_CATALOG (ручной /model, не дефолт).
+        # sonnet/flash — провал в audit (coverage/timeout), не оставляем.
+        "deepseek/deepseek-v4-flash",  # DEFAULT (act/plan)
+        "deepseek/deepseek-v4.1-flash",  # PATCH winner
+        "anthropic/claude-haiku-5.5",  # AUDIT/VERIFY/SUMMARY winner
+        "google/gemini-4-argon",  # AUDIT second-pass (security)
     ]
 
     # Единый список моделей (B1): все модели, доступные в UI и роутере.
@@ -119,10 +117,8 @@ class Config:
     MODEL_MODE_FIT: ClassVar[dict[str, list[str]]] = {
         "deepseek/deepseek-v4-flash": ["act", "plan", "audit"],
         "deepseek/deepseek-v4.1-flash": ["act", "plan"],
-        "moonshotai/kimi-k2.7-code": ["audit"],
-        "deepseek/deepseek-r1": ["audit"],
         "anthropic/claude-haiku-5.5": ["act", "audit"],
-        "x-ai/grok-4.20": ["act"],
+        "google/gemini-4-argon": ["audit"],
     }
 
     # Рекомендованная модель по режиму: ПЕРВАЯ в MODEL_IDS, для которой
