@@ -540,10 +540,10 @@ async def compress(session, client) -> CompressionResult | None:
             )
 
     text = (getattr(resp.message, "content", None) or "").strip()
-    # B11.x: cost summary-вызова должен попадать в session.total_usage,
-    # иначе /cost и MAX_COST_PER_SESSION его не видят.
-    # Учитываем ДО возможного return None ниже — деньги уже потрачены.
-    session.add_usage(resp.usage)
+    # B11.x: cost summary-вызова — инлайн (author intent: не инкрементим
+    # request_count). Учитываем ДО early-return ниже — деньги потрачены
+    # и на пустой ответ.
+    session.total_usage = session.total_usage + resp.usage
     if not text:
         logger.warning("compress: пустой ответ модели — пропускаю")
         _register_failure(session.id)
@@ -576,8 +576,6 @@ async def compress(session, client) -> CompressionResult | None:
     except Exception as e:
         logger.warning("compress: архивация не удалась: %s", e)
 
-    # Aux-вызов: добавляем usage, но не инкрементим request_count.
-    session.total_usage = session.total_usage + resp.usage
     session.summary_count += 1
     summary_msg = {
         "role": "user",

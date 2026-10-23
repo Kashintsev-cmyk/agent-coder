@@ -253,12 +253,11 @@ async def test_compress_replaces_old():
     assert len(s.messages) < before
     assert s.summary_count == 1
     assert s.last_input_tokens == 0
-    # B11.x: cost summary-вызова учтён в session.total_usage.
-    # Инварианта: add_usage вызван ровно один раз (request_count +1),
-    # cost вырос. Точная величина cost — свойство мока (resp.usage),
-    # не compress, поэтому не привязываемся к 0.01.
-    assert s.total_usage.cost > pre_cost
-    assert s.request_count == pre_count + 1
+    # B11.x: cost summary-вызова учтён один раз (инлайн в compression.py).
+    # request_count не растёт — compress не считается user-запросом
+    # (author intent, комментарий в compression.py).
+    assert s.total_usage.cost == pytest.approx(pre_cost + 0.01)
+    assert s.request_count == pre_count
 
 
 @pytest.mark.asyncio
@@ -604,5 +603,7 @@ async def test_compress_empty_reply_still_counts_usage():
     client = _FakeClient(reply="")
     comp = await compress(s, client)
     assert comp is None
-    assert s.total_usage.cost > pre_cost
-    assert s.request_count == pre_count + 1
+    # Учёт стоит ДО `if not text: return None` — cost пустого ответа
+    # тоже учитывается.
+    assert s.total_usage.cost == pytest.approx(pre_cost + 0.01)
+    assert s.request_count == pre_count
