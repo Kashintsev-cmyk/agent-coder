@@ -37,6 +37,21 @@ def test_soft_limit_unknown_model_returns_cap():
     assert soft_limit(s) == config.MAX_HISTORY_TOKENS
 
 
+def test_soft_limit_scales_with_context(monkeypatch):
+    """B11.1: soft_limit следует за MAX_HISTORY_TOKENS (не захардкожен).
+
+    B11.0 поднял 60000→150000. Тест ловит: hardcode 150000/60000
+    в compression.py, случайный max() вместо min(), откат env. Модель
+    с context 1_050_000 → 0.6*ctx=630_000 > cap для обоих значений;
+    два разных cap → два разных soft_limit.
+    """
+    s = _mk_session("openai/gpt-5.6-luna")
+    monkeypatch.setattr("agent_coder.config.config.MAX_HISTORY_TOKENS", 30000)
+    assert soft_limit(s) == 30000
+    monkeypatch.setattr("agent_coder.config.config.MAX_HISTORY_TOKENS", 150000)
+    assert soft_limit(s) == 150000
+
+
 def test_soft_limit_context_wins_when_smaller_than_cap(monkeypatch):
     """Если 0.6*context < MAX_HISTORY_TOKENS — порог задаёт модель, а не cap."""
     from agent_coder.model_catalog import catalog
