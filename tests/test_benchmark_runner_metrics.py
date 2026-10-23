@@ -59,36 +59,25 @@ def test_count_skips_malformed_lines(tmp_path):
     assert _count_iterations_and_tools(archive) == (1, 1)
 
 
-def test_find_case_archive_matches_content(tmp_path):
+def test_find_case_archive_returns_newest(tmp_path):
     archive_dir = tmp_path / "archive"
     archive_dir.mkdir()
 
-    other = archive_dir / "a.jsonl"
-    _write_jsonl(other, [{"role": "user", "content": "other-task model-x"}])
+    older = archive_dir / "a.jsonl"
+    _write_jsonl(older, [{"role": "user", "content": "old"}])
+    newer = archive_dir / "b.jsonl"
+    _write_jsonl(newer, [{"role": "user", "content": "new"}])
 
-    target = archive_dir / "b.jsonl"
-    _write_jsonl(
-        target,
-        [{"role": "user", "content": "task-42 model-y go"}],
-    )
-    # target должен быть новее, но фильтр идёт и по содержимому
-    os.utime(other, (time.time() - 10, time.time() - 10))
-    os.utime(target, (time.time(), time.time()))
+    os.utime(older, (time.time() - 10, time.time() - 10))
+    os.utime(newer, (time.time(), time.time()))
 
-    assert _find_case_archive(tmp_path, "task-42", "model-y") == target
+    assert _find_case_archive(tmp_path) == newer
 
 
-def test_find_case_archive_ignores_wrong_content(tmp_path):
-    archive_dir = tmp_path / "archive"
-    archive_dir.mkdir()
-    _write_jsonl(
-        archive_dir / "a.jsonl",
-        [{"role": "user", "content": "some-other-task model-z"}],
-    )
-    # ни один архив не содержит искомого task_id/model — None,
-    # а не «первый попавшийся», иначе failed-кейс возьмёт чужой архив
-    assert _find_case_archive(tmp_path, "task-42", "model-y") is None
+def test_find_case_archive_empty_dir_returns_none(tmp_path):
+    (tmp_path / "archive").mkdir()
+    assert _find_case_archive(tmp_path) is None
 
 
 def test_find_case_archive_missing_dir(tmp_path):
-    assert _find_case_archive(tmp_path, "task-42", "model-y") is None
+    assert _find_case_archive(tmp_path) is None

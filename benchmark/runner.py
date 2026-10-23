@@ -273,7 +273,7 @@ def run_case(
         # ACT/PLAN/AUDIT: patch_results/verify_results are empty
         # for these modes. Recover iteration/tool counts from the
         # archived session transcript instead of hardcoding 0.
-        act_archive = _find_case_archive(run_dir / "sessions", task["id"], model)
+        act_archive = _find_case_archive(run_dir / "sessions")
         if act_archive is not None:
             act_iterations, act_tool_calls = _count_iterations_and_tools(act_archive)
         else:
@@ -415,29 +415,23 @@ def _count_iterations_and_tools(archive_path: Path) -> tuple[int, int]:
     return iterations, tool_calls
 
 
-def _find_case_archive(sessions_dir: Path, task_id: str, model: str) -> Path | None:
-    """Newest .jsonl under sessions/archive whose content matches this case.
+def _find_case_archive(sessions_dir: Path) -> Path | None:
+    """Newest .jsonl under sessions/archive (the just-finished case).
 
-    Filters by task_id+model appearing in the transcript, so a failed case
-    cannot silently pick up a sibling case's archive (mtime-only matching
-    would be wrong in the same run). Missing dir -> None.
+    run_dir is unique per benchmark invocation and run_case calls are strictly
+    sequential (for task -> for model -> run_case), so the freshest archive in
+    this run_dir belongs to the case that just finished. Matching by content
+    (task_id/model) does not work: transcripts carry messages only, no model
+    field, and task_id can appear in tool output of a sibling task. Missing
+    dir or empty dir -> None.
     """
     archive_dir = sessions_dir / "archive"
     if not archive_dir.exists():
         return None
-    candidates = sorted(
-        archive_dir.glob("*.jsonl"),
-        key=lambda p: p.stat().st_mtime,
-        reverse=True,
-    )
-    for candidate in candidates:
-        try:
-            text = candidate.read_text(encoding="utf-8")
-        except OSError:
-            continue
-        if task_id in text and model in text:
-            return candidate
-    return None
+    files = [p for p in archive_dir.glob("*.jsonl") if p.is_file()]
+    if not files:
+        return None
+    return max(files, key=lambda p: p.stat().st_mtime)
 
 
 def main() -> int:
