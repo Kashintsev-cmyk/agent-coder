@@ -130,6 +130,11 @@ class Config:
         MODEL_IDS, MODEL_MODE_FIT, DEFAULT_MODEL_ID
     )
 
+    # B9.2g audit-bench 2026-10-23: audit — v4.1-flash (стабилен, 48/58 findings
+    # за 36₽), не v4-flash (timeout 0 findings). Haiku нестабильна в audit
+    # (100/34/44 за 3 прогона) — оставлена для verify/summary.
+    RECOMMENDED_MODEL_BY_MODE["audit"] = "deepseek/deepseek-v4.1-flash"
+
     # /verify: модель-верификатор по умолчанию. Не наследует
     # session.model/model_manual: цель verify — ДЕШЁВЫЙ фильтр ложных
     # findings. Для дорогой проверки — /verify <model_id> явно.

@@ -36,7 +36,9 @@ def test_audit_recommended_is_cheap_deepseek() -> None:
     """Аудит по умолчанию — deepseek (дёшево), т.к. он первый в MODEL_IDS
     с "audit" в MODEL_MODE_FIT.
     """
-    assert config.RECOMMENDED_MODEL_BY_MODE["audit"] == "deepseek/deepseek-v4-flash"
+    # B9.2g audit-bench 2026-10-23: audit — v4.1-flash (стабилен),
+    # не v4-flash (timeout в audit-04).
+    assert config.RECOMMENDED_MODEL_BY_MODE["audit"] == "deepseek/deepseek-v4.1-flash"
     # argon остаётся в FIT["audit"] — виден в UI как 🎯 audit.
     assert "google/gemini-4-argon" in config.MODEL_MODE_FIT
     assert "audit" in config.MODEL_MODE_FIT["google/gemini-4-argon"]
@@ -47,12 +49,12 @@ def test_apply_on_mode_change_sets_recommended() -> None:
     s = _session(Mode.ACT, model="anthropic/claude-sonnet-5.5")
     s.mode = Mode.AUDIT
     _apply_recommended_model(s)
-    assert s.model == "deepseek/deepseek-v4-flash"
+    assert s.model == "deepseek/deepseek-v4.1-flash"
 
 
 def test_apply_on_audit_to_act_returns_to_coding() -> None:
     """AUDIT → ACT: модель возвращается к coding-рекомендации."""
-    s = _session(Mode.AUDIT, model="deepseek/deepseek-v4-flash")
+    s = _session(Mode.AUDIT, model="deepseek/deepseek-v4.1-flash")
     s.mode = Mode.ACT
     _apply_recommended_model(s)
     assert s.model == config.RECOMMENDED_MODEL_BY_MODE["act"]
@@ -194,8 +196,8 @@ async def test_cli_audit_run_uses_recommended_not_group() -> None:
     )
     await loop.run("аудит модуля")
 
-    assert client.models == ["deepseek/deepseek-v4-flash"], (
+    assert client.models == ["deepseek/deepseek-v4.1-flash"], (
         f"CLI-аудит должен идти на recommended (deepseek), не на группе "
         f"(kimi); фактически: {client.models}"
     )
-    assert s.model == "deepseek/deepseek-v4-flash"
+    assert s.model == "deepseek/deepseek-v4.1-flash"
