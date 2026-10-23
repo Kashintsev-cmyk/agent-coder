@@ -270,6 +270,14 @@ def run_case(
             )
         }
         new_patch_results = (session.get("patch_results") or [])[baseline_patch_count:]
+        # ACT/PLAN/AUDIT: patch_results/verify_results are empty
+        # for these modes. Recover iteration/tool counts from the
+        # archived session transcript instead of hardcoding 0.
+        act_archive = _find_case_archive(run_dir / "sessions", task["id"], model)
+        if act_archive is not None:
+            act_iterations, act_tool_calls = _count_iterations_and_tools(act_archive)
+        else:
+            act_iterations, act_tool_calls = 0, 0
         patch_iterations = sum(int(pr.get("iterations", 0)) for pr in new_patch_results)
         new_verify_results = (session.get("verify_results") or [])[
             baseline_verify_count:
@@ -325,8 +333,8 @@ def run_case(
             "duration_seconds": round(time.monotonic() - started, 3),
             # B9.2g.bench: run_patch не пишет в session.messages/request_count,
             # берём из patch_results (сумма итераций новых прогонов).
-            "iterations": patch_iterations + verify_iterations,
-            "tool_calls": 0,
+            "iterations": patch_iterations + verify_iterations + act_iterations,
+            "tool_calls": act_tool_calls,
             "usage": usage,
             "git": git_stats,
             "tests": tests,
@@ -378,6 +386,58 @@ def run_case(
                 stderr=subprocess.DEVNULL,
                 check=False,
             )
+
+
+def _count_iterations_and_tools(archive_path: Path) -> tuple[int, int]:
+    """Count assistant turns and tool messages in archived session jsonl.
+
+    ACT/PLAN/AUDIT modes leave patch_results/verify_results empty, so
+    iterations/tool_calls would otherwise be hardcoded 0. Parse the archived
+    session transcript to recover them. Missing/unreadable archive -> (0, 0).
+    """
+    iterations = 0
+    tool_calls = 0
+    if not archive_path.exists():
+        return 0, 0
+    for line in archive_path.read_text(encoding="utf-8").splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            msg = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        role = msg.get("role")
+        if role == "assistant":
+            iterations += 1
+        elif role == "tool":
+            tool_calls += 1
+    return iterations, tool_calls
+
+
+def _find_case_archive(sessions_dir: Path, task_id: str, model: str) -> Path | None:
+    """Newest .jsonl under sessions/archive whose content matches this case.
+
+    Filters by task_id+model appearing in the transcript, so a failed case
+    cannot silently pick up a sibling case's archive (mtime-only matching
+    would be wrong in the same run). Missing dir -> None.
+    """
+    archive_dir = sessions_dir / "archive"
+    if not archive_dir.exists():
+        return None
+    candidates = sorted(
+        archive_dir.glob("*.jsonl"),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,
+    )
+    for candidate in candidates:
+        try:
+            text = candidate.read_text(encoding="utf-8")
+        except OSError:
+            continue
+        if task_id in text and model in text:
+            return candidate
+    return None
 
 
 def main() -> int:
