@@ -125,7 +125,7 @@ async def cb_server_op(query: CallbackQuery) -> None:
 async def cmd_verify(message: Message) -> None:
     """Верифицировать work_state аудита на модели-фильтре.
 
-    /verify            — config.VERIFY_MODEL_ID (glm-5.3, дешёво)
+    /verify            — config.VERIFY_MODEL_ID (haiku-5.5, дешёво)
     /verify <model_id> — явный override (дорого — осознанно)
 
     НЕ наследует session.model / model_manual: смысл verify — экономия.

@@ -334,7 +334,7 @@ def _print_help() -> None:
         "  /yolo [on|off] — без подтверждений опасных операций\n"
         "\n"
         "Прочее:\n"
-        "  /verify [model] — проверить findings аудита (glm-5.3)\n"
+        "  /verify [model] — проверить findings аудита (haiku-5.5)\n"
         "  /patch [model]  — починить confirmed findings (deepseek)\n"
         "  /history       — последние сообщения\n"
         "  /help          — справка\n"
@@ -512,7 +512,7 @@ async def _run_patch_cli(args, session) -> int:
     Без REPL: загружает сессию (--resume/--continue/latest), берёт
     verify_results со status=confirmed, зовёт run_patch. Результат
     дописывается в session.patch_results. Используется benchmark'ом и
-    из терминала: `agent-coder --patch --cwd na_shtile --model glm-5.3`.
+    из терминала: `agent-coder --patch --cwd na_shtile --model deepseek/deepseek-v4.1-flash`.
     """
     from agent_coder.agent.patch import run_patch
     from agent_coder.llm.client import LLMClient
