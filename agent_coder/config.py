@@ -116,7 +116,11 @@ class Config:
     # Порядок MODEL_IDS = приоритет авто-выбора (не порядок этого dict).
     MODEL_MODE_FIT: ClassVar[dict[str, list[str]]] = {
         "deepseek/deepseek-v4-flash": ["act", "plan", "audit"],
-        "deepseek/deepseek-v4.1-flash": ["act", "plan"],
+        # audit — осознанный override (B9.2g, 2026-10-23): v4-flash таймаутит
+        # (0 findings), haiku нестабильна (100/34/44 findings за 3 прогона),
+        # v4.1-flash стабильно 48/58 findings за 36₽. FIT согласован с
+        # RECOMMENDED_MODEL_BY_MODE["audit"] (инвариант ловится _validate_config).
+        "deepseek/deepseek-v4.1-flash": ["act", "plan", "audit"],
         "anthropic/claude-haiku-5.5": ["act", "audit"],
         "google/gemini-4-argon": ["audit"],
     }
@@ -319,6 +323,16 @@ class Config:
                     errors.append(
                         f"RECOMMENDED_MODEL_BY_MODE[{mode_name!r}]={mid!r} "
                         f"не входит в MODEL_IDS"
+                    )
+            # RECOMMENDED[mode] должен подходить для mode по MODEL_MODE_FIT
+            # (иначе 🎯 в UI противоречит FIT — источнику истины).
+            for mode_name, mid in cls.RECOMMENDED_MODEL_BY_MODE.items():
+                if mode_name == "verify":
+                    continue
+                if mode_name not in cls.MODEL_MODE_FIT.get(mid, []):
+                    errors.append(
+                        f"RECOMMENDED_MODEL_BY_MODE[{mode_name!r}]={mid!r} "
+                        f"не подходит для режима (нет в MODEL_MODE_FIT[{mid!r}])"
                     )
             # VERIFY_MODEL_ID ∈ MODEL_IDS и подходит для audit.
             if cls.VERIFY_MODEL_ID not in seen:
