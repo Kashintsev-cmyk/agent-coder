@@ -522,6 +522,7 @@ class AgentLoop:
 
         ctx = ToolContext(
             workspace=self.session.workspace,
+            audit_scopes=self.session.audit_scopes or None,
             mode=self.session.mode,
             yolo=self.yolo,
             session_id=self.session.id,

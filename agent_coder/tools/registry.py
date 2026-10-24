@@ -30,6 +30,9 @@ class ToolContext:
     # по ним отвергается (только offset/limit). None — для tools/адаптеров,
     # которым state не нужен (patch, telegram).
     read_paths: dict[str, str] | None = None
+    # B11.3: область аудита (относительные пути от workspace). Только AUDIT;
+    # None/[] — без ограничений (ACT/PLAN/PATCH/VERIFY).
+    audit_scopes: list[str] | None = None
 
 
 @dataclass
