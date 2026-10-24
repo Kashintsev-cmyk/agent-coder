@@ -7,6 +7,7 @@ import shutil
 from pathlib import Path
 from typing import Any
 
+from agent_coder.tools._scope import in_scope
 from agent_coder.tools.list_files import SKIP_DIRS
 from agent_coder.tools.registry import Tool, ToolContext
 
@@ -25,6 +26,11 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
 
     # Валидация path: только внутри workspace
     raw_path = (args.get("path") or ".").strip() or "."
+    if ctx.audit_scopes:
+        if raw_path in (".", "./"):
+            raw_path = ctx.audit_scopes[0]
+        elif not in_scope(raw_path, ctx.audit_scopes):
+            return f"Ошибка: путь {raw_path!r} вне области аудита {ctx.audit_scopes}"
     try:
         base = Path(ctx.workspace).resolve()
         target = (base / raw_path).resolve()

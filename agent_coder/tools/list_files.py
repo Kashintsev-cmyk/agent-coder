@@ -6,6 +6,7 @@ import asyncio
 from pathlib import Path
 from typing import Any
 
+from agent_coder.tools._scope import in_scope
 from agent_coder.tools.registry import Tool, ToolContext
 
 SKIP_DIRS = {
@@ -53,6 +54,12 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         target.relative_to(base)
     except ValueError:
         return f"Ошибка: путь вне workspace: {sub}"
+
+    if not in_scope(sub, ctx.audit_scopes):
+        return (
+            f"Ошибка: {sub!r} вне области аудита {ctx.audit_scopes}. "
+            f"Используй один из путей: {ctx.audit_scopes}"
+        )
 
     if not target.exists():
         return f"Не найдено: {sub}"

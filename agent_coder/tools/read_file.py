@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from agent_coder.tools._scope import in_scope
 from agent_coder.tools.registry import Tool, ToolContext
 
 # MAX_BYTES контролирует только «чтение целиком» (без offset/limit).
@@ -23,6 +24,12 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     full = _resolve(ctx.workspace, rel)
     if full is None:
         return f"Ошибка: путь вне рабочей директории: {rel}"
+
+    if not in_scope(rel, ctx.audit_scopes):
+        return (
+            f"Ошибка: {rel!r} вне области аудита {ctx.audit_scopes}. "
+            f"Читай только файлы из указанных путей."
+        )
 
     if not full.exists():
         return f"Файл не найден: {rel}"
