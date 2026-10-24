@@ -1,0 +1,146 @@
+[
+  {
+    "id": "f03",
+    "file_line": "bot/utils.py:58-62",
+    "finding_text": "bot/utils.py:61-62 — delete_tracked_messages глотает ошибки без лога; нет time.sleep/retry при flood [MINOR]",
+    "prior_label": "confirmed",
+    "manual_label": "rejected",
+    "notes": "body: log.debug(exc_info=True) + asyncio.sleep(retry_after) — оба утверждения ложны"
+  },
+  {
+    "id": "f05",
+    "file_line": "bot/utils.py:30-46",
+    "finding_text": "bot/utils.py:30 — _sent_messages defaultdict(list): неограниченный рост по числу чатов [MINOR]",
+    "prior_label": "confirmed",
+    "manual_label": "rejected",
+    "notes": "_MAX_TRACKED=100, _MAX_CHATS=200 + cleanup — рост ограничен"
+  },
+  {
+    "id": "f06",
+    "file_line": "bot/db/schema.py:26",
+    "finding_text": "bot/db/schema.py:26 — _set_user_version f-string для PRAGMA user_version [MINOR]",
+    "prior_label": "confirmed",
+    "manual_label": "rejected",
+    "notes": "PRAGMA не поддерживает параметры; int() корректен, 'лучше параметр' — невозможно"
+  },
+  {
+    "id": "f08",
+    "file_line": "bot/db/connection.py:20-21",
+    "finding_text": "bot/db/connection.py:20-21 — PRAGMA journal_mode=WAL и foreign_keys=ON на КАЖДОЕ соединение [MINOR]",
+    "prior_label": "confirmed",
+    "manual_label": "rejected",
+    "notes": "WAL под `if not _wal_enabled:` — один раз за процесс, не на каждое"
+  },
+  {
+    "id": "f11",
+    "file_line": "bot/db/bookings.py:197,216-219",
+    "finding_text": "bot/db/bookings.py:188-234 — create_booking: total_cost передаётся извне, не пересчитывается [MINOR]",
+    "prior_label": "confirmed",
+    "manual_label": "uncertain",
+    "notes": "тела create_booking нет в дампе"
+  },
+  {
+    "id": "f15",
+    "file_line": "bot/db/stats.py:150-151",
+    "finding_text": "bot/db/stats.py:144-203 — get_season_income: импорты bot.services.pricing внутри функции [MINOR]",
+    "prior_label": "confirmed",
+    "manual_label": "uncertain",
+    "notes": "тела get_season_income нет в дампе"
+  },
+  {
+    "id": "f18",
+    "file_line": "bot/handlers/start.py:40-45",
+    "finding_text": "bot/handlers/start.py:44-45 — cmd_start delete_tracked_messages глотает ошибки, except мёртв [MINOR]",
+    "prior_label": "confirmed",
+    "manual_label": "rejected",
+    "notes": "в cmd_start нет except; delete_tracked_messages логирует"
+  },
+  {
+    "id": "f19",
+    "file_line": "bot/handlers/start.py:81-84",
+    "finding_text": "bot/handlers/start.py:82-84 — cmd_clear: подтверждение message.answer() глотает ошибку без лога [MINOR]",
+    "prior_label": "confirmed",
+    "manual_label": "rejected",
+    "notes": "log.debug(exc_info=True) в except — лог есть"
+  },
+  {
+    "id": "f22",
+    "file_line": "bot/handlers/booking.py:61-146",
+    "finding_text": "bot/handlers/booking.py:123 — cmd_quick: guests_breakdown={\"adult\": 2} хардкод [MINOR]",
+    "prior_label": "confirmed",
+    "manual_label": "confirmed",
+    "notes": "guests_count=2, guests_breakdown={\"adult\": 2}, guests=2 — хардкод факт"
+  },
+  {
+    "id": "f25",
+    "file_line": "bot/handlers/booking.py:285-358,497 + bot/handlers/bookings_list.py:745-786",
+    "finding_text": "bot/handlers/booking.py:285-358 и bot/handlers/bookings_list.py:716-796 — pick_date/edit_pick_date: race condition при выборе дат [MAJOR]",
+    "prior_label": "confirmed",
+    "manual_label": "confirmed",
+    "notes": "pick_date check_out: только min_nights, без re-check get_booked_dates; в cmd_quick pre-check есть"
+  },
+  {
+    "id": "f10",
+    "file_line": "bot/db/bookings.py:97",
+    "finding_text": "bot/db/bookings.py:97 — get_month_stats: float division, revenue = int(round(...)) [MINOR]",
+    "prior_label": "rejected",
+    "manual_label": "rejected",
+    "notes": "round() применён, отбрасывания нет"
+  },
+  {
+    "id": "f12",
+    "file_line": "bot/db/bookings.py:237-254",
+    "finding_text": "bot/db/bookings.py:243-258 — update_booking: f-string для SET clause [INFO]",
+    "prior_label": "rejected",
+    "manual_label": "rejected",
+    "notes": "finding сам говорит 'безопасно; значения параметризованы'"
+  },
+  {
+    "id": "f28",
+    "file_line": "bot/handlers/finance.py:110",
+    "finding_text": "bot/handlers/finance.py:110 — show_period: предыдущий месяц через timedelta [INFO]",
+    "prior_label": "rejected",
+    "manual_label": "rejected",
+    "notes": "finding сам говорит 'корректно'"
+  },
+  {
+    "id": "f34",
+    "file_line": "bot/services/pricing.py:24-44",
+    "finding_text": "bot/services/pricing.py:24-44 — _match_season: year_shift в (0,-1) может заматчить неправильный год [INFO]",
+    "prior_label": "rejected",
+    "manual_label": "rejected",
+    "notes": "for year_shift in (0,-1) + sm>em — переход года корректен"
+  },
+  {
+    "id": "f00",
+    "file_line": "bot/main.py:45-48",
+    "finding_text": "bot/main.py:47-48 — TrackingBot.__call__ глотает исключение трекинга без лога [MINOR]",
+    "prior_label": "mixed",
+    "manual_label": "rejected",
+    "notes": "log.warning(exc_info=True) в except"
+  },
+  {
+    "id": "f09",
+    "file_line": "bot/db/schema.py:432-438",
+    "finding_text": "bot/db/schema.py:432-438 — version > CURRENT_VERSION: RuntimeError без rollback [MINOR]",
+    "prior_label": "mixed",
+    "manual_label": "uncertain",
+    "notes": "file:line указывает на migration, не на version check"
+  },
+  {
+    "id": "f16",
+    "file_line": "bot/db/stats.py:104,116",
+    "finding_text": "bot/db/stats.py:78-141 — get_income_statistics: period не валидируется, silent fallback [MINOR]",
+    "prior_label": "mixed",
+    "manual_label": "rejected",
+    "notes": "raise ValueError для period not in ('year','all')"
+  },
+  {
+    "id": "f21",
+    "file_line": "bot/handlers/booking.py:473-481",
+    "finding_text": "bot/handlers/booking.py:475-478 — get_comment_and_save: прямой доступ к data[...] без .get() — KeyError при потере FSM [MINOR]",
+    "prior_label": "mixed",
+    "manual_label": "rejected",
+    "notes": "использует .get() + all() + user-friendly error"
+  }
+]

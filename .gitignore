@@ -39,3 +39,4 @@ dist/
 /roadmap-archive.md
 # Каталог RouterAI (кеш, не коммитим)
 benchmark/routerai_models.json
+benchmark/verify_results/
