@@ -243,7 +243,7 @@ _ALLOWED_PIPES = re.compile(
     r"systemctl|journalctl|docker|lsof|du|smem|pmap|vmstat|iostat|mpstat|"
     r"which|uname|id|whoami|hostname|date|findmnt|stat|file|"
     r"lsblk|blkid|swapon|pstree|tree|readlink|realpath|locale|"
-    r"find|sort|column|nl|rev|xxd|od|hexdump)(?:\s+|$)",
+    r"find|sort|column|nl|rev|xxd|od|hexdump|git)(?:\s+|$)",
     re.IGNORECASE,
 )
 
@@ -275,6 +275,12 @@ _MUTATING_PIPE_PATTERNS = re.compile(
     r"|nvidia-smi\s+-(?:pl|pm|lgc|ac|rac|am)\b"
     r"|find\b[^\n;|&]*\s-(?:delete|exec(?:dir)?|ok(?:dir)?)\b"
     r"|sort\b[^\n;|&]*(?:\s-o\b|\s--output\b)"
+    r"|git\s+(?:push|pull|fetch|commit|add|rm|mv|reset|checkout|"
+    r"switch|rebase|merge|cherry-pick|stash|clean|gc|prune|"
+    r"filter-branch|update-ref|replace|am|apply|bisect|notes|"
+    r"submodule|worktree|config|branch\s+-[dDmMcC]|"
+    r"tag\s+-[dasf]|remote\s+(?:add|remove|set-url|rename|set-head|prune)|"
+    r"reflog\s+(?:expire|delete))\b"
     r")",
     re.IGNORECASE,
 )
@@ -324,11 +330,130 @@ def _split_pipes_safe(cmd: str) -> list[str] | None:
     return parts
 
 
+def _is_safe_git_metadata(cmd: str) -> bool:
+    """git read-only commands, которые выводят только метаданные/имена
+    файлов, никогда — содержимое. Безопасны даже если pathspec содержит
+    секретный путь (`.env` в `git log -- .env` только фильтрует, не читает).
+
+    Блокируются: -p/--patch/-u/--full-diff/-U<n> (diff = content),
+    :<path> (git show HEAD:.env), pipe (обрабатывается отдельно).
+    Не в whitelist: show/diff/blame/grep/cat-file — они по умолчанию
+    или по флагам выводят content.
+    """
+    if not cmd.startswith("git "):
+        return False
+    if _FORBIDDEN.search(cmd) or "|" in cmd:
+        return False
+    if re.search(
+        r"(?:^|\s)(?:-p|--patch|-u|--full-diff|-U\d+|--unified)(?:\s|=|$)",
+        cmd,
+    ):
+        return False
+    if ":" in cmd:
+        return False
+    rest = cmd[len("git ") :].lstrip()
+    if not rest:
+        return False
+    parts = rest.split()
+    sub = parts[0]
+    args = parts[1:]
+
+    SAFE_SUBCOMMANDS = {
+        "status",
+        "log",
+        "ls-files",
+        "ls-tree",
+        "rev-parse",
+        "rev-list",
+        "describe",
+        "shortlog",
+        "show-ref",
+        "for-each-ref",
+    }
+    if sub in SAFE_SUBCOMMANDS:
+        return True
+
+    if sub == "branch":
+        # только listing, без мутаций
+        MUT = {
+            "-d",
+            "-D",
+            "-m",
+            "-M",
+            "-c",
+            "-C",
+            "-f",
+            "--force",
+            "--delete",
+            "--move",
+            "--copy",
+        }
+        for a in args:
+            if a in MUT or a.startswith(("-d", "-D", "-m", "-M", "-c", "-C")):
+                return False
+            if a.startswith(("--force", "--delete", "--move")):
+                return False
+        return True
+
+    if sub == "tag":
+        # listing: без args или с -l/--list/-n/-v; любой positional = создание
+        MUT = {
+            "-a",
+            "-s",
+            "-f",
+            "-d",
+            "-m",
+            "-F",
+            "-u",
+            "-e",
+            "--annotate",
+            "--sign",
+            "--force",
+            "--delete",
+            "--message",
+            "--file",
+            "--local-user",
+        }
+        for a in args:
+            if a in MUT or a.startswith(
+                ("-a", "-s", "-f", "-d", "-m", "-F", "-u", "-e")
+            ):
+                return False
+            if a.startswith(("--annotate", "--sign", "--force", "--delete")):
+                return False
+            if not a.startswith("-"):
+                return False  # positional = name → create
+        return True
+
+    if sub == "remote":
+        MUT = {
+            "add",
+            "remove",
+            "rm",
+            "set-url",
+            "rename",
+            "set-head",
+            "prune",
+            "update",
+        }
+        for a in args:
+            if a in MUT:
+                return False
+        return True
+
+    return False
+
+
 def _is_safe_command(args: dict[str, Any]) -> bool:
     """Проверяет, безопасна ли команда (whitelisted, без опасных символов)."""
     cmd = (args.get("command") or "").strip()
     if not cmd or len(cmd) > 300:
         return False
+
+    # Safe read-only git metadata (logs, ls-files, status) — не выводит
+    # содержимое, pathspec-фильтр не читает файл. Bypass _FORBIDDEN_PATHS.
+    if _is_safe_git_metadata(cmd):
+        return True
 
     # Секретные пути — всегда требуют approval
     if _FORBIDDEN_PATHS.search(cmd):
