@@ -134,6 +134,12 @@ class Config:
     # за 36₽), не v4-flash (timeout 0 findings). Haiku нестабильна в audit
     # (100/34/44 за 3 прогона) — оставлена для verify/summary.
     RECOMMENDED_MODEL_BY_MODE["audit"] = "deepseek/deepseek-v4.1-flash"
+    # ACT winner (benchmark 6×3, 2026-10-24): haiku-5.5 — best
+    # bootstrap signal (2/6 hard pass, 0 hard fails, fastest).
+    # NOTE: fixture has testpaths bug (benchmark_target.py root
+    # tests not collected) — 4/6 tasks soft-pass unverified.
+    # Re-run after fixture fix; revision possible.
+    RECOMMENDED_MODEL_BY_MODE["act"] = "anthropic/claude-haiku-5.5"
 
     # /verify: модель-верификатор по умолчанию. Не наследует
     # session.model/model_manual: цель verify — ДЕШЁВЫЙ фильтр ложных
