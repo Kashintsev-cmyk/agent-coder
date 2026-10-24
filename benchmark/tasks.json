@@ -139,5 +139,13 @@
     "min_findings": 25,
     "max_iterations": 25,
     "success": "rc=0, findings>=25, changed_files=[], 0 файлов вне bot/"
+  },
+  {
+    "id": "audit-futures-cleanup",
+    "category": "create",
+    "title": "Аудит futures_3.0: кандидаты на очистку",
+    "prompt": "Ты работаешь в ТЕКУЩЕЙ рабочей директории (cwd) — это копия проекта futures_3.0. НЕ используй абсолютный путь /home/botuser/bots/futures_3.0 — работай только с относительными путями от cwd.\n\nЦЕЛЬ: найти КАНДИДАТОВ на очистку — мёртвый код, дубли, устаревшие версии, артефакты. НЕ удаляй ничего. НЕ предлагай удалять: (1) src/trading/ml/* — gate ML_ENABLED=false; (2) src/trading/data_feeds/feeds/dynamic_factors/weather_providers/* — отложено; (3) entry points (scripts/run_monitor.py, scripts/init_db.py, scripts/collect_futures_data.py, scripts/convert_strategies.py, scripts/generate_strategy_registry.py, scripts/view_metrics.py, src/trading/__main__.py, backtest_v2.py); (4) любые __init__.py.\n\nПЛАН:\n1. В ПЕРВОМ ЖЕ ответе создай файл AUDIT_CANDIDATES.md в cwd с заготовкой секций: 'Мёртвый код', 'Одноразовые скрипты', 'Устаревшие версии', 'Артефакты', 'Под ревизию (не мусор)'. Пока пустые — заполним по ходу.\n2. Есть подсказки: см. GOLD.md (verified факты) и MAP.qwen.md (карта слоёв). Прочитай GOLD.md — там уже есть 4 мёртвых файла и список одноразовых/устаревших.\n3. Проверь каждую подсказку из GOLD.md командой grep (кто импортирует файл). Если grep пуст — подтверждаешь 'мёртвый'. Дописывай в AUDIT_CANDIDATES.md по мере подтверждения (append).\n4. Дополнительно: quick scan — найди .bak-файлы (find . -name '*.bak*'), устаревшие requirements (ls requirements*), дубли по имени (find . -name '*_v*.py').\n5. Каждый пункт — с доказательством (grep/имя). Формулировка 'кандидат на удаление', НЕ 'удалить'.",
+    "setup": "audit_futures_fixture.py",
+    "success": "AUDIT_CANDIDATES.md существует; содержит ≥3 из 4 мёртвых файлов (causal_rules.py, validation.py, tinvest_provider.py, decorators.py); 0 предложений удалить ml/* или weather_providers/* или entry points; каждый пункт с доказательством (grep/git log)."
   }
 ]
