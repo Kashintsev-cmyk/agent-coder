@@ -10,6 +10,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -98,6 +99,30 @@ def _prepare_fixture(
     if sessions_dir is not None:
         argv.append(str(sessions_dir))
     subprocess.run(argv, cwd=ROOT, check=True)
+    # Fixture пишет sentinel-тест (test_benchmark_target.py) в корень
+    # worktree, а pyproject наследует testpaths = ["tests"] из репо →
+    # pytest его не собирает, hard pass неотличим от soft (B9.2g.bench).
+    # Патчим worktree-pyproject ДО fixture-commit, чтобы правка не попала
+    # в baseline_changed и не «изменила» changed_files модели.
+    _pp = workspace / "pyproject.toml"
+    _sentinel = workspace / "test_benchmark_target.py"
+    if _pp.is_file() and _sentinel.is_file():
+        _txt = _pp.read_text(encoding="utf-8")
+        if "test_benchmark_target.py" not in _txt:
+            if 'testpaths = ["tests"]' in _txt:
+                _txt = _txt.replace(
+                    'testpaths = ["tests"]',
+                    'testpaths = ["tests", "test_benchmark_target.py"]',
+                    1,
+                )
+            elif "testpaths" in _txt:
+                _txt = re.sub(
+                    r"(?m)^testpaths\s*=.*$",
+                    'testpaths = ["tests", "test_benchmark_target.py"]',
+                    _txt,
+                    count=1,
+                )
+            _pp.write_text(_txt, encoding="utf-8")
     # Fixture пишет untracked-файлы; без commit git diff их не видит, и
     # правки модели теряются (17/18 fix: changed=0 при edit_file в логе).
     # Коммитим fixture — её файлы становятся tracked, правки модели видны.
@@ -140,6 +165,28 @@ def _git_stats(
     names.difference_update(baseline_changed)
     names.update(untracked)
     return {"changed_files": sorted(names), "diff_stat": diff.strip()}
+
+
+def _restore_fixture_files(workspace: Path, benchmark_base: str) -> None:
+    """Восстановить sentinel и testpaths из fixture-коммита перед pytest.
+
+    Модель могла изменить/удалить test_benchmark_target.py или testpaths
+    в pyproject — тогда hard-сигнал подделан. Точечно: только эти два
+    файла, не весь worktree (иначе сотрём правки модели).
+    """
+    subprocess.run(
+        [
+            "git",
+            "checkout",
+            benchmark_base,
+            "--",
+            "test_benchmark_target.py",
+            "pyproject.toml",
+        ],
+        cwd=workspace,
+        check=False,
+        capture_output=True,
+    )
 
 
 def run_case(
@@ -302,6 +349,7 @@ def run_case(
             "tail": "",
         }
         if task["category"] != "audit" and git_stats["changed_files"]:
+            _restore_fixture_files(workspace, benchmark_base)
             try:
                 # B9.2g.bench: worktree venv (symlink из fixture) — иначе
                 # системный python без aiogram/pydantic-settings → ImportError
