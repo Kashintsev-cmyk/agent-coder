@@ -23,9 +23,12 @@
 - Критичные требования: {requirements}
 - Приоритеты пользователя: {priorities}
 
-Если параметр неизвестен (стоит «—») — задай уточняющий вопрос,
-не придумывай. Начни с заполнения неизвестных полей, задав вопросы
-пользователю одним сообщением.
+Если параметр неизвестен (стоит «—») — определи его из кода:
+pyproject.toml (python_version, dependencies), requirements.txt,
+__main__.py / `if __name__` (entrypoint), README.md (domain),
+название пакета. Если определить нельзя — оставь «—» и пометь
+в отчёте как «не проверено». НЕ задавай вопросов пользователю —
+аудит идёт без остановок. Неясное пойдёт на верификацию.
 
 # ЭТАП 1 — АУДИТ
 
@@ -56,6 +59,39 @@ work_state пуст до явной просьбы, +1.82₽ на повтор).
 Проверка на каждом шаге: если с последнего `update_work_state` ты
 прочитал хотя бы один файл и нашёл в нём проблему — запиши её
 сейчас, до следующего `read_file`.
+
+## ПРАВИЛО: экономное чтение и проверка импортов
+
+1. **Bounded reading.** Не читай файл целиком, если он >200 строк.
+   `read_file(limit=30)` → docstring + импорты. Тело функции —
+   `read_file(offset=N, limit=30)`. НЕ используй `list_files` на весь
+   проект (возвращает 12KB, раздувает контекст, ломает prefix cache):
+   `run_command('find <путь> -name "*.py" -type f -maxdepth 2')`.
+   (Порядок опций в run_command строгий: `-name` → `-type` → `-maxdepth`;
+   `-not`, `-exec`, `-delete` запрещены. `__init__.py` пропускай глазами.)
+   Батчинг: прочитал 5 файлов → одна запись findings на все 5.
+
+2. **Import-check — обязательный шаг.** Для каждого `from X import Y`
+   в проверяемом файле убедись, что `X.py` существует (`ls`/`find`) и
+   `Y` объявлен (`grep 'def Y\|class Y'`). Модуль есть, функции нет —
+   MAJOR. Модуль отсутствует, а импорт в
+   `try/except ImportError: logger.debug(...); return ...` — MAJOR
+   (молчаливое отключение функционала, в проде не видно).
+
+3. **SQL-транзакции и race.** Видишь `SELECT ... WHERE overlap` затем
+   `INSERT`/`UPDATE` в одной функции — проверь, открыта ли транзакция
+   (`BEGIN IMMEDIATE` / `isolation_level`) ДО SELECT. `aiosqlite` по
+   умолчанию autocommit → SELECT и INSERT не атомарны, двойное
+   бронирование возможно. `executescript()` делает implicit COMMIT
+   открытой транзакции — проверь, не ломает ли это атомарность
+   миграций (`init_db` → `rollback` после `executescript` не откатит).
+
+4. **Silent failure — конкретные паттерны.** Грепай явно:
+   `except: pass`, `except Exception: pass`,
+   `except Exception as e: log.debug(...)` без `return`/`raise`,
+   `except ImportError: logger.debug(...); return <default>`,
+   `getattr(module, attr)` без валидации. Голый `except` в критичных
+   путях (удаление, миграции, деньги) — MAJOR; в UI-fallback — MINOR.
 
 ## 0. EXECUTIVE SUMMARY
 Выведи в начале отчёта, до таблиц:
