@@ -37,3 +37,5 @@ dist/
 /roadmap.md
 /docs/roadmap-benchmarks-*.md
 /roadmap-archive.md
+# Каталог RouterAI (кеш, не коммитим)
+benchmark/routerai_models.json
