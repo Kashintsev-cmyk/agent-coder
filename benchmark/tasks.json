@@ -128,7 +128,7 @@
     "id": "audit-04",
     "category": "audit",
     "title": "Audit na_shtile — full security (bot/, 32 .py)",
-    "prompt": "Проведи read-only security аудит na_shtile (bot/, 32 .py). Фокус: BLOCKER (потеря данных, security bypass), MAJOR (race, silent failures, dead code, hardcoded values), MINOR (style). Формат: файл:строка — проблема [severity] — evidence. Явно укажи проверенные области без findings. НЕ задавай вопросов — работай до конца, неясное помечай как 'unknown'.",
+    "prompt": "Проведи read-only security аудит na_shtile. Scope: bot/ (32 .py). Не пишешь файлы через write_file — findings идут в work_state.\n\nФОКУС (severity):\n- BLOCKER: потеря данных, security bypass (SQLi/exec/path traversal), unvalidated input\n- MAJOR: race condition; silent failure (except: pass, except ImportError: logger.debug без возврата); dead code; hardcoded secrets/values; return type mismatch (annotation `Tuple[bool, str]`, реально `return True`); импорт несуществующего модуля/функции\n- MINOR: style, дублирование логики, missing type hints\n\nФОРМАТ каждого finding: «файл:строка — проблема [SEVERITY] — evidence: <цитата или фраза из кода>».\n\nПРАВИЛА (критично для бюджета):\n1. WRITE-AS-YOU-GO: нашёл finding → СРАЗУ вызови update_work_state с patch={'findings+': ['<строка finding>']}. Не копи в голове — незаписанные findings не засчитываются в min_findings.\n2. BOUNDED READING: сначала `find bot/ -name '*.py' -not -name '__init__.py'` — список файлов. Для каждого: если <200 строк — read_file целиком, иначе `head -30` + grep по подозрительным паттернам. Не читай один файл дважды.\n3. IMPORT CHECK: для каждого `from X import Y` проверь `ls X.py` или `grep 'def Y' X.py`. Модуль есть, функции нет — тоже MAJOR. Битый импорт в try/except ImportError: logger.debug — молчаливое отключение функционала, MAJOR.\n4. SILENT FAILURE PATTERNS (грепай явно): `except: pass`, `except Exception: pass`, `except ImportError: logger.debug`, `getattr(module, attr)` без валидации, `open(..., 'w')` до блокировки.\n5. В КОНЦЕ: секция «## Проверено без findings» — список файлов/функций, которые прочитал и не нашёл проблем. Это важно: «не проверил» ≠ «нет багов».\n\nНЕ задавай вопросов. Работай до 25+ findings или до исчерпания файлов bot/. Неясное — помечай 'unknown' в finding.",
     "setup": "audit_na_shtile_fixture.py",
     "extra_args": [
       "--audit",
@@ -139,6 +139,26 @@
     "min_findings": 25,
     "max_iterations": 25,
     "success": "rc=0, findings>=25, changed_files=[], 0 файлов вне bot/"
+  },
+  {
+    "id": "audit-futures-map",
+    "category": "create",
+    "title": "Карта слоёв futures_3.0",
+    "prompt": "Ты работаешь в ТЕКУЩЕЙ рабочей директории (cwd) — это копия проекта futures_3.0. НЕ используй абсолютный путь /home/botuser/bots/futures_3.0 — работай только с относительными путями от cwd.\n\nЦЕЛЬ: составить карту слоёв проекта — какие слои есть, за что отвечает каждый, ключевые модули. Результат — MAP.md.\n\nПРАВИЛА ПО ТОКЕНАМ (нарушение = провал бюджета):\n1. НЕ используй list_files на src/trading — он возвращает 12KB. Для подпакетов: `find src/trading -maxdepth 2 -type d -not -name __pycache__`. Для файлов слоя: `find src/trading/<слой> -maxdepth 1 -name '*.py' -not -name '__init__.py'`.\n2. Для назначения слоя читай `head -15` 1–2 ключевых файлов (docstring + первые импорты + первые строки тела). НЕ используй read_file целиком, cat, head -50. head -15 достаточно, чтобы увидеть docstring и сигналы.\n3. В чат — ОДНА строка статуса на итерацию. Весь контент — только в MAP.md. НЕ объясняй в чате, что ты сделал.\n4. Таблицу MAP.md создай в ПЕРВОЙ итерации (пустую), затем перезаписывай файл целиком по мере готовности.\n\nПЛАН:\n1. Создай MAP.md с заголовком и пустой таблицей «Слой | Назначение | Ключевые модули».\n2. `find src/trading -maxdepth 2 -type d -not -name __pycache__` — список слоёв и подпакетов.\n3. Для каждого слоя: `find <слой> -maxdepth 1 -name '*.py'` (имена модулей) + `head -15` 1–2 ключевых файлов (назначение).\n4. В секции «Расхождения» ЯВНО фиксируй MAJOR-сигналы, если они видны в head-15:\n   - docstring говорит «мёртвый», «DEPRECATED», «старый движок» — но модуль в живом пути;\n   - использование имени без импорта (например `ROOT_DIR` без `from ... import ROOT_DIR`);\n   - расходящиеся версии между слоями (v5.0 vs v6.2 vs v9.0);\n   - дубли имён файлов в разных слоях;\n   - docstring ссылается на несуществующий пакет.\n5. Если не уверен — честно помечай «не проверено». Не выдумывай.\n6. НЕ удаляй ничего. НЕ предлагай удалять. Только карта.\n\nФормат MAP.md: таблица «Слой | Назначение | Ключевые модули»; архитектурные заметки (точка входа, поток данных, DI); «Расхождения и ограничения» (включая MAJOR-сигналы и «не проверено»).",
+    "setup": "audit_futures_fixture.py",
+    "min_findings": 10,
+    "max_iterations": 20,
+    "success": "MAP.md существует; содержит >=10 подпакетов src/trading/; есть явные пометки «не проверено» для непроверенных; 0 предложений удалить что-либо."
+  },
+  {
+    "id": "audit-futures-utils",
+    "category": "create",
+    "title": "Аудит модуля utils/ futures_3.0",
+    "prompt": "Ты работаешь в ТЕКУЩЕЙ рабочей директории (cwd) — копия futures_3.0. НЕ используй абсолютный путь /home/botuser/bots/futures_3.0.\n\nЦЕЛЬ: security/quality аудит ТОЛЬКО модуля src/trading/utils/. Найди баги, мёртвый код, потенциальные ошибки. Результат — AUDIT.md.\n\nПРАВИЛА ПО ТОКЕНАМ:\n1. `find src/trading/utils -name '*.py' -not -name '__init__.py'` — список файлов.\n2. Для каждого файла читай `head -20` + если нужно — `read_file` целиком (файлы маленькие, это допустимо).\n3. В чат — одна строка статуса на итерацию. Весь контент — в AUDIT.md.\n4. AUDIT.md создай в первой итерации, перезаписывай по мере готовности.\n\nПЛАН:\n1. Создай AUDIT.md с секциями: «Баг/мёртвый код», «Сомнения», «Не проверено».\n2. Прочитай каждый файл utils/.\n3. Для каждого подозрения — доказательство (строка кода, grep кто импортирует).\n4. ЯВНО фиксируй: неимпортированные имена, dead code, NameError-риски, дубли, устаревшие версии.\n5. НЕ удаляй ничего. НЕ предлагай удалять. Только кандидаты с доказательствами.",
+    "setup": "audit_futures_fixture.py",
+    "min_findings": 1,
+    "max_iterations": 15,
+    "success": "AUDIT.md существует; содержит >=1 finding с доказательством; 0 предложений удалить без доказательств."
   },
   {
     "id": "audit-futures-cleanup",
