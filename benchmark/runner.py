@@ -197,6 +197,7 @@ def run_case(
     max_iterations: int,
     case_timeout: float | None = None,
     keep_worktree: bool = False,
+    max_cost: float | None = None,
 ) -> dict[str, Any]:
     # Per-task override: audit 74 файла = 25 итераций, fix = 12.
     max_iterations = int(task.get("max_iterations", max_iterations))
@@ -243,6 +244,7 @@ def run_case(
         rc = -1
         env = os.environ.copy()
         env["SESSIONS_DIR"] = str(run_dir / "sessions")
+        _apply_cost_cap(env, max_cost)
         command = [
             sys.executable,
             "-m",
@@ -514,6 +516,29 @@ def _find_case_archive(sessions_dir: Path) -> Path | None:
     return max(jsonl_files, key=lambda p: p.stat().st_mtime)
 
 
+def _apply_cost_cap(env: dict[str, str], max_cost: float | None) -> None:
+    """Прокинуть hard-лимит в CLI через env (MAX_COST_PER_*); None/0 — no-op."""
+    if max_cost is not None and max_cost > 0:
+        env["MAX_COST_PER_TASK"] = str(max_cost)
+        env["MAX_COST_PER_SESSION"] = str(max_cost)
+
+
+def _cumulative_cost(results: list[dict[str, Any]]) -> float:
+    total = 0.0
+    for r in results:
+        try:
+            total += float((r.get("usage") or {}).get("cost") or 0)
+        except (TypeError, ValueError):
+            continue
+    return total
+
+
+def _should_stop(results: list[dict[str, Any]], max_cost: float | None) -> bool:
+    if max_cost is None or max_cost <= 0:
+        return False
+    return _cumulative_cost(results) >= max_cost
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
@@ -534,6 +559,12 @@ def main() -> int:
         "--keep-worktree",
         action="store_true",
         help="Не удалять worktree после прогона (для диагностики failure).",
+    )
+    parser.add_argument(
+        "--max-cost",
+        type=float,
+        default=None,
+        help="Hard-лимит стоимости в ₽ на весь прогон: env MAX_COST_PER_TASK/SESSION в CLI + stop-between-cases. 0 = без лимита.",
     )
     args = parser.parse_args()
     # Benchmark: .env не попадает в worktree (gitignored), но subprocess
@@ -575,11 +606,19 @@ def main() -> int:
                     args.max_iterations,
                     case_timeout=args.case_timeout or None,
                     keep_worktree=args.keep_worktree,
+                    max_cost=args.max_cost,
                 )
             )
             (run_dir / "results.json").write_text(
                 json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
             )
+            if _should_stop(results, args.max_cost):
+                print(
+                    f"Stopped: cumulative cost {_cumulative_cost(results):.2f}₽ "
+                    f">= --max-cost {args.max_cost}₽",
+                    file=sys.stderr,
+                )
+                break
     print(run_dir / "results.json")
     return 0
 

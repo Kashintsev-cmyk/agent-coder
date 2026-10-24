@@ -55,3 +55,56 @@ def test_restore_fixture_files_runs_git_checkout(tmp_path, monkeypatch):
         "checkout" in c and "test_benchmark_target.py" in c and "pyproject.toml" in c
         for c in calls
     ), calls
+
+
+def test_apply_cost_cap_sets_env():
+    from benchmark import runner
+
+    env = {"SESSIONS_DIR": "/x"}
+    runner._apply_cost_cap(env, 5.0)
+    assert env["MAX_COST_PER_SESSION"] == "5.0"
+    assert env["MAX_COST_PER_TASK"] == "5.0"
+    assert env["SESSIONS_DIR"] == "/x"
+
+
+def test_apply_cost_cap_none_is_noop():
+    from benchmark import runner
+
+    env = {}
+    runner._apply_cost_cap(env, None)
+    assert "MAX_COST_PER_SESSION" not in env
+
+
+def test_apply_cost_cap_zero_is_noop():
+    from benchmark import runner
+
+    env = {}
+    runner._apply_cost_cap(env, 0.0)
+    assert "MAX_COST_PER_SESSION" not in env
+
+
+def test_should_stop_under_cap():
+    from benchmark import runner
+
+    results = [{"usage": {"cost": 2.0}}, {"usage": {"cost": 1.5}}]
+    assert runner._should_stop(results, 5.0) is False
+
+
+def test_should_stop_at_cap():
+    from benchmark import runner
+
+    results = [{"usage": {"cost": 2.0}}, {"usage": {"cost": 3.0}}]
+    assert runner._should_stop(results, 5.0) is True
+
+
+def test_should_stop_without_cap():
+    from benchmark import runner
+
+    assert runner._should_stop([{"usage": {"cost": 100.0}}], None) is False
+
+
+def test_should_stop_missing_cost_key():
+    from benchmark import runner
+
+    results = [{"usage": {}}, {}]
+    assert runner._should_stop(results, 5.0) is False
