@@ -31,7 +31,6 @@ import hashlib
 import json
 import os
 import re
-import shutil
 import tempfile
 import time
 from pathlib import Path
@@ -235,13 +234,25 @@ def _count_py_files(workspace: str, scopes: list[str] | None = None) -> int:
 
 
 def prepare(workspace: str, *, fresh: bool = False) -> dict[str, Any]:
-    """Старт AUDIT: ``fresh=True`` — удалить каталог state, затем ``load()``.
+    """Старт AUDIT: ``fresh=True`` — архивировать старый state, затем ``load()``.
 
     Для CLI-флага ``--fresh-audit`` (B11.2b). При ``fresh=False`` —
     просто ``load()``, если каталога нет — пустое состояние.
+
+    B11.2c (2026-10-27): ``fresh=True`` НЕ удаляет старый каталог, а
+    переименовывает его в ``audit-<slug>-<YYYYMMDD-HHMMSS>``. Причина:
+    slug детерминистичен по workspace, повторный ``--fresh-audit``
+    затирал findings предыдущего модуля (execution → feeds, потеряно
+    54 findings). Теперь старые findings сохраняются на диске.
     """
     if fresh:
         pd = project_dir(workspace)
         if pd.is_dir():
-            shutil.rmtree(pd)
+            ts = time.strftime("%Y%m%d-%H%M%S", time.localtime())
+            archived = pd.parent / f"{pd.name}-{ts}"
+            n = 1
+            while archived.exists():
+                archived = pd.parent / f"{pd.name}-{ts}-{n}"
+                n += 1
+            pd.rename(archived)
     return load(workspace)

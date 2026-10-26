@@ -40,3 +40,4 @@ dist/
 # Каталог RouterAI (кеш, не коммитим)
 benchmark/routerai_models.json
 benchmark/verify_results/
+.git.backup-*/

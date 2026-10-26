@@ -476,7 +476,8 @@ def _resolve_scopes(
 def _start_audit(workspace: str, session, *, fresh: bool) -> dict:
     """Старт AUDIT: prepare + merge в session (B11.2b).
 
-    ``fresh=True`` — .agent-coder/ удаляется (--fresh-audit). Иначе —
+    ``fresh=True`` — старый .agent-coder/audit-<slug>/ архивируется с
+    timestamp (--fresh-audit), findings сохраняются (B11.2c). Иначе —
     load существующего state. Findings/todo мержатся через
     WorkStateHandle.update (дедуп B9.4), coverage — в read_paths.
     """

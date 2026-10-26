@@ -146,3 +146,44 @@ def test_save_meta_total_files(tmp_path):
     assert meta["total_files"] == 2
     assert meta["coverage_count"] == 1
     assert meta["coverage_remaining"] == 1
+
+def test_prepare_fresh_archives_not_deletes(tmp_path):
+    """B11.2c: fresh=True архивирует с timestamp, findings сохраняются."""
+    ws = str(tmp_path)
+    storage.prepare(ws, fresh=True)
+
+    # Записать findings
+    session = _session(ws, findings=["bot/main.py:1 — test finding [MAJOR]"])
+    loaded = storage.load(ws)
+    storage.save(ws, session, loaded)
+    pd = storage.project_dir(ws)
+    assert (pd / "findings.md").exists()
+
+    # Второй fresh: старый каталог → архив, findings целы
+    storage.prepare(ws, fresh=True)
+    archived = list(pd.parent.glob(f"{pd.name}-*"))
+    assert len(archived) >= 1, "архив не создан"
+    archive_dir = next(d for d in archived if d != pd)
+    archived_text = (archive_dir / "findings.md").read_text(encoding="utf-8")
+    assert "test finding" in archived_text
+
+    # Новый каталог пуст (или ещё не создан — load() не создаёт)
+    assert not (pd / "findings.md").exists()
+
+
+def test_prepare_fresh_multiple_archives(tmp_path):
+    """Три fresh подряд → три архива с разными именами."""
+    ws = str(tmp_path)
+    storage.prepare(ws, fresh=True)
+    pd = storage.project_dir(ws)
+
+    for i in range(2):
+        session = _session(ws, findings=[f"file.py:{i + 1} — finding {i}"])
+        loaded = storage.load(ws)
+        storage.save(ws, session, loaded)
+        storage.prepare(ws, fresh=True)
+
+    archives = list(pd.parent.glob(f"{pd.name}-*"))
+    archives = [d for d in archives if d != pd]
+    assert len(archives) == 2, f"ожидалось 2 архива, найдено {len(archives)}"
+
