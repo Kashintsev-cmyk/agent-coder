@@ -69,7 +69,7 @@ class Config:
     ROUTERAI_TIMEOUT: float = float(os.getenv("ROUTERAI_TIMEOUT", "300.0"))
 
     # Модели
-    MODEL_MAIN: str = os.getenv("MODEL_MAIN", "deepseek/deepseek-v4-flash")
+    MODEL_MAIN: str = os.getenv("MODEL_MAIN", "deepseek/deepseek-v4.1-flash")
     # Fallback для RECOMMENDED_MODEL_BY_MODE (см. telegram/handlers/project_utils.py).
 
     # Единый список моделей (B1): UI, роутер, дефолты.
@@ -79,11 +79,11 @@ class Config:
     CURATED_MODEL_IDS: ClassVar[list[str]] = [
         mid.strip() for mid in _curated_raw.split(",") if mid.strip()
     ] or [
-        # B9.2g cleanup 2026-10-23: 4 модели — все winners.
+        # 2026-11-03: v4-flash убран — v4.1-flash дешевле и по входу, и по
+        # выходу (3.82/15.28 vs 10.00/20.00), тот же ctx, те же caps.
         # kimi/r1/grok → _FALLBACK_CATALOG (ручной /model, не дефолт).
         # sonnet/flash — провал в audit (coverage/timeout), не оставляем.
-        "deepseek/deepseek-v4-flash",  # DEFAULT (act/plan)
-        "deepseek/deepseek-v4.1-flash",  # PATCH winner
+        "deepseek/deepseek-v4.1-flash",  # DEFAULT + PATCH winner
         "anthropic/claude-haiku-5.5",  # AUDIT/VERIFY/SUMMARY winner
         # 2026-11-03: дешёвые fallback'и (probe OK, ≤ Haiku + 10%).
         # В конце списка = не переопределяют RECOMMENDED (winner'ы выше).
@@ -113,7 +113,9 @@ class Config:
     ).strip().lower() in ("1", "true", "yes", "on")
 
     # Модель по умолчанию (должна входить в MODEL_IDS)
-    DEFAULT_MODEL_ID: str = os.getenv("DEFAULT_MODEL_ID", "deepseek/deepseek-v4-flash")
+    DEFAULT_MODEL_ID: str = os.getenv(
+        "DEFAULT_MODEL_ID", "deepseek/deepseek-v4.1-flash"
+    )
 
     # B1: соответствие «модель → режимы, для которых подходит».
     # Один источник истины для UI-пометок 🎯 и для
@@ -122,11 +124,8 @@ class Config:
     # не блокирует добавление новых моделей).
     # Порядок MODEL_IDS = приоритет авто-выбора (не порядок этого dict).
     MODEL_MODE_FIT: ClassVar[dict[str, list[str]]] = {
-        "deepseek/deepseek-v4-flash": ["act", "plan", "audit"],
-        # audit — осознанный override (B9.2g, 2026-10-23): v4-flash таймаутит
-        # (0 findings), haiku нестабильна (100/34/44 findings за 3 прогона),
-        # v4.1-flash стабильно 48/58 findings за 36₽. FIT согласован с
-        # RECOMMENDED_MODEL_BY_MODE["audit"] (инвариант ловится _validate_config).
+        # v4.1-flash — default, patch winner, audit fallback (B9.2g-2026-10-23
+        # + 2026-11-03: оставлен как альтернатива haiku в audit).
         "deepseek/deepseek-v4.1-flash": ["act", "plan", "audit"],
         "anthropic/claude-haiku-5.5": ["act", "audit"],
         # 2026-11-03: дешёвые fallback'и. plan/act — при 429/timeout у winner'ов;

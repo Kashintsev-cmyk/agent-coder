@@ -92,10 +92,10 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         tools=True,
         reasoning_effort=True,
         web_search_builtin=False,
-        # TODO(pricing): verify from API. Estimated below v4.1-flash.
-        input_price=5.0,
-        output_price=10.0,
-        tag="быстрая, дешёвая (fallback estimate)",
+        # 2026-11-03: не в MODEL_IDS — ручной /model. Цены сверены с API.
+        input_price=10.00,
+        output_price=20.00,
+        tag="ручной /model (не в MODEL_IDS)",
     ),
     "deepseek/deepseek-v4.1-flash": ModelInfo(
         id="deepseek/deepseek-v4.1-flash",
@@ -106,9 +106,10 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         tools=True,
         reasoning_effort=True,
         web_search_builtin=False,
-        input_price=10.78,
-        output_price=21.56,
-        tag="быстрая, дешёвая",
+        # 2026-11-03: DEFAULT + PATCH + audit fallback. Цены сверены с API.
+        input_price=3.82,
+        output_price=15.28,
+        tag="default, patch, audit fallback",
     ),
     "z-ai/glm-5.3-flash": ModelInfo(
         id="z-ai/glm-5.3-flash",
