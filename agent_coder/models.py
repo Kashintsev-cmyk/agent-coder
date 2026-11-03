@@ -17,6 +17,12 @@
 
 Поле `pricing` — в рублях за 1M токенов (точные цены с routerai.ru).
 
+Цены для моделей из `MODEL_IDS` синхронизированы с API и покрыты регрессом
+`tests/test_fallback_prices.py`. Для моделей вне `MODEL_IDS` (доступны только
+через ручной `/model`) цены в `_FALLBACK_CATALOG` могут устаревать — это
+приемлемо: они не участвуют в бюджетах и рекомендациях, а при необходимости
+подтягиваются из API-кэша `model_catalog`.
+
 Разница между `reasoning` и `reasoning_effort`:
 - `reasoning`        — модель умеет «думать» (chain-of-thought) вообще.
 - `reasoning_effort` — модель принимает ГРАДАЦИЮ усилий (`none`..`ultra`),
