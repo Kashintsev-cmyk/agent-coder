@@ -28,7 +28,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 **LLM-фичи**
 - Встроенный web search RouterAI (`plugins=[{id:web}]`)
 - Service tier: `default` / `flex` (−50% цены) / `priority` (быстрее)
-- Verbosity, reasoning, temperature — с per-session настройкой
+- Verbosity, reasoning — с per-session настройкой; sampling (`temperature`/`top_p`/`top_k`) — per-model, см. «Sampling-параметры (per-model)» в разделе «Модели»
 - Сжатие истории: старые сообщения резюмируются дешёвой моделью
 - Приём изображений (vision-модели): фото передаётся как `image_url`
 
@@ -247,6 +247,27 @@ RouterAI и кэшируются на диск.
 в `_FALLBACK_CATALOG` и доступны через `/model` вручную — удобно для
 разовых задач (security second-pass и т.п.).
 
+### Sampling-параметры (per-model)
+
+`temperature`, `top_p`, `top_k` для моделей из `MODEL_IDS` задаются в
+`agent_coder/llm/profiles.py` (`MODEL_PROFILES`), а **не** через `TEMPERATURE`
+в `.env`. Три контракта:
+
+1. **Модель в реестре, профиль не пустой** — sampling-параметры берутся из
+   профиля; явный `temperature`, переданный вызывающим кодом, **игнорируется**.
+   Примеры: Qwen 0.6 / 0.95 / 20, GLM 1.0 / 0.95, Nemo 0.35.
+2. **Модель в реестре, профиль `{}`** — sampling **не отправляется вообще**.
+   Для закрытых reasoning-моделей (Claude 4.7+, GPT-5/6), которые отклоняют
+   любое не-дефолтное значение (400).
+3. **Модель вне реестра** — legacy: явный `temperature` уходит как есть,
+   без профиля (`_FALLBACK_CATALOG`, ручной `/model`).
+
+`reasoning_effort` — пользовательский выбор (UI 💭 Reasoning,
+`session.reasoning_effort`) **перебивает** baseline из профиля
+(DeepSeek `high`, GLM `max`). Если явно `none`/`""` — baseline применяется.
+
+Контракт покрыт `tests/test_model_profiles.py` (19 тестов).
+
 ### Роутер моделей
 
 Рекомендованная модель по режиму — `RECOMMENDED_MODEL_BY_MODE` (выводится
@@ -290,7 +311,7 @@ Fallback-цепочка при 429/timeout — модели из `MODEL_IDS`, у
 | `ROUTERAI_TIMEOUT` | `300.0` | Таймаут LLM, с |
 | `MAX_RETRIES` | `3` | Число попыток при ошибках |
 | `RETRY_BACKOFF` | `2.0` | База экспоненциального backoff |
-| `TEMPERATURE` | `0.2` | Температура (0.0–2.0) |
+| `TEMPERATURE` | `0.2` | Для моделей **вне** `MODEL_PROFILES` (ручной `/model` из `_FALLBACK_CATALOG`). Для `MODEL_IDS` — per-model, см. `agent_coder/llm/profiles.py` |
 | `SERVICE_TIER` | `default` | `default` / `flex` / `priority` |
 | `WEB_SEARCH_ENGINE` | `native` | `native` / `exa` |
 | `WEB_SEARCH_MAX_RESULTS` | `5` | Сколько результатов запрашивать |
