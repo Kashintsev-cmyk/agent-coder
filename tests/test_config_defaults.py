@@ -1,56 +1,122 @@
-"""Guard: дефолты в agent_coder/config.py обязаны совпадать с .env.example.
+"""Guard: env-дефолты в коде agent_coder обязаны совпадать с .env.example.
 
-Парсим исходник через ast, а не импортируем модуль: Config читает env
+Парсим исходники через ast, а не импортируем: Config читает переменные
 в момент объявления класса, и на машине с заполненным .env тест видел бы
-не дефолты кода, а локальные оверрайды.
+локальные оверрайды, а не дефолты кода.
+
+Покрыто: 1) прямой os.getenv("VAR", "literal");
+2) хелперы вида def _env_int(key, default): ... os.getenv(key, default) —
+дефолт берём с места вызова хелпера.
+Не покрыто (осознанно): динамические имена os.getenv(f"TOOL_MAX_CHARS_..."),
+os.environ.get с именем-константой в standard/.
 """
+
 import ast
 from pathlib import Path
 
 import pytest
 
 ROOT = Path(__file__).resolve().parents[1]
-CONFIG_SRC = ROOT / "agent_coder" / "config.py"
+PKG = ROOT / "agent_coder"
+CONFIG_PY = PKG / "config.py"
 ENV_EXAMPLE = ROOT / ".env.example"
 
-# Переменные, которые сознательно не пишем в .env.example (внутренние/служебные)
-ALLOWED_NOT_IN_EXAMPLE: set[str] = set()
+# Переменные, которые сознательно не документируем в .env.example
+ALLOWED_NOT_IN_EXAMPLE: set[str] = {"SESSIONS_DIR"}
+
+# Дефолт вычисляется в рантайме, сравнивать не с чем
+COMPUTED_DEFAULTS: set[str] = {"CURATED_MODEL_IDS", "MODELS_CACHE_DIR"}
 
 
-def _getenv_defaults(source: str) -> dict[str, str | None]:
-    """{VAR: default} для каждого os.getenv('VAR', 'default') в исходнике.
+def _is_os_getenv(node: ast.AST) -> bool:
+    return (
+        isinstance(node, ast.Call)
+        and isinstance(node.func, ast.Attribute)
+        and node.func.attr == "getenv"
+        and isinstance(node.func.value, ast.Name)
+        and node.func.value.id == "os"
+    )
 
-    getenv без дефолта -> None (обязательная переменная, сравнивать нечего).
-    Вложенные вызовы (Path(os.getenv(...))) находятся тем же walk().
-    """
-    defaults: dict[str, str | None] = {}
-    for node in ast.walk(ast.parse(source)):
-        if not isinstance(node, ast.Call):
+
+def _default_of(call: ast.Call) -> str | None:
+    """str-дефолт из второго аргумента; нет или не константа -> None."""
+    if len(call.args) > 1 and isinstance(call.args[1], ast.Constant):
+        return str(call.args[1].value)
+    return None
+
+
+def _direct_getenv_defaults(tree: ast.Module) -> dict[str, str | None]:
+    out: dict[str, str | None] = {}
+    for node in ast.walk(tree):
+        if not _is_os_getenv(node):
             continue
-        func = node.func
         if not (
-            isinstance(func, ast.Attribute)
-            and func.attr == "getenv"
-            and isinstance(func.value, ast.Name)
-            and func.value.id == "os"
+            node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
         ):
             continue
-        if not (node.args and isinstance(node.args[0], ast.Constant)):
+        out.setdefault(node.args[0].value, _default_of(node))
+    return out
+
+
+def _helper_names(tree: ast.Module) -> set[str]:
+    """Функции, пробрасывающие первый аргумент в os.getenv(key, ...)."""
+    names: set[str] = set()
+    for fn in ast.walk(tree):
+        if (
+            not isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
+            or not fn.args.args
+        ):
             continue
-        var = node.args[0].value
-        if len(node.args) > 1 and isinstance(node.args[1], ast.Constant):
-            defaults[var] = node.args[1].value
-        else:
-            defaults.setdefault(var, None)
+        first = fn.args.args[0].arg
+        for sub in ast.walk(fn):
+            if (
+                _is_os_getenv(sub)
+                and sub.args
+                and isinstance(sub.args[0], ast.Name)
+                and sub.args[0].id == first
+            ):
+                names.add(fn.name)
+                break
+    return names
+
+
+def _helper_call_defaults(tree: ast.Module, helpers: set[str]) -> dict[str, str | None]:
+    out: dict[str, str | None] = {}
+    for node in ast.walk(tree):
+        if not (
+            isinstance(node, ast.Call)
+            and isinstance(node.func, ast.Name)
+            and node.func.id in helpers
+            and node.args
+            and isinstance(node.args[0], ast.Constant)
+            and isinstance(node.args[0].value, str)
+        ):
+            continue
+        out.setdefault(node.args[0].value, _default_of(node))
+    return out
+
+
+def _collect_code_defaults() -> dict[str, str | None]:
+    defaults: dict[str, str | None] = {}
+    sources = [CONFIG_PY, *(p for p in sorted(PKG.rglob("*.py")) if p != CONFIG_PY)]
+    for py in sources:
+        tree = ast.parse(py.read_text(encoding="utf-8"))
+        helpers = _helper_names(tree)
+        for var, d in _direct_getenv_defaults(tree).items():
+            defaults.setdefault(var, d)
+        for var, d in _helper_call_defaults(tree, helpers).items():
+            defaults.setdefault(var, d)
     return defaults
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def code_defaults() -> dict[str, str | None]:
-    return _getenv_defaults(CONFIG_SRC.read_text(encoding="utf-8"))
+    return _collect_code_defaults()
 
 
-@pytest.fixture(scope="module")
+@pytest.fixture(scope="session")
 def example_values() -> dict[str, str]:
     values: dict[str, str] = {}
     for line in ENV_EXAMPLE.read_text(encoding="utf-8").splitlines():
@@ -73,7 +139,9 @@ def test_example_has_no_unknown_vars(
     example_values: dict[str, str],
 ) -> None:
     unknown = sorted(set(example_values) - set(code_defaults))
-    assert not unknown, f".env.example содержит переменные, которые код не читает: {unknown}"
+    assert not unknown, (
+        f".env.example содержит переменные, которые код не читает: {unknown}"
+    )
 
 
 def test_code_vars_are_documented(
@@ -81,7 +149,8 @@ def test_code_vars_are_documented(
     example_values: dict[str, str],
 ) -> None:
     undocumented = sorted(
-        var for var in code_defaults
+        var
+        for var in code_defaults
         if var not in example_values and var not in ALLOWED_NOT_IN_EXAMPLE
     )
     assert not undocumented, (
@@ -99,12 +168,9 @@ def test_defaults_match_example(
         for var, default in sorted(code_defaults.items())
         if default is not None
         and var in example_values
+        and var not in COMPUTED_DEFAULTS
         and example_values[var] != default
     }
-    assert not mismatch, (
-        "Дефолты config.py разошлись с .env.example:\n"
-        + "\n".join(
-            f"  {k}: код={v[0]!r}, .env.example={v[1]!r}" for k, v in mismatch.items()
-        )
+    assert not mismatch, "Дефолты кода разошлись с .env.example:\n" + "\n".join(
+        f"  {k}: код={v[0]!r}, .env.example={v[1]!r}" for k, v in mismatch.items()
     )
-    
