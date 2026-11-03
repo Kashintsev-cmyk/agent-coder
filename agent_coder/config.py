@@ -146,10 +146,15 @@ class Config:
         MODEL_IDS, MODEL_MODE_FIT, DEFAULT_MODEL_ID
     )
 
-    # B9.2g audit-bench 2026-10-23: audit — v4.1-flash (стабилен, 48/58 findings
-    # за 36₽), не v4-flash (timeout 0 findings). Haiku нестабильна в audit
-    # (100/34/44 за 3 прогона) — оставлена для verify/summary.
-    RECOMMENDED_MODEL_BY_MODE["audit"] = "deepseek/deepseek-v4.1-flash"
+    # 2026-11-03 (weather-bot benchmark): audit — haiku-5.5.
+    # v4.1-flash (B9.2g, 2026-10-23) давал широкий MINOR-охват, но
+    # пропускал BLOCKER/MAJOR: weather-bot 37 файлов, 29.34₽ / 60 findings
+    # / 0 BLOCKER vs haiku 11.30₽ / 40 findings / 1 BLOCKER + 5 MAJOR,
+    # ×2.6 дешевле и ×2.5 быстрее. Precision выше: не подтверждает
+    # by-design (README-проверка). Coverage 55% < 90% — рецепт «второй
+    # прогон на непрочитанные файлы» (~16-18₽ за 90%, ×1.7 дешевле v4.1).
+    # v4.1-flash остаётся в MODEL_MODE_FIT["audit"] для широкого MINOR-аудита.
+    RECOMMENDED_MODEL_BY_MODE["audit"] = "anthropic/claude-haiku-5.5"
     # ACT winner (benchmark 6×3, 2026-10-24): haiku-5.5 — best
     # bootstrap signal (2/6 hard pass, 0 hard fails, fastest).
     # NOTE: fixture has testpaths bug (benchmark_target.py root

@@ -32,13 +32,15 @@ def test_recommended_map_covers_all_modes() -> None:
         )
 
 
-def test_audit_recommended_is_cheap_deepseek() -> None:
-    """Аудит по умолчанию — deepseek (дёшево), т.к. он первый в MODEL_IDS
-    с "audit" в MODEL_MODE_FIT.
+def test_audit_recommended_is_haiku() -> None:
+    """Аудит по умолчанию — haiku-5.5 (2026-11-03 audit-бенчмарк).
+
+    v4.1-flash (B9.2g, 2026-10-23) давал широкий MINOR-охват, но
+    пропускал BLOCKER/MAJOR: weather-bot 37 файлов, 29.34₽ / 60 findings
+    / 0 BLOCKER vs haiku 11.30₽ / 40 findings / 1 BLOCKER + 5 MAJOR,
+    ×2.6 дешевле и ×2.5 быстрее.
     """
-    # B9.2g audit-bench 2026-10-23: audit — v4.1-flash (стабилен),
-    # не v4-flash (timeout в audit-04).
-    assert config.RECOMMENDED_MODEL_BY_MODE["audit"] == "deepseek/deepseek-v4.1-flash"
+    assert config.RECOMMENDED_MODEL_BY_MODE["audit"] == "anthropic/claude-haiku-5.5"
     # argon остаётся в FIT["audit"] — виден в UI как 🎯 audit.
     # 2026-11-03: Argon удалён из MODEL_IDS (210/1052 ₽, не использовался).
     # Заменяем конкретную проверку на инвариант: audit-режим покрыт хотя бы
@@ -53,7 +55,7 @@ def test_apply_on_mode_change_sets_recommended() -> None:
     s = _session(Mode.ACT, model="anthropic/claude-sonnet-5.5")
     s.mode = Mode.AUDIT
     _apply_recommended_model(s)
-    assert s.model == "deepseek/deepseek-v4.1-flash"
+    assert s.model == "anthropic/claude-haiku-5.5"
 
 
 def test_apply_on_audit_to_act_returns_to_coding() -> None:
@@ -141,7 +143,7 @@ def test_session_new_model_manual_kwarg() -> None:
 
 @pytest.mark.asyncio
 async def test_cli_audit_run_uses_recommended_not_group() -> None:
-    """CLI-путь: run() ставит recommended (deepseek), не audit-модель (kimi).
+    """CLI-путь: run() ставит recommended (haiku), не audit-модель (kimi).
 
     Регресс сессии 95190cc2: /audit в CLI шёл напрямую через роутер
     и брал первую модель legacy audit-группы — kimi (27.51₽ за
@@ -203,8 +205,8 @@ async def test_cli_audit_run_uses_recommended_not_group() -> None:
     )
     await loop.run("аудит модуля")
 
-    assert client.models == ["deepseek/deepseek-v4.1-flash"], (
-        f"CLI-аудит должен идти на recommended (deepseek), не на группе "
+    assert client.models == ["anthropic/claude-haiku-5.5"], (
+        f"CLI-аудит должен идти на recommended (haiku), не на группе "
         f"(kimi); фактически: {client.models}"
     )
-    assert s.model == "deepseek/deepseek-v4.1-flash"
+    assert s.model == "anthropic/claude-haiku-5.5"
