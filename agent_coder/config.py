@@ -86,6 +86,14 @@ class Config:
         "deepseek/deepseek-v4.1-flash",  # PATCH winner
         "anthropic/claude-haiku-5.5",  # AUDIT/VERIFY/SUMMARY winner
         "google/gemini-4-argon",  # AUDIT second-pass (security)
+        # 2026-11-03: дешёвые fallback'и (probe OK, ≤ Haiku + 10%).
+        # В конце списка = не переопределяют RECOMMENDED (winner'ы выше).
+        "qwen/qwen3.7-flash",  # 1M ctx; reasoning (515 hidden tokens на probe)
+        "z-ai/glm-5.3-flash",  # лучший score/₽, 1M ctx, чистый output
+        "mistralai/mistral-nemo",  # кандидат в SUMMARY_MODEL (ctx 131072, вых. 2.27₽)
+        "openai/gpt-6-luna",  # 10.53/52.63 = Haiku price, Intelligence 38.1, 1.05M ctx
+        # drop-in замена Haiku при 429/timeout (цена байт-в-байт, +2.1 intelligence).
+        # НЕ -pro: reasoning-оверхед (1402 prompt-токена на "ping" против 7 у базы) — 17× дороже.
     ]
 
     # Единый список моделей (B1): все модели, доступные в UI и роутере.
@@ -123,6 +131,12 @@ class Config:
         "deepseek/deepseek-v4.1-flash": ["act", "plan", "audit"],
         "anthropic/claude-haiku-5.5": ["act", "audit"],
         "google/gemini-4-argon": ["audit"],
+        # 2026-11-03: дешёвые fallback'и. plan/act — при 429/timeout у winner'ов;
+        # RECOMMENDED берёт первую подходящую в MODEL_IDS, эти в хвосте — не сдвинут.
+        "qwen/qwen3.7-flash": ["plan", "act"],
+        "z-ai/glm-5.3-flash": ["plan", "act"],
+        "mistralai/mistral-nemo": [],  # ручной /model; summary — через SUMMARY_MODEL
+        "openai/gpt-6-luna": ["plan", "act"],  # fallback при 429/timeout у Haiku
     }
 
     # Рекомендованная модель по режиму: ПЕРВАЯ в MODEL_IDS, для которой
@@ -230,7 +244,9 @@ class Config:
     # Используется check_project_standard и подсказками агенту в промте.
     # Путь намеренно абсолютный: агент работает из разных workspace'ов.
     SHARED_DEV_DIR: str = str(
-        Path(os.getenv("SHARED_DEV_DIR", "~/bots/_shared-dev/project-template/")).expanduser()
+        Path(
+            os.getenv("SHARED_DEV_DIR", "~/bots/_shared-dev/project-template/")
+        ).expanduser()
     )
     MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "200"))
     MAX_ITERATIONS_PLAN: int = int(os.getenv("MAX_ITERATIONS_PLAN", "100"))
