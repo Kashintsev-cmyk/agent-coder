@@ -22,6 +22,37 @@ def _fill(template: str, **kwargs: str) -> str:
     return out
 
 
+_AUDIT_SCOPE_RULE = """
+
+## Ограничения области аудита (жёсткие, не обходить)
+
+1. **Только относительные пути от workspace.** Абсолютные пути
+   (`/home/...`, `/tmp/...`, `~/...`) в `read_file`, `list_files`,
+   `search`, `run_command` будут отклонены. Если нужен файл — пиши
+   путь относительно workspace (`app/bot.py`, не
+   `/home/botuser/bots/weather-bot/app/bot.py`).
+
+2. **Не читай `.venv/`, `site-packages/`, `.git/`, `__pycache__/`,
+   `.mypy_cache/`.** Это внешние пакеты и служебные каталоги — они
+   вне области аудита, даже если finding ссылается на их код. Если
+   для подтверждения нужна внешняя библиотека (httpx, aiogram) —
+   помечай finding как `requires external check: <lib>` и двигайся
+   дальше, НЕ пытайся открыть исходники пакета.
+
+3. **Если инструмент вернул ошибку «вне области аудита» или
+   «недоступен в audit-режиме» — НЕ повторяй ту же команду** с
+   другими флагами (`-A`, `-B`, `-n`, другим путём). Ошибка
+   означает, что путь/инструмент **запрещён**, а не что команда
+   неверна. Переформулируй через относительный путь от workspace
+   или пропусти.
+
+4. **5 ошибок подряд → аудит останавливается** (circuit breaker,
+   `MAX_CONSECUTIVE_ERRORS=5`). Каждая ошибка — расход бюджета.
+   Одна blocked-команда, повторённая 3 раза с разными флагами, —
+   это уже 3 из 5.
+"""
+
+
 def build_audit_prompt(
     workspace: str,
     project_name: str = "",
@@ -54,4 +85,9 @@ def build_audit_prompt(
             + "\n".join(f"- `{s}`" for s in scopes)
         )
         result = result + block
+    # Контракт test_build_audit_prompt_empty_template: пустой шаблон → пустой
+    # промт. Правило безопасности добавляем только к непустому промту —
+    # без audit_standard.md аудит всё равно не запустится (caller проверит).
+    if result:
+        result = result + _AUDIT_SCOPE_RULE
     return result
