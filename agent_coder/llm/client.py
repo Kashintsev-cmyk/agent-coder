@@ -19,6 +19,7 @@ from openai import (
 )
 
 from agent_coder.config import config
+from agent_coder.llm.profiles import get_profile
 from agent_coder.llm.types import (
     AssistantMessage,
     ChatResponse,
@@ -46,6 +47,20 @@ def _build_request_kwargs(
 ) -> dict[str, Any]:
     """Собрать kwargs для chat.completions.create.
 
+    Sampling-параметры (temperature/top_p/top_k) — per-model через
+    MODEL_PROFILES (agent_coder/llm/profiles.py). Для моделей из реестра
+    профиль авторитетен: явный `temperature` игнорируется, чтобы не
+    перебивать рекомендованные вендором значения (Qwen 0.6, GLM 1.0,
+    Nemo 0.35). Пустой профиль = sampling не отправляем (Claude 4.7+,
+    GPT-5/6 отклоняют любое не-дефолтное значение).
+
+    `reasoning_effort` — пользовательский выбор важнее профиля: если
+    задан явно, уходит как есть; если None/"" — берётся baseline из
+    профиля (DeepSeek "high", GLM "max").
+
+    Для моделей вне реестра (profile is None) — legacy-поведение:
+    явный `temperature` уходит как есть.
+
     Вынесено отдельно от chat() — чтобы тестировать без mock httpx/OpenAI.
     """
     kwargs: dict[str, Any] = {"model": model, "messages": messages}
@@ -53,10 +68,22 @@ def _build_request_kwargs(
         kwargs["tools"] = tools
     if tool_choice:
         kwargs["tool_choice"] = tool_choice
-    if temperature is not None:
+
+    profile = get_profile(model)
+    if profile is not None:
+        # Модель в реестре: sampling-параметры — только из профиля.
+        for key in ("temperature", "top_p", "top_k"):
+            if key in profile:
+                kwargs[key] = profile[key]
+    elif temperature is not None:
+        # Модель вне реестра: legacy-поведение.
         kwargs["temperature"] = temperature
+
     if reasoning_effort and reasoning_effort not in ("none", ""):
         kwargs["reasoning_effort"] = reasoning_effort
+    elif profile is not None and "reasoning_effort" in profile:
+        kwargs["reasoning_effort"] = profile["reasoning_effort"]
+
     if web_search:
         kwargs["plugins"] = [
             {

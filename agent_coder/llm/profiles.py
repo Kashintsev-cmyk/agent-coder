@@ -9,9 +9,9 @@ sampling-параметры вообще (работают вендорские 
 
 from __future__ import annotations
 
-from typing import Any, ClassVar
+from typing import Any
 
-MODEL_PROFILES: ClassVar[dict[str, dict[str, Any]]] = {
+MODEL_PROFILES: dict[str, dict[str, Any]] = {
     # DeepSeek: в thinking mode temperature/penalties игнорируются,
     # top_p зажат в 0.95-1.0. https://api-docs.deepseek.com/guides/thinking_mode
     "deepseek/deepseek-v4.1-flash": {
@@ -45,6 +45,17 @@ MODEL_PROFILES: ClassVar[dict[str, dict[str, Any]]] = {
 }
 
 
-def get_profile(model_id: str) -> dict[str, Any]:
-    """Профиль модели (копия; изменение не заденет глобальный словарь)."""
-    return dict(MODEL_PROFILES.get(model_id, {}))
+def get_profile(model_id: str) -> dict[str, Any] | None:
+    """Профиль модели или None, если модели нет в реестре.
+
+    Возвращаемое значение:
+    - dict (возможно пустой) — модель в MODEL_PROFILES, профиль
+      авторитетен для sampling-параметров. Пустой {} = не отправлять
+      sampling вообще (закрытые reasoning-модели: Claude 4.7+, GPT-5/6).
+    - None — модель вне реестра, вызывающий использует legacy-поведение
+      (явный temperature уходит как есть).
+
+    Возвращается копия: мутация не задевает глобальный MODEL_PROFILES.
+    """
+    profile = MODEL_PROFILES.get(model_id)
+    return dict(profile) if profile is not None else None
