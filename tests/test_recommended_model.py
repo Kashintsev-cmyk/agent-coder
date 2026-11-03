@@ -40,8 +40,12 @@ def test_audit_recommended_is_cheap_deepseek() -> None:
     # не v4-flash (timeout в audit-04).
     assert config.RECOMMENDED_MODEL_BY_MODE["audit"] == "deepseek/deepseek-v4.1-flash"
     # argon остаётся в FIT["audit"] — виден в UI как 🎯 audit.
-    assert "google/gemini-4-argon" in config.MODEL_MODE_FIT
-    assert "audit" in config.MODEL_MODE_FIT["google/gemini-4-argon"]
+    # 2026-11-03: Argon удалён из MODEL_IDS (210/1052 ₽, не использовался).
+    # Заменяем конкретную проверку на инвариант: audit-режим покрыт хотя бы
+    # одной моделью, и RECOMMENDED["audit"] ∈ MODEL_IDS ∩ FIT.
+    audit_fit = [m for m, modes in config.MODEL_MODE_FIT.items() if "audit" in modes]
+    assert audit_fit, "ни одна модель не подходит для audit"
+    assert config.RECOMMENDED_MODEL_BY_MODE["audit"] in audit_fit
 
 
 def test_apply_on_mode_change_sets_recommended() -> None:
@@ -95,9 +99,12 @@ def test_models_keyboard_marks_fit() -> None:
     assert any("🎯 act/plan/audit" in t for t in texts), (
         "нет пометки 🎯 act/plan/audit (deepseek-v4-flash)"
     )
-    assert any("🎯 audit" in t for t in texts), (
-        "нет пометки 🎯 audit (kimi, glm, r1, ...)"
-    )
+    # 2026-11-03: Argon (единственная audit-only модель) удалён из MODEL_IDS.
+    # Заменяем проверку «есть audit-only» на инвариант: audit-режим покрыт
+    # хотя бы одной моделью, и RECOMMENDED["audit"] ∈ MODEL_IDS ∩ FIT.
+    audit_models = [m for m, modes in config.MODEL_MODE_FIT.items() if "audit" in modes]
+    assert audit_models, "ни одна модель не подходит для audit"
+    assert config.RECOMMENDED_MODEL_BY_MODE["audit"] in audit_models
 
 
 def test_model_mode_fit_valid() -> None:

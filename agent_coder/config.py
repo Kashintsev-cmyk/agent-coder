@@ -85,7 +85,6 @@ class Config:
         "deepseek/deepseek-v4-flash",  # DEFAULT (act/plan)
         "deepseek/deepseek-v4.1-flash",  # PATCH winner
         "anthropic/claude-haiku-5.5",  # AUDIT/VERIFY/SUMMARY winner
-        "google/gemini-4-argon",  # AUDIT second-pass (security)
         # 2026-11-03: дешёвые fallback'и (probe OK, ≤ Haiku + 10%).
         # В конце списка = не переопределяют RECOMMENDED (winner'ы выше).
         "qwen/qwen3.7-flash",  # 1M ctx; reasoning (515 hidden tokens на probe)
@@ -130,7 +129,6 @@ class Config:
         # RECOMMENDED_MODEL_BY_MODE["audit"] (инвариант ловится _validate_config).
         "deepseek/deepseek-v4.1-flash": ["act", "plan", "audit"],
         "anthropic/claude-haiku-5.5": ["act", "audit"],
-        "google/gemini-4-argon": ["audit"],
         # 2026-11-03: дешёвые fallback'и. plan/act — при 429/timeout у winner'ов;
         # RECOMMENDED берёт первую подходящую в MODEL_IDS, эти в хвосте — не сдвинут.
         "qwen/qwen3.7-flash": ["plan", "act"],
