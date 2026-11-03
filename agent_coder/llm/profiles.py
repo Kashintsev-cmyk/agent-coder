@@ -26,7 +26,9 @@ MODEL_PROFILES: dict[str, dict[str, Any]] = {
     },
     # GLM-5.3-Flash: thinking.type поддерживает только enabled (не отключить).
     # https://docs.z.ai/guides/vlm/glm-5.3-flash  (Recommended Settings)
-    # Если OpenRouter отклонит effort "max" - заменить на "high".
+    # Probe 2026-11-04: RouterAI принимает reasoning_effort="max"
+    # (13 in / 263 out, 0.0156₽). Предупреждение "может отклонить" —
+    # не подтвердилось; менять на "high" без нового probe не нужно.
     "z-ai/glm-5.3-flash": {
         "temperature": 1.0,
         "top_p": 0.95,
