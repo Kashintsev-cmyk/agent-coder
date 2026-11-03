@@ -195,7 +195,7 @@ class Config:
     # B11.0: 60K при context=1M deepseek — 6% использования, compress
     # каждые ~7 итераций. 150K: 2.5x больше контекста, цена ~2.5x,
     # compress в 2.5x реже. env MAX_HISTORY_TOKENS для override.
-    MAX_HISTORY_TOKENS: int = _env_int("MAX_HISTORY_TOKENS", "150000")
+    MAX_HISTORY_TOKENS: int = _env_int("MAX_HISTORY_TOKENS", "90000")
 
     # Дефолтная температура генерации (0.0–2.0). Для кода — 0.2.
     TEMPERATURE: float = _env_float("TEMPERATURE", "0.2")
