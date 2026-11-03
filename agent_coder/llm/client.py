@@ -72,9 +72,13 @@ def _build_request_kwargs(
     profile = get_profile(model)
     if profile is not None:
         # Модель в реестре: sampling-параметры — только из профиля.
-        for key in ("temperature", "top_p", "top_k"):
+        # top_k — не параметр OpenAI SDK (TypeError: unexpected keyword),
+        # но RouterAI принимает его через extra_body (probe 2026-11-04).
+        for key in ("temperature", "top_p"):
             if key in profile:
                 kwargs[key] = profile[key]
+        if "top_k" in profile:
+            kwargs.setdefault("extra_body", {})["top_k"] = profile["top_k"]
     elif temperature is not None:
         # Модель вне реестра: legacy-поведение.
         kwargs["temperature"] = temperature

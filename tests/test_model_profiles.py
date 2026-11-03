@@ -108,7 +108,9 @@ class TestQwen3_7Flash:
         kwargs = _build_request_kwargs("qwen/qwen3.7-flash", MSG, temperature=0.2)
         assert kwargs["temperature"] == 0.6
         assert kwargs["top_p"] == 0.95
-        assert kwargs["top_k"] == 20
+        # top_k — в extra_body, не в top-level (SDK отвергает, RouterAI — нет).
+        assert "top_k" not in kwargs
+        assert kwargs["extra_body"]["top_k"] == 20
 
 
 class TestGlm5_3Flash:
