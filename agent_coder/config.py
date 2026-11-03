@@ -229,9 +229,8 @@ class Config:
     # ci-template.yml, requirements-dev-base.in, .gitignore-base).
     # Используется check_project_standard и подсказками агенту в промте.
     # Путь намеренно абсолютный: агент работает из разных workspace'ов.
-    SHARED_DEV_DIR: str = os.getenv(
-        "SHARED_DEV_DIR",
-        "/home/botuser/bots/_shared-dev/project-template/",
+    SHARED_DEV_DIR: str = str(
+        Path(os.getenv("SHARED_DEV_DIR", "~/bots/_shared-dev/project-template/")).expanduser()
     )
     MAX_ITERATIONS: int = int(os.getenv("MAX_ITERATIONS", "200"))
     MAX_ITERATIONS_PLAN: int = int(os.getenv("MAX_ITERATIONS_PLAN", "100"))
