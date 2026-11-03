@@ -320,6 +320,21 @@ async def run_verify(
     res.counts = counts
     if not res.raw_text and not res.error:
         res.error = "модель не вернула ни текста, ни вердиктов"
+    if res.error:
+        # P0b: chat упал (TypeError/timeout/...) — фиксируем явной записью,
+        # чтобы analyze_verify видел битый прогон, а не "0 findings".
+        session.verify_results.append(
+            {
+                "run_id": res.run_id,
+                "ts": ts,
+                "model": model,
+                "text": res.error[:2000],
+                "status": "error",
+                "evidence": "",
+            }
+        )
+        counts["error"] = counts.get("error", 0) + 1
+        res.counts = counts
     elif not verdicts and res.raw_text:
         # B9.2c: модель вернула текст, но без валидных вердиктов —
         # сохраняем как unparsed для диагностики.

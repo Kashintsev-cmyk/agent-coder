@@ -356,3 +356,22 @@ async def test_verify_precheck_boundary_strict_gt(monkeypatch):
     res = await verify_mod.run_verify(client, _PreSession(), registry=_PreReg())
     assert res.budget_exceeded is False
     assert client.calls >= 1
+
+
+@pytest.mark.asyncio
+async def test_run_verify_chat_exception_appends_error_record():
+    """P0b: chat упал (TypeError от SDK/профиля) → verify_results[-1].status='error'."""
+
+    class _BrokenClient:
+        async def chat(self, messages, **kwargs):
+            raise TypeError("unexpected keyword argument 'top_k'")
+
+    s = _session()
+    res = await run_verify(client=_BrokenClient(), session=s)
+    assert res.error.startswith("LLM:")
+    assert not res.ok
+    assert s.verify_results, "error-прогон должен попасть в историю"
+    last = s.verify_results[-1]
+    assert last["status"] == "error"
+    assert "top_k" in last["text"]
+    assert res.counts.get("error") == 1

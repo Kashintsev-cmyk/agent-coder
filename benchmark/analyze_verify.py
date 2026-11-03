@@ -20,7 +20,7 @@ def match_all(gold_items, results, threshold=0.4):
     """Greedy unique bipartite match by text similarity."""
     candidates = []
     for i, r in enumerate(results):
-        if r.get("status") == "unparsed":
+        if r.get("status") in ("unparsed", "error"):
             continue
         for j, g in enumerate(gold_items):
             sc = text_sim(g["finding_text"], r.get("text"))
@@ -73,10 +73,11 @@ def evaluate(results, gold_items):
     matches = match_all(gold_items, results)
     matched_idx = {i for i, _, _ in matches}
     unparsed = sum(1 for r in results if r.get("status") == "unparsed")
+    errors = sum(1 for r in results if r.get("status") == "error")
     unmatched = sum(
         1
         for i, r in enumerate(results)
-        if r.get("status") != "unparsed" and i not in matched_idx
+        if r.get("status") not in ("unparsed", "error") and i not in matched_idx
     )
     pairs = []
     nonbinary = 0
@@ -101,6 +102,7 @@ def evaluate(results, gold_items):
         "n_matched": len(matches),
         "n_pairs": len(pairs),
         "unparsed": unparsed,
+        "errors": errors,
         "unmatched": unmatched,
         "nonbinary": nonbinary,
         "matches": match_log,
