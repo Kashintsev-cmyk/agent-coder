@@ -228,34 +228,39 @@ RouterAI и кэшируются на диск.
 
 Дефолтный набор:
 
-| Модель | ID | Контекст | ₽ in / out (за 1M) | Бейджи |
-|---|---|---|---|---|
-| **DeepSeek V4.1 Flash** *(default)* | `deepseek/deepseek-v4.1-flash` | 1 048 576 | ~11 / ~22 | 👁⚙🔧 |
-| GLM 5.3 Flash | `z-ai/glm-5.3-flash` | 1 048 576 | ~5 / ~17 | 👁⚙🔧 |
-| Qwen3 Coder Next | `qwen/qwen3-coder-next` | 262 144 | ~13 / ~87 | 🔧 |
-| GLM 5.3 | `z-ai/glm-5.3` | 1 048 576 | ~54 / ~164 | ⚙🔧 |
-| Kimi K2.7 Code | `moonshotai/kimi-k2.7-code` | 262 144 | ~78 / ~327 | 👁🧠🔧 |
-| DeepSeek R1 | `deepseek/deepseek-r1` | 64 000 | ~76 / ~272 | 🧠🔧 |
-| GPT-6.1 Sol | `openai/gpt-6.1-sol` | 1 050 000 | ~218 / ~1089 | 👁🌐⚙🔧📏 |
-| Claude Sonnet 5.5 | `anthropic/claude-sonnet-5.5` | 1 000 000 | ~218 / ~1089 | 👁🌐⚙🔧📏 |
+| Модель | ID | Роль | Контекст | ₽ in / out (за 1M) | Бейджи |
+|---|---|---|---|---|---|
+| **DeepSeek V4.1 Flash** *(default)* | `deepseek/deepseek-v4.1-flash` | default, patch, audit fallback | 1 048 576 | 3.82 / 15.28 | 👁⚙🔧 |
+| Claude Haiku 5.5 | `anthropic/claude-haiku-5.5` | verify, summary, act, audit | 1 000 000 | 10.53 / 52.63 | 👁⚙🔧📏 |
+| Qwen 3.7 Flash | `qwen/qwen3.7-flash` | plan / act fallback | 1 000 000 | 3.16 / 13.68 | ⚙🔧 |
+| GLM 5.3 Flash | `z-ai/glm-5.3-flash` | plan / act fallback | 1 048 576 | 3.62 / 9.80 | 👁⚙🔧 |
+| Mistral Nemo | `mistralai/mistral-nemo` | ручной `/model` (дешёвый выход) | 131 072 | 1.74 / 2.27 | — |
+| GPT-6 Luna | `openai/gpt-6-luna` | plan / act fallback (drop-in Haiku) | 1 050 000 | 10.53 / 52.63 | 🔧 |
 
 **Бейджи:** 👁 vision · 🌐 встроенный web search · 🧠 reasoning · ⚙ reasoning
 с градацией · 🔧 tools · 📏 verbosity.
 
-Цены — ориентир на момент публикации. Актуальные всегда подтягиваются из API.
+Цены — снимок 2026-11-03 (синхронизированы с `/api/v1/models`). Живые цены всегда подтягиваются из API и кэшируются; `tests/test_fallback_prices.py` следит, что у моделей из `MODEL_IDS` в fallback ненулевые цены и context.
 
-Последние две модели (`openai/gpt-6.1-sol`, `anthropic/claude-sonnet-5.5`)
-входят в `CURATED_MODEL_IDS`, но **не входят в группы роутера** — доступны
-только ручным выбором (`/model`).
+Модели из `MODEL_IDS` доступны в UI (`/model`). Модели вне `MODEL_IDS`
+(например, `google/gemini-4-argon`, `anthropic/claude-sonnet-5.5`) остаются
+в `_FALLBACK_CATALOG` и доступны через `/model` вручную — удобно для
+разовых задач (security second-pass и т.п.).
 
 ### Роутер моделей
 
-Две группы моделей (порядок = приоритет):
+Рекомендованная модель по режиму — `RECOMMENDED_MODEL_BY_MODE` (выводится
+автоматически из `MODEL_IDS` + `MODEL_MODE_FIT`, с override для `act`/`audit`):
 
-| Группа | Когда используется | Цепочка |
+| Режим | Рекомендованная модель | Почему |
 |---|---|---|
-| `CODING_MODEL_IDS` | `act` / `plan`, когда модель не выбрана вручную | `deepseek/deepseek-v4.1-flash` → `z-ai/glm-5.3-flash` → `qwen/qwen3-coder-next` |
-| `AUDIT_MODEL_IDS` | `audit`, когда модель не выбрана вручную | `z-ai/glm-5.3` → `moonshotai/kimi-k2.7-code` → `deepseek/deepseek-r1` |
+| `plan` | `deepseek/deepseek-v4.1-flash` | дешёвый универсал, 1M ctx |
+| `act` | `anthropic/claude-haiku-5.5` | benchmark 6×3 (2026-10-24): best bootstrap signal |
+| `audit` | `anthropic/claude-haiku-5.5` | weather-bot benchmark (2026-11-03): находит BLOCKER, ×2.6 дешевле v4.1 |
+
+Fallback-цепочка при 429/timeout — модели из `MODEL_IDS`, у которых
+`mode ∈ MODEL_MODE_FIT[mid]` (порядок в `MODEL_IDS` = приоритет):
+`v4.1-flash` → `qwen3.7-flash` / `glm-5.3-flash` / `gpt-6-luna`.
 
 Логика (вариант «б» — ручной выбор приоритетен):
 
@@ -266,8 +271,8 @@ RouterAI и кэшируются на диск.
 - **Проверка контекста:** перед выбором роутер сверяет оценку входных токенов
   с `context_limit * CONTEXT_FILL_RATIO` (по умолчанию `0.8`). Модели, в
   которые задача не влезает, пропускаются — иначе большой diff обрежется или
-  провайдер вернёт ошибку. Поэтому `deepseek/deepseek-r1` (64k) стоит
-  последним в audit-цепочке и получает только небольшие задачи.
+  провайдер вернёт ошибку. Модели с небольшим ctx (например, `mistralai/mistral-nemo`,
+  131k) получают только небольшие задачи, если выбраны вручную.
 - **Fallback при 429 / timeout:** клиент сначала сам делает retry с backoff,
   затем роутер переключается на следующую **влезающую** модель цепочки и
   повторяет итерацию. Если цепочка исчерпана — задача завершается с ошибкой.
@@ -295,12 +300,9 @@ RouterAI и кэшируются на диск.
 | Переменная | По умолчанию | Описание |
 |---|---|---|
 | `MODEL_MAIN` | `deepseek/deepseek-v4.1-flash` | Модель для новых сессий |
-| `MODEL_FAST` | `MODEL_MAIN` | Зарезервировано |
-| `CURATED_MODEL_IDS` | 8 id через запятую | Список для UI |
-| `DEFAULT_MODEL_ID` | `deepseek/deepseek-v4.1-flash` | Должна входить в `CURATED_MODEL_IDS` |
-| `CODING_MODEL_IDS` | 3 id | Группа coding: дефолт `act`/`plan` + fallback |
-| `AUDIT_MODEL_IDS` | 3 id | Группа audit: дефолт `audit` + fallback |
-| `MODEL_ROUTER_ENABLED` | `1` | Подставлять модель группы, если не выбрана вручную |
+| `DEFAULT_MODEL_ID` | `deepseek/deepseek-v4.1-flash` | Должна входить в `MODEL_IDS` |
+| `CURATED_MODEL_IDS` | пусто (= 6 моделей из `config.py`) | Список для UI; пусто — использовать дефолт `MODEL_IDS` |
+| `MODEL_ROUTER_ENABLED` | `1` | Подставлять recommended-модель по режиму, если не выбрана вручную |
 | `CONTEXT_FILL_RATIO` | `0.8` | Доля `context_limit` под входные токены (0.1–1.0) |
 
 **Каталог моделей**
@@ -315,8 +317,11 @@ RouterAI и кэшируются на диск.
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
-| `MAX_HISTORY_TOKENS` | `60000` | Порог = `min(model.context * 0.6, MAX_HISTORY_TOKENS)` |
-| `SUMMARY_MODEL` | `z-ai/glm-5.3-flash` | Модель для резюме |
+| `MAX_HISTORY_TOKENS` | `90000` | Порог = `min(model.context * 0.6, MAX_HISTORY_TOKENS)` |
+| `SUMMARY_MODEL` | `anthropic/claude-haiku-5.5` | Модель для резюме старых сообщений |
+| `VERIFY_MODEL_ID` | `anthropic/claude-haiku-5.5` | Модель для `/verify` |
+| `PATCH_MODEL_ID` | `deepseek/deepseek-v4.1-flash` | Модель для `/patch` |
+| `MAX_COST_VERIFY` | `50.0` | Отдельный бюджет verify, ₽ |
 | `MEDIA_RETENTION_DAYS` | `30` | Retention медиа-вложений, дней |
 
 **Агент и окружение**
