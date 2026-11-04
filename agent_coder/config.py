@@ -153,6 +153,13 @@ class Config:
     # by-design (README-проверка). Coverage 55% < 90% — рецепт «второй
     # прогон на непрочитанные файлы» (~16-18₽ за 90%, ×1.7 дешевле v4.1).
     # v4.1-flash остаётся в MODEL_MODE_FIT["audit"] для широкого MINOR-аудита.
+    #
+    # GLOBAL: применяется ко ВСЕМ проектам (agent_coder, na_shtile,
+    # weather-bot, futures_3.0) — один агент, любой проект. Обоснование
+    # выше — из benchmark weather-bot (2026-11-03, `fccd8f8`).
+    # TODO: re-verify on na_shtile/futures (пока свой benchmark не гонялся).
+    # Если per-project RECOMMENDED понадобится — выносить в отдельную
+    # структуру с benchmark'ом, не менять этот словарь точечно.
     RECOMMENDED_MODEL_BY_MODE["audit"] = "anthropic/claude-haiku-5.5"
     # ACT winner (benchmark 6×3, 2026-10-24): haiku-5.5 — best
     # bootstrap signal (2/6 hard pass, 0 hard fails, fastest).
