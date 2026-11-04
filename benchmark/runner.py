@@ -39,6 +39,16 @@ def _git(*args: str, cwd: Path = ROOT) -> str:
     return subprocess.check_output(["git", *args], cwd=cwd, text=True).strip()
 
 
+def _project_for(task: dict, cli_project: str | None) -> str | None:
+    """B-provenance: приоритет CLI > task['project'] > None.
+
+    Логическое имя проекта (na_shtile, weather-bot, agent_coder) пишется
+    в results.json для последующей дизамбигуации. Физический путь worktree
+    (git.base / workspace) эфемерен и не заменяет project.
+    """
+    return cli_project or task.get("project") or None
+
+
 def _run(cmd: list[str], cwd: Path, output: Path) -> int:
     started = time.monotonic()
     with output.open("w", encoding="utf-8") as stream:
@@ -547,6 +557,14 @@ def main() -> int:
     parser.add_argument("--tasks", default=str(Path(__file__).with_name("tasks.json")))
     parser.add_argument("--models", nargs="+", default=DEFAULT_MODELS)
     parser.add_argument("--output", default="benchmark/results")
+    parser.add_argument(
+        "--project",
+        default=None,
+        help=(
+            "Логическое имя проекта (na_shtile, weather-bot, agent_coder). "
+            "Пишется в results.json для provenance (Фаза B, дизамбигуация)."
+        ),
+    )
     parser.add_argument("--max-iterations", type=int, default=12)
     parser.add_argument(
         "--case-timeout",
@@ -597,18 +615,19 @@ def main() -> int:
                 f"[{len(results) + 1}/{plan['count']}] {task['id']} / {model}",
                 flush=True,
             )
-            results.append(
-                run_case(
-                    task,
-                    model,
-                    run_dir,
-                    base,
-                    args.max_iterations,
-                    case_timeout=args.case_timeout or None,
-                    keep_worktree=args.keep_worktree,
-                    max_cost=args.max_cost,
-                )
+            _res = run_case(
+                task,
+                model,
+                run_dir,
+                base,
+                args.max_iterations,
+                case_timeout=args.case_timeout or None,
+                keep_worktree=args.keep_worktree,
+                max_cost=args.max_cost,
             )
+            if isinstance(_res, dict):
+                _res.setdefault("project", _project_for(task, args.project))
+            results.append(_res)
             (run_dir / "results.json").write_text(
                 json.dumps(results, ensure_ascii=False, indent=2), encoding="utf-8"
             )
