@@ -11,7 +11,7 @@ from agent_coder.agent.session import Session
 from agent_coder.agent.verify import Mode, run_verify
 from agent_coder.llm.client import LLMClient
 
-GOLD_PATH = Path("benchmark/gold_verify_na_shtile.json")
+GOLD_PATH = Path("benchmark/projects/na_shtile/gold_verify.json")
 OUT_DIR = Path("benchmark/verify_results")
 NA_SHTILE = "/home/botuser/bots/na_shtile"
 MODELS = ["anthropic/claude-haiku-5.5", "qwen/qwen3.7-flash"]

@@ -7,7 +7,7 @@ import random
 import sys
 from pathlib import Path
 
-GOLD = Path("benchmark/gold_verify_na_shtile.json")
+GOLD = Path("benchmark/projects/na_shtile/gold_verify.json")
 RES = Path("benchmark/verify_results")
 LABELS = ("confirmed", "rejected")
 

@@ -6,7 +6,7 @@ import re
 import sys
 from pathlib import Path
 
-GOLD = Path("benchmark/gold_verify_na_shtile.json")
+GOLD = Path("benchmark/projects/na_shtile/gold_verify.json")
 NA = Path("/home/botuser/bots/na_shtile")
 
 
