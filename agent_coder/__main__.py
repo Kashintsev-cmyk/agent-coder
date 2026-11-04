@@ -23,6 +23,11 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("task", nargs="?", help="Задача. Если не указана — REPL")
     p.add_argument("--cwd", default=config.DEFAULT_WORKSPACE, help="Рабочая директория")
     p.add_argument(
+        "--project",
+        default="",
+        help="Логическое имя проекта (provenance в session.json, B2)",
+    )
+    p.add_argument(
         "--model",
         default=None,
         help="Модель RouterAI (по умолчанию — config.DEFAULT_MODEL_ID). "
@@ -631,6 +636,7 @@ def main() -> int:
                 model=args.model or config.DEFAULT_MODEL_ID,
                 model_manual=args.model is not None,
                 mode=mode,
+                project=args.project,
             )
         else:
             ui.print_info(f"Продолжаем сессию {session.id}: {session.title}")
@@ -641,6 +647,7 @@ def main() -> int:
             model=args.model or config.DEFAULT_MODEL_ID,
             model_manual=args.model is not None,
             mode=mode,
+            project=args.project,
         )
 
     if args.verify:

@@ -66,6 +66,9 @@ class Session:
     workspace: str
     model: str
     mode: Mode
+    # B2 provenance: логическое имя проекта (na_shtile, weather-bot,
+    # agent_coder). Пусто = неизвестно (старые сессии / CLI без --project).
+    project: str = ""
     title: str = ""
     reasoning_effort: str = DEFAULT_REASONING
     web_search: bool = False
@@ -118,12 +121,14 @@ class Session:
         title: str = "",
         web_search: bool = False,
         model_manual: bool = False,
+        project: str = "",
     ) -> Session:
         return cls(
             id=uuid.uuid4().hex[:8],
             workspace=workspace,
             model=model,
             mode=mode,
+            project=project,
             title=title,
             web_search=web_search,
             model_manual=model_manual,
@@ -290,6 +295,8 @@ class Session:
             data["patch_results"] = []
         if "audit_scopes" not in data:
             data["audit_scopes"] = []
+        if "project" not in data:
+            data["project"] = ""
 
         # Разовая чистка: если в истории есть DSML-мусор (старые версии
         # кода не фильтровали) — убираем при загрузке.

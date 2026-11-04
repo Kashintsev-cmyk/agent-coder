@@ -354,3 +354,35 @@ def test_sanitize_tool_calls_neutral_prefix() -> None:
     assert stub["role"] == "tool"
     assert stub["content"].startswith("Прервано")
     assert not stub["content"].lstrip().startswith("Ошибка")
+
+
+class TestProjectField:
+    """B2 provenance: project — логическое имя проекта (na_shtile, weather-bot...)."""
+
+    def test_default_empty(self):
+        s = Session.new(workspace="/tmp", model="m", mode=Mode.ACT)
+        assert s.project == ""
+
+    def test_new_with_project(self):
+        s = Session.new(workspace="/tmp", model="m", mode=Mode.ACT, project="na_shtile")
+        assert s.project == "na_shtile"
+
+    def test_roundtrip(self):
+        s = Session.new(
+            workspace="/tmp", model="m", mode=Mode.ACT, project="weather-bot"
+        )
+        s2 = Session.from_dict(s.to_dict())
+        assert s2.project == "weather-bot"
+
+    def test_backward_compat_old_session_without_project(self):
+        s = Session.new(workspace="/tmp", model="m", mode=Mode.ACT, project="x")
+        d = s.to_dict()
+        d.pop("project", None)
+        s2 = Session.from_dict(d)
+        assert s2.project == ""
+
+    def test_to_dict_includes_project(self):
+        s = Session.new(
+            workspace="/tmp", model="m", mode=Mode.ACT, project="agent_coder"
+        )
+        assert s.to_dict()["project"] == "agent_coder"

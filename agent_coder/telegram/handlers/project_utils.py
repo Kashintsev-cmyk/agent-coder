@@ -91,6 +91,7 @@ async def _create_session(
         workspace=str(workspace),
         model=initial_model,
         mode=mode,
+        project=workspace.name,
     )
     session.title = title or f"Новая сессия в {workspace.name}"
     session.save()
