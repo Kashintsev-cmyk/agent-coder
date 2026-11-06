@@ -213,7 +213,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 | `search` | Поиск через `ripgrep` (до 200 совпадений, таймаут 60 с) | нет |
 | `write_file` | Создать / перезаписать файл | нет |
 | `edit_file` | Точечная замена `old_string` → `new_string` | нет |
-| `run_command` | Shell в workspace. Whitelist read-only + pipe — без вопросов; safe `sed -n`/`awk`/`rg`/`diff` и контрольные суммы (`md5sum`/`sha256sum`) в pipe — тоже; остальное (`rm`, `kill`, `sudo`, `env`, `;`) — через approval. В AUDIT c `--scope` пути чтения ограничены областью аудита. Таймаут 300 с | по команде |
+| `run_command` | Shell в workspace. Whitelist read-only + pipe — без вопросов; safe `sed -n`/`awk`/`rg`/`diff` в pipe — тоже; read-only группы: контрольные суммы (`md5sum`/`sha1/224/256/384/512sum`/`b2sum`/`cksum`), система (`lscpu`/`lsmem`/`lsmod`/`lspci`/`lsusb`), процессы (`pidof`), текст (`strings`/`paste`/`fold`), утилиты (`whereis`/`type`/`basename`/`dirname`); `git diff`/`blame` — **заблокированы** (выводят содержимое, для diff есть tool `git_diff`); остальное (`rm`, `kill`, `sudo`, `env`, `;`) — через approval. В AUDIT c `--scope` пути чтения ограничены областью аудита. Таймаут 300 с | по команде |
 | `run_checks` | `ruff check --no-cache .` + `pytest -p no:cacheprovider -q` — без кэш-файлов в проекте | нет |
 | `check_project_standard` | Проверка проекта на соответствие стандарту (scaffold: pyproject, AGENTS.md, CI, tests) | нет |
 | `search_history` | Поиск по истории прошлых сессий | нет |
@@ -378,6 +378,12 @@ Fallback-цепочка при 429/timeout — модели из `MODEL_IDS`, у
 | Переменная | По умолчанию | Описание |
 |---|---|---|
 | `GITHUB_TOKEN` | — | Classic PAT со scope `repo` (для `/ghnew`) |
+| `MAX_AUTO_CONTINUE` | `3` | Авто-«продолжи», если агент встал на лимите, а задача не завершена |
+| `MAX_CONSECUTIVE_ERRORS` | `5` | Watchdog: стоп после N подряд tool-результатов с «Ошибка» |
+| `MAX_ITERATIONS_NO_PROGRESS` | `10` | Стоп, если N итераций без успешной мутации (анти-залип) |
+| `PATCH_REASONING_EFFORT` | `low` | Reasoning-уровень для `/patch` (экономия токенов) |
+| `SESSIONS_DIR` | `<base>/sessions` | Каталог сессий (state, история, медиа) |
+| `WORK_STATE_DEDUP` | `1` | Дедуп findings по «файл:строка» в work-state (0 — выкл) |
 
 ## Telegram-бот
 
