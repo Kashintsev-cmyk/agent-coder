@@ -49,7 +49,6 @@ systemd: `agent-coder-bot.service` (пользователь `botuser`).
 | `/patch [model]` | Починить confirmed findings (дефолт deepseek, LLM) |
 | `/cost` | Стоимость и число запросов сессии |
 | `/balance` | Баланс RouterAI |
-| `/chat` | Быстрый переход в CHAT-режим |
 
 ### Диагностика и аудит (без LLM)
 
@@ -91,6 +90,8 @@ systemd: `agent-coder-bot.service` (пользователь `botuser`).
 | `chat` | **без инструментов** | обсуждение |
 
 CHAT — без tools: с урезанным набором DeepSeek уходил в нативный DSML-формат.
+
+CHAT-режим переключается через `/mode chat` (отдельной команды `/chat` нет).
 
 ## Approval
 

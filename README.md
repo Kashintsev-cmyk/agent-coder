@@ -213,8 +213,11 @@ remote-helper'ов, с точным учётом стоимости каждой
 | `search` | Поиск через `ripgrep` (до 200 совпадений, таймаут 60 с) | нет |
 | `write_file` | Создать / перезаписать файл | нет |
 | `edit_file` | Точечная замена `old_string` → `new_string` | нет |
-| `run_command` | Shell в workspace. Whitelist read-only + pipe — без вопросов; safe `sed -n`/`awk`/`rg`/`diff` в pipe — тоже; остальное (`rm`, `kill`, `sudo`, `env`, `;`) — через approval. В AUDIT c `--scope` пути чтения ограничены областью аудита. Таймаут 300 с | по команде |
+| `run_command` | Shell в workspace. Whitelist read-only + pipe — без вопросов; safe `sed -n`/`awk`/`rg`/`diff` и контрольные суммы (`md5sum`/`sha256sum`) в pipe — тоже; остальное (`rm`, `kill`, `sudo`, `env`, `;`) — через approval. В AUDIT c `--scope` пути чтения ограничены областью аудита. Таймаут 300 с | по команде |
 | `run_checks` | `ruff check --no-cache .` + `pytest -p no:cacheprovider -q` — без кэш-файлов в проекте | нет |
+| `check_project_standard` | Проверка проекта на соответствие стандарту (scaffold: pyproject, AGENTS.md, CI, tests) | нет |
+| `search_history` | Поиск по истории прошлых сессий | нет |
+| `update_work_state` | Обновление work-state проекта (TODO/deferred, вне git) | нет |
 | `git_status` | `git status --porcelain --branch` | нет |
 | `git_diff` | Diff изменений | нет |
 | `git_log` | Последние N коммитов (1–50) | нет |
@@ -510,6 +513,15 @@ CI (GitHub Actions) прогоняет `ruff check .`, `mypy agent_coder tests` 
 - systemd hardening даёт боту право писать в `~/bots` и `~/projects`
   (для `/new`, `/clone`, `/ghnew`). В пределах одного пользователя
   это приемлемо.
+
+## Roadmap / отложено
+
+- **`mypy` для `telegram/handlers/**`** — ~150 `union-attr` от aiogram 3.x
+  (`Message | InaccessibleMessage | None`). Чинится хелпером `_msg(query)`;
+  2–3 часа рефакторинга без функциональной пользы. Отложено.
+- **`Decimal` для token-cost** — float не гарантирует точность; переход —
+  при появлении задачи, где расхождение критично.
+- **PDF-отчёты** — пока только Markdown (по запросу — pandoc/weasyprint).
 
 ## Лицензия
 
