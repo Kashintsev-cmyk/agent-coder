@@ -87,7 +87,7 @@ systemd: `agent-coder-bot.service` (пользователь `botuser`).
 |---|---|---|
 | `plan` | read-only + safe `run_command` | планирование |
 | `act` | все инструменты | правки, коммиты |
-| `audit` | read-only, промпт аудитора, Markdown-отчёт | аудит проекта |
+| `audit` | read-only, промпт аудитора, `run_command` ограничен `--scope`, Markdown-отчёт | аудит проекта |
 | `chat` | **без инструментов** | обсуждение |
 
 CHAT — без tools: с урезанным набором DeepSeek уходил в нативный DSML-формат.

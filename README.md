@@ -42,7 +42,9 @@ remote-helper'ов, с точным учётом стоимости каждой
 - SSH-ключ (для clone/push) + `GITHUB_TOKEN` (для создания через API)
 
 **Безопасность**
-- Whitelist read-only команд; pipe без `awk`/`sed`/`env`/`printenv`
+- Whitelist read-only команд; в pipe также safe `sed -n`/`awk`/`rg`/
+  `diff` (только печать: без `-i`, `system()`, getline, redirect);
+  `env`/`printenv` и любые записи — нет
 - Маскирование секретов (`ROUTERAI_API_KEY`, `TELEGRAM_TOKEN`, `sk-*`,
   `Bearer *`) в логах и выводе команд
 - Path traversal защищён в `search`, `read_file`, `write_file`,
@@ -211,7 +213,8 @@ remote-helper'ов, с точным учётом стоимости каждой
 | `search` | Поиск через `ripgrep` (до 200 совпадений, таймаут 60 с) | нет |
 | `write_file` | Создать / перезаписать файл | нет |
 | `edit_file` | Точечная замена `old_string` → `new_string` | нет |
-| `run_command` | Shell в workspace. Whitelist read-only + pipe — без вопросов; остальное (`rm`, `kill`, `sudo`, `awk`, `sed`, `env`, `;`) — через approval. Таймаут 300 с | по команде |
+| `run_command` | Shell в workspace. Whitelist read-only + pipe — без вопросов; safe `sed -n`/`awk`/`rg`/`diff` в pipe — тоже; остальное (`rm`, `kill`, `sudo`, `env`, `;`) — через approval. В AUDIT c `--scope` пути чтения ограничены областью аудита. Таймаут 300 с | по команде |
+| `run_checks` | `ruff check --no-cache .` + `pytest -p no:cacheprovider -q` — без кэш-файлов в проекте | нет |
 | `git_status` | `git status --porcelain --branch` | нет |
 | `git_diff` | Diff изменений | нет |
 | `git_log` | Последние N коммитов (1–50) | нет |
