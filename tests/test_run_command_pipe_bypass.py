@@ -23,3 +23,24 @@ def test_pipe_filters_still_allowed() -> None:
     assert _is_safe_command({"command": "cat file.txt | sort | uniq -c"})
     assert _is_safe_command({"command": "docker ps | grep web"})
     assert _is_safe_command({"command": "systemctl status bot | grep active"})
+
+
+def test_pipe_bypass_b92g5_output_flags() -> None:
+    """B9.2g.5: запись на диск через флаги в pipe — блок."""
+    from agent_coder.tools.run_command import _is_safe_command
+
+    assert not _is_safe_command({"command": "git log --output=/tmp/x -2 | cat"})
+    assert not _is_safe_command({"command": "git archive -o /tmp/z.tar HEAD | cat"})
+    assert not _is_safe_command({"command": "git bundle create /tmp/b.bundle HEAD | cat"})
+    assert not _is_safe_command({"command": "git format-patch -o /tmp/p HEAD | cat"})
+    assert not _is_safe_command({"command": "git fast-export --all --output=/tmp/e | cat"})
+    assert not _is_safe_command({"command": "find . -fprint /tmp/x | cat"})
+
+
+def test_pipe_bypass_b92g5_no_regression() -> None:
+    """B9.2g.5: легитимный -o не сломан (ps/grep — не запись)."""
+    from agent_coder.tools.run_command import _is_safe_command
+
+    assert _is_safe_command({"command": "ps -o pid,cmd -p 1 | cat"})
+    assert _is_safe_command({"command": "grep -o foo src/x.py | wc -l"})
+    assert _is_safe_command({"command": "git log --oneline | cat"})

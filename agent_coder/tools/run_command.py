@@ -273,7 +273,7 @@ _MUTATING_PIPE_PATTERNS = re.compile(
     r"|date\s+-s\b"
     r"|timedatectl\s+set-\w+"
     r"|nvidia-smi\s+-(?:pl|pm|lgc|ac|rac|am)\b"
-    r"|find\b[^\n;|&]*\s-(?:delete|exec(?:dir)?|ok(?:dir)?)\b"
+    r"|find\b[^\n;|&]*\s-(?:delete|exec(?:dir)?|ok(?:dir)?|fls|fprint0?|fprintf)\b"
     r"|sort\b[^\n;|&]*(?:\s-o\b|\s--output\b)"
     r"|git\s+(?:push|pull|fetch|commit|add|rm|mv|reset|checkout|"
     r"switch|rebase|merge|cherry-pick|stash|clean|gc|prune|"
@@ -348,6 +348,11 @@ def _is_safe_git_metadata(cmd: str) -> bool:
         r"(?:^|\s)(?:-p|--patch|-u|--full-diff|-U\d+|--unified)(?:\s|=|$)",
         cmd,
     ):
+        return False
+    # B9.2g.5 (BLOCKER): флаги записи в файл. `git log --output=/tmp/x`
+    # пишет на диск, оставаясь в SAFE_SUBCOMMANDS (log). `-o` запрещаем
+    # здесь же — для archive/bundle/format-patch/fast-export.
+    if re.search(r"(?:^|\s)(?:--output(?:=|\s)|-o\s+\S)", cmd):
         return False
     if ":" in cmd:
         return False
@@ -444,6 +449,31 @@ def _is_safe_git_metadata(cmd: str) -> bool:
     return False
 
 
+def _is_read_only_part(part: str) -> bool:
+    """Единый предикат read-only сегмента (B9.2g.5, шаг 2).
+
+    Одна логика на часть pipe: запрещённые символы, basename,
+    мутации, git-метаданные. Одиночная команда переедет сюда
+    после расширения аргументов (шаг 3-4) — тогда whitelist
+    перестанет разъезжаться между ветками.
+    """
+    if not part:
+        return False
+    # ; & ` $ < > ( ) { } и \n (\n — разделитель команд в shell,
+    # B9.2g.2: `ls | cat\nrm -rf X` шёл в shell).
+    if re.search(r"[;&`$<>(){}\n]", part):
+        return False
+    if not _ALLOWED_PIPES.match(part):
+        return False
+    if _MUTATING_PIPE_PATTERNS.match(part):
+        return False
+    # B9.2g.5: git в pipe — только read-only метаданные
+    # (git log --output=..., archive, bundle, format-patch, fast-export).
+    if part.startswith("git ") and not _is_safe_git_metadata(part):
+        return False
+    return True
+
+
 def _is_safe_command(args: dict[str, Any]) -> bool:
     """Проверяет, безопасна ли команда (whitelisted, без опасных символов)."""
     cmd = (args.get("command") or "").strip()
@@ -470,21 +500,8 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
         parts = _split_pipes_safe(cmd)
         if parts is None:
             return False
-        for part in parts:
-            if not part:
-                return False
-            if not _ALLOWED_PIPES.match(part):
-                return False
-            # B9.2g.2: мутирующие подкоманды (docker rm, systemctl restart,
-            # ip link set, date -s, sort -o, find -delete, ...) — reject.
-            if _MUTATING_PIPE_PATTERNS.match(part):
-                return False
-            # Внутри части запрещены: ; & ` $ < > ( ) { } и \n (B9.2g.2:
-            # `\n` — разделитель команд в shell, per-part regex его пропускал
-            # → `ls | cat\nrm -rf X` шёл в shell).
-            if re.search(r"[;&`$<>(){}\n]", part):
-                return False
-        return True
+        # B9.2g.5 (шаг 2): единый предикат на каждую часть.
+        return all(_is_read_only_part(part) for part in parts)
 
     # Одиночная команда
     if _FORBIDDEN.search(cmd):

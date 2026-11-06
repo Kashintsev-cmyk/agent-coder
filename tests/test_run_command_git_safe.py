@@ -214,3 +214,22 @@ def test_git_safe_pipe(cmd: str) -> None:
 )
 def test_git_unsafe_pipe_blocked(cmd: str) -> None:
     assert _cmd(cmd) is False
+
+
+# ---------- BLOCKED: запись в файл через флаги (B9.2g.5) ----------
+
+
+@pytest.mark.parametrize(
+    "cmd",
+    [
+        "git log --output=/tmp/x -2",
+        "git log --output=/tmp/x -2 | cat",
+        "git archive -o /tmp/z.tar HEAD | cat",
+        "git bundle create /tmp/b.bundle HEAD | cat",
+        "git format-patch -o /tmp/p HEAD | cat",
+        "git fast-export --all --output=/tmp/e | cat",
+        "find . -fprint /tmp/x | cat",
+    ],
+)
+def test_git_output_flag_blocked(cmd: str) -> None:
+    assert _cmd(cmd) is False
