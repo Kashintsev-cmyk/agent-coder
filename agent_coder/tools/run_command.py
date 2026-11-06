@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import re
+import shlex
 from typing import Any
 
 from agent_coder.shell_runner import run_shell
+from agent_coder.tools._scope import in_scope
 from agent_coder.tools.registry import Tool, ToolContext
 
 TIMEOUT_SEC = 300
@@ -567,6 +569,81 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
     return _is_read_only_part(cmd) or any(p.match(cmd) for p in _SAFE_PATTERNS)
 
 
+# --- B9.2h: scope-gate run_command (B11.3) ---
+# В AUDIT с заданными audit_scopes команды, читающие файлы, ограничены
+# областью аудита. Системные диагностики (df/ps/journalctl/docker ps/...)
+# в гейт-набор не входят и проходят как раньше.
+_SCOPE_ALL_PATH_CMDS = frozenset(
+    "cat head tail less more wc file stat strings nl xxd od hexdump tree".split()
+)
+_SCOPE_FIND_CMDS = frozenset({"find"})
+# grep/rg/sed/awk: первый не-флаговый арг — паттерн/программа, пути после.
+_SCOPE_ARGS_AFTER_FIRST = frozenset("grep egrep fgrep rg sed awk gawk".split())
+# Фрагменты программ (sed/awk), не пути: '{print $1}', 's/a/b/', 'x=1'...
+_PROG_FRAGMENT = re.compile(r"[{}$()|;&=]")
+
+
+def _gate_candidates(basename: str, tokens: list[str]) -> list[str] | None:
+    """Кандидаты-пути для гейта; None — команда вне гейт-набора."""
+    if basename in _SCOPE_ALL_PATH_CMDS:
+        return tokens[1:]
+    if basename in _SCOPE_FIND_CMDS:
+        return tokens[1:2]  # у find путь — первый аргумент
+    if basename in _SCOPE_ARGS_AFTER_FIRST:
+        non_flag = [
+            t for t in tokens[1:] if not t.startswith("-") and not t.isdigit()
+        ]
+        return non_flag[1:]  # [0] — паттерн/программа
+    return None
+
+
+def _scope_violation(cmd: str, scopes: list[str]) -> str | None:
+    """Текст ошибки, если cmd читает пути вне scopes; иначе None.
+
+    Кавычки разбирает shlex; значения флагов (-n 5, -A 2, -c %s) и
+    фрагменты программ пропускаются. Глоб ('bot/*.py') проверяется по
+    каталогу-префиксу. Известные FP (safe-side): -e-паттерны grep и
+    второй -e-скрипт sed попадут в кандидаты.
+    """
+    parts = _split_pipes_safe(cmd) if "|" in cmd else [cmd]
+    if parts is None:
+        return f"Ошибка: не удалось разобрать команду для scope-гейта: {cmd!r}"
+    for part in parts:
+        try:
+            tokens = shlex.split(part)
+        except ValueError:
+            return f"Ошибка: не удалось разобрать часть команды: {part!r}"
+        if not tokens:
+            continue
+        cands = _gate_candidates(tokens[0].split("/")[-1].lower(), tokens)
+        if cands is None:
+            continue
+        for tok in cands:
+            if (
+                not tok
+                or tok.startswith("-")
+                or tok.startswith("%")
+                or tok.isdigit()
+                or _PROG_FRAGMENT.search(tok)
+            ):
+                continue
+            if tok.startswith("~"):
+                return (
+                    f"Ошибка: путь {tok!r} (вне workspace) "
+                    f"вне области аудита {scopes}"
+                )
+            rel = tok
+            globbed = re.split(r"[*?\[]", tok)[0]
+            if globbed != tok and globbed.endswith("/"):
+                rel = globbed  # каталог глоба: 'bot/*.py' -> 'bot/'
+            if not in_scope(rel, scopes):
+                return (
+                    f"Ошибка: путь {tok!r} вне области аудита {scopes}. "
+                    f"В AUDIT читай только файлы из указанных путей."
+                )
+    return None
+
+
 async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     command = args.get("command", "").strip()
     if not command:
@@ -580,6 +657,12 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
             "(rm -rf /, mkfs, dd на диск, fork bomb и т.п.). "
             "Выполни вручную, если уверен."
         )
+
+    # B9.2h: scope-gate — только при непустых audit_scopes (AUDIT)
+    if ctx.audit_scopes:
+        gate_err = _scope_violation(command, ctx.audit_scopes)
+        if gate_err:
+            return gate_err
 
     result = await run_shell(
         command,

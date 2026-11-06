@@ -346,7 +346,7 @@ def _collect_issues(base: Path) -> list[dict[str, Any]]:
             proc: subprocess.CompletedProcess[bytes] | None
             try:
                 proc = subprocess.run(
-                    [ruff, "format", "--check", "."],
+                    [ruff, "format", "--check", "--no-cache", "."],
                     cwd=base,
                     capture_output=True,
                     timeout=30,

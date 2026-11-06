@@ -11,6 +11,7 @@ from agent_coder.tools.git import (
 from agent_coder.tools.list_files import list_files_tool
 from agent_coder.tools.read_file import read_file_tool
 from agent_coder.tools.registry import Tool, ToolContext, ToolRegistry
+from agent_coder.tools.run_checks import run_checks_tool
 from agent_coder.tools.run_command import run_command_tool
 from agent_coder.tools.search import search_tool
 from agent_coder.tools.search_history import search_history_tool
@@ -26,6 +27,7 @@ def build_registry() -> ToolRegistry:
     registry.register(search_tool)
     registry.register(search_history_tool)
     registry.register(check_project_standard_tool)
+    registry.register(run_checks_tool)
     # Правка
     registry.register(write_file_tool)
     registry.register(edit_file_tool)
