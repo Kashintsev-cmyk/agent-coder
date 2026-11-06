@@ -199,9 +199,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 `tests/`, CI при наличии git remote. Возвращает JSON
 `{score, majors, minors, issues}`. Доступен в `plan`, `audit`, `act`.
 
-Шаблоны для копирования — в `SHARED_DEV_DIR` (default
-`/home/botuser/bots/_shared-dev/project-template/`):
-`pyproject-snippet.toml`, `ci-template.yml`, `requirements-dev-base.in`,
+Шаблоны для копирования — в пакете `agent_coder/templates/` (см. `agent-coder scaffold --project <name>`).toml`, `ci-template.yml`, `requirements-dev-base.in`,
 `.gitignore-base`, `AGENTS.md`.
 
 ## Инструменты
@@ -357,7 +355,6 @@ Fallback-цепочка при 429/timeout — модели из `MODEL_IDS`, у
 |---|---|---|
 | `DEFAULT_WORKSPACE` | `~/projects` | Workspace по умолчанию |
 | `AGENT_CODER_AGENTS_MD_MAX_BYTES` | `8192` | Лимит размера `AGENTS.md`, байт |
-| `SHARED_DEV_DIR` | `/home/botuser/bots/_shared-dev/project-template/` | Каталог шаблонов оформления проекта |
 | `MAX_ITERATIONS` | `50` | Fallback-лимит |
 | `MAX_ITERATIONS_PLAN` | `30` | Plan |
 | `MAX_ITERATIONS_ACT` | `50` | Act |

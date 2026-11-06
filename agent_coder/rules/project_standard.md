@@ -3,7 +3,8 @@
 Применимо: создание нового проекта с нуля, правка существующего, аудит.
 Файлы-шаблоны (pyproject-snippet.toml, ci-template.yml,
 requirements-dev-base.in, .gitignore-base) —
-в /home/botuser/bots/_shared-dev/project-template/.
+в пакете `agent_coder/templates/`.
+Создание проекта: `agent-coder scaffold --project <name>` (копирует всё сам).
 
 Если в workspace есть AGENTS.md — он главнее этого стандарта:
 в system prompt попадает только он, стандарт не подмешивается.
@@ -13,15 +14,15 @@ requirements-dev-base.in, .gitignore-base) —
 - pyproject.toml — [project], [tool.pytest.ini_options], [tool.ruff],
   [tool.ruff.lint], [tool.coverage.run]
 - requirements.in — прод-зависимости
-- requirements-dev.in — из _shared-dev/project-template/requirements-dev-base.in
+- requirements-dev.in — из agent_coder/templates/requirements-dev-base.in (scaffold копирует автоматически)
 - requirements-dev.txt — `uv pip compile --universal requirements-dev.in`
   (pip-tools архивирован; uv читает `requires-python` из pyproject.toml)
-- .gitignore — из _shared-dev/project-template/.gitignore-base
+- .gitignore — из agent_coder/templates/.gitignore-base (scaffold копирует автоматически)
 - tests/ — pytest
 - README.md — запуск, структура, известные ограничения
-- AGENTS.md — правила проекта (см. project-template/AGENTS.md)
+- AGENTS.md — правила проекта (см. agent_coder/templates/AGENTS.md)
 - .github/workflows/ci.yml — если есть git remote;
-  из _shared-dev/project-template/ci-template.yml
+  из agent_coder/templates/ci-template.yml (scaffold копирует автоматически)
 
 ## Обязательные секции pyproject.toml
 
@@ -57,11 +58,10 @@ requirements-dev-base.in, .gitignore-base) —
 ## Как применять
 
 Создание с нуля:
-1. Создать скелет по списку файлов выше.
-2. Скопировать шаблоны из _shared-dev/project-template/.
-3. Заменить плейсхолдеры: имя пакета в coverage, имя проекта.
-4. Сгенерировать lock: `uv pip compile --universal requirements-dev.in`.
-5. Перед финальным отчётом вызвать check_project_standard(workspace),
+1. `agent-coder scaffold --project <name>` — скелет + шаблоны + git init.
+2. Проверить/дозаполнить README.md (описание проекта).
+3. Сгенерировать lock: `uv pip compile --universal requirements-dev.in`.
+4. Перед финальным отчётом вызвать check_project_standard(workspace),
    устранить замечания, вызвать повторно — должно быть 0 отклонений.
 
 Аудит / приведение к стандарту:
@@ -73,5 +73,5 @@ requirements-dev-base.in, .gitignore-base) —
 
 ## Что НЕ требует этого стандарта
 
-- Проекты под /home/botuser/bots/_shared-dev/ — это сам источник.
+- Проекты под /home/botuser/bots/_shared-dev/ — отдельный репозиторий (legacy-справочник для weather-bot/futures_3.0). Стандарт agent-coder к нему не применяется.
 - Проекты с явным AGENTS.md, переопределяющим стандарт.

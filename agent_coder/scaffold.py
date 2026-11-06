@@ -197,6 +197,9 @@ def scaffold_project(
         "skipped": [],
     }
 
+    if base.exists() and not base.is_dir():
+        report["error"] = "target_is_file"
+        return report
     if base.exists() and any(base.iterdir()):
         report["error"] = "target_not_empty"
         return report
