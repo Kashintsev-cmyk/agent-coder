@@ -111,6 +111,19 @@ _MAX_FAIL_STREAK = 2
 _fail_streak: dict[str, int] = {}
 _fail_until: dict[str, float] = {}
 
+# Long-context тир: выше порога провайдер пересчитывает ВСЮ ставку за 1M
+# (не только превышение). Haiku 5.5: >100K input → 52.63/263 ₽/1M (×5 к
+# 10.53/52.63). В каталоге тиров нет (pricing — скаляры), поэтому порог
+# держим здесь. 90K = 0.9 × TIER_THRESHOLD — запас под эвристику
+# estimate_tokens (ratio провайдер/эвристика 0.31..1.85). См. 43ce75b.
+TIER_THRESHOLD_TOKENS = 100_000
+TIER_FACTOR = 5.0
+
+# Зазор между окном суммаризатора и порогом сжатия. При <1.25 old-блок
+# вплотную подходит к context сумаризатора: 400 context-length на живом
+# сжатии (после успешного config.validate()) — падение в рантайме.
+SUMMARY_MIN_CONTEXT_RATIO = 1.25
+
 
 @dataclass
 class CompressionResult:
@@ -127,6 +140,59 @@ class CompressionResult:
     tokens_before: int
     tokens_after: int
     summary_count: int
+    # Фактические деньги за summary-вызов (usage.cost провайдера). Отдельно
+    # от tokens_*: те — эвристика, эта — то, что списали.
+    cost: float = 0.0
+
+
+def model_price(model_id: str, tokens: int, *, output_tokens: int = 0) -> float:
+    """Стоимость запроса в ₽ с учётом long-context тира.
+
+    Порог — по СУММАРНОМУ input запроса, ставка пересчитывается ЦЕЛИКОМ
+    (не только превышение). Модели без записи в каталоге или с нулевой
+    ценой дают 0.0 — вызывающий не может вычислить, а не «бесплатно».
+    """
+    from agent_coder.model_catalog import catalog
+
+    m = catalog.get(model_id)
+    if m is None or m.input_price <= 0:
+        return 0.0
+    factor = TIER_FACTOR if tokens > TIER_THRESHOLD_TOKENS else 1.0
+    return (tokens * m.input_price + output_tokens * m.output_price) / 1e6 * factor
+
+
+def summary_model_problem(
+    model_id: str | None = None, *, soft: int | None = None
+) -> str | None:
+    """Почему суммаризатор непригоден при текущем MAX_HISTORY_TOKENS.
+
+    ``None`` — всё в порядке. Иначе — текст проблемы для config.validate()
+    и лога. Проверяем то, что реально ломает сжатие в рантайме:
+    неизвестная модель (нулевой context/цены → платное сжатие не считается
+    и не диагностируется) и нехватка окна под сжимаемый блок.
+    """
+    from agent_coder.model_catalog import catalog
+
+    mid = config.SUMMARY_MODEL if model_id is None else model_id
+    if not mid:
+        return "SUMMARY_MODEL пуст"
+    m = catalog.get(mid)
+    if m is None or not m.context or m.input_price <= 0:
+        return (
+            f"SUMMARY_MODEL={mid!r} нет в каталоге моделей или у неё нулевые "
+            f"context/цена — сжатие истории работать не будет"
+        )
+    limit = soft if soft is not None else config.MAX_HISTORY_TOKENS
+    # old при сжатии доходит до всего soft-лимита (recent может быть
+    # маленьким). Нужен запас: ctx суммаризатора >= soft * SUMMARY_MIN_CONTEXT_RATIO.
+    need = int(limit * SUMMARY_MIN_CONTEXT_RATIO)
+    if m.context < need:
+        return (
+            f"SUMMARY_MODEL={mid!r}: context={m.context}, а MAX_HISTORY_TOKENS="
+            f"{limit} требует минимум {need} "
+            f"(×{SUMMARY_MIN_CONTEXT_RATIO}) — сжатие упрётся в context-length"
+        )
+    return None
 
 
 def estimate_tokens(messages: list[dict[str, Any]]) -> int:
@@ -565,6 +631,32 @@ async def compress(session, client) -> CompressionResult | None:
     # Оценку «до» снимаем, пока в messages ещё лежит несжатая история.
     tokens_before = estimate_tokens(messages)
 
+    # Реальная цена summary-вызова. resp.usage.cost приходит от провайдера и
+    # уже учитывает тир, но бывает 0.0 (не все прокси отдают cost) — тогда
+    # считаем сами по каталогу, включая long-context тир.
+    summary_input_tokens = estimate_tokens(
+        [
+            {"role": "system", "content": system},
+            {"role": "user", "content": user_content},
+        ]
+    )
+    if summary_input_tokens > TIER_THRESHOLD_TOKENS:
+        logger.warning(
+            "compress: вход суммаризатора ~%d токенов > %d — long-context тир "
+            "(×%.0f к ставке), сжатие стоит ~%.2f₽",
+            summary_input_tokens,
+            TIER_THRESHOLD_TOKENS,
+            TIER_FACTOR,
+            model_price(config.SUMMARY_MODEL, summary_input_tokens),
+        )
+    summary_cost = getattr(resp.usage, "cost", 0.0) or 0.0
+    if summary_cost <= 0:
+        summary_cost = model_price(
+            config.SUMMARY_MODEL,
+            summary_input_tokens,
+            output_tokens=estimate_tokens([{"role": "assistant", "content": text}]),
+        )
+
     # RAG-lite: старая часть не выбрасывается, а уходит в архив —
     # агент сможет найти потерянные детали через search_history.
     try:
@@ -588,12 +680,13 @@ async def compress(session, client) -> CompressionResult | None:
 
     tokens_after = estimate_tokens(session.messages)
     logger.info(
-        "compress: %d сообщений → %d, ~%d → ~%d токенов (summary_count=%d)",
+        "compress: %d сообщений → %d, ~%d → ~%d токенов (summary_count=%d, %.4f₽)",
         len(messages),
         len(session.messages),
         tokens_before,
         tokens_after,
         session.summary_count,
+        summary_cost,
     )
     return CompressionResult(
         messages_before=len(messages),
@@ -601,4 +694,5 @@ async def compress(session, client) -> CompressionResult | None:
         tokens_before=tokens_before,
         tokens_after=tokens_after,
         summary_count=session.summary_count,
+        cost=summary_cost,
     )

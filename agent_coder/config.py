@@ -419,8 +419,14 @@ class Config:
             errors.append(
                 f"MAX_HISTORY_TOKENS={cls.MAX_HISTORY_TOKENS} должен быть >= 1000"
             )
-        if not cls.SUMMARY_MODEL:
-            errors.append("SUMMARY_MODEL пуст")
+        # Суммаризатор обязан влезать в собственный порог сжатия: old-блок
+        # доходит до всего soft_limit, и если context модели меньше — сжатие
+        # падает на 400 context-length уже в рантайме (после старта).
+        from agent_coder.agent.compression import summary_model_problem
+
+        problem = summary_model_problem(cls.SUMMARY_MODEL)
+        if problem:
+            errors.append(problem)
 
         if cls.MEDIA_RETENTION_DAYS < 1:
             errors.append(

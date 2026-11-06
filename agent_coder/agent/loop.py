@@ -72,6 +72,15 @@ async def _maybe_await(fn, *args) -> None:
             )
 
 
+# Перевод эвристических токенов (estimate_tokens) в шкалу провайдера:
+# effective = last_input_tokens + delta_estimate * ratio, где ratio снят с
+# прошлого запроса (usage.input_tokens / estimate_tokens тех же messages).
+# Замер на 115 живых сессиях: медиана 1.105, диапазон 0.31..1.85. Границы
+# отсекают вырожденные значения: заниженный ratio → сжатие не успевает
+# (риск 400 context-length), завышенный → лишние платные сжатия.
+RATIO_FLOOR = 0.5
+RATIO_CEIL = 2.0
+
 # tools, у которых args содержат путь: новый путь = прогресс охвата,
 # повтор = loop на перечитывании. Только read-only (мутации трекаются
 # отдельно в ACT).
@@ -207,14 +216,36 @@ class AgentLoop:
             # 5 tool-результатов по 4096 симв. добавили ~5000 токенов.
             # Страховка `last > soft` — на случай продолжения старой сессии,
             # где новые сообщения ещё не появились.
+            #
+            # Единицы: last_input_tokens — факт провайдера, delta_tokens —
+            # эвристика estimate_tokens (кириллица/2 + латиница/4). Складывать
+            # их напрямую нельзя: на 115 живых сессиях отношение
+            # провайдер/эвристика разошлось в 0.31..1.85 раза. Дельту приводим
+            # к шкале провайдера коэффициентом, измеренным на прошлом запросе
+            # (last_input_tokens / last_estimate_tokens). Пока факта нет
+            # (новая сессия, сразу после compress) — коэффициент 1.0, т.е.
+            # прежнее поведение.
             new_msgs = self.session.messages[last_llm_messages_len:]
-            delta_tokens = compression.estimate_tokens(new_msgs) if new_msgs else 0
+            delta_estimate = compression.estimate_tokens(new_msgs) if new_msgs else 0
+            ratio = 1.0
+            if (
+                self.session.last_input_tokens > 0
+                and self.session.last_estimate_tokens > 0
+            ):
+                ratio = (
+                    self.session.last_input_tokens / self.session.last_estimate_tokens
+                )
+                ratio = min(max(ratio, RATIO_FLOOR), RATIO_CEIL)
+            delta_tokens = round(delta_estimate * ratio)
             effective_tokens = self.session.last_input_tokens + delta_tokens
             if effective_tokens > soft or self.session.last_input_tokens > soft:
                 logger.debug(
-                    "compress check: last=%d delta=%d effective=%d soft=%d",
+                    "compress check: last=%d delta=%d (est=%d ratio=%.2f) "
+                    "effective=%d soft=%d",
                     self.session.last_input_tokens,
                     delta_tokens,
+                    delta_estimate,
+                    ratio,
                     effective_tokens,
                     soft,
                 )
@@ -257,6 +288,10 @@ class AgentLoop:
             # messages[last_llm_messages_len:] — то, чего LLM ещё не видел
             # (assistant + tool-результаты). Для pre-check сжатия.
             last_llm_messages_len = len(self.session.messages)
+            # Эвристика по ровно той истории, которую увидит провайдер.
+            # Оценку снимаем на итерации N и сверяем с usage на итерации N —
+            # получается коэффициент перевода эвристики в реальные токены.
+            sent_estimate_tokens = compression.estimate_tokens(self.session.messages)
 
             try:
                 response = await self.client.chat(
@@ -346,6 +381,12 @@ class AgentLoop:
 
             # B5.1: собираем статистику для будущего сжатия истории.
             self.session.last_input_tokens = response.usage.input_tokens
+            # Та же история, что ушла в запрос, — в эвристике. Отношение
+            # этих двух чисел калибрует delta_tokens (см. compress-check).
+            if response.usage.input_tokens > 0:
+                self.session.last_estimate_tokens = (
+                    sent_estimate_tokens or response.usage.input_tokens
+                )
 
             msg = response.message
             if msg.content:

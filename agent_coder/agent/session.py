@@ -105,6 +105,11 @@ class Session:
     patch_results: list[dict[str, Any]] = field(default_factory=list)
     # Статистика сжатия истории (B5.1: только собираем)
     last_input_tokens: int = 0  # usage.input_tokens последнего запроса
+    # Эвристическая оценка тех же messages, что дали last_input_tokens.
+    # Нужна для калибровки: estimate_tokens ошибается в 0.31..1.85 раза
+    # (115 живых сессий), без этого отношения нельзя перевести дельту новых
+    # сообщений в шкалу провайдера.
+    last_estimate_tokens: int = 0
     summary_count: int = 0  # сколько раз сжимали историю
     messages: list[dict[str, Any]] = field(default_factory=list)
     total_usage: Usage = field(default_factory=Usage)
@@ -281,6 +286,8 @@ class Session:
             data["yolo"] = False
         if "last_input_tokens" not in data:
             data["last_input_tokens"] = 0
+        if "last_estimate_tokens" not in data:
+            data["last_estimate_tokens"] = 0
         if "summary_count" not in data:
             data["summary_count"] = 0
         if "model_manual" not in data:
