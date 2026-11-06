@@ -16,7 +16,7 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | S4/F15 | major | fix-hints — текст, ACT не мог применить по id | `FixSpec` (issue_id, kind, hint) в `standard/fixes.py` | **done** `40fa7aa` | arch review |
 | S5/F2 | major | `BOTS_DIR` хардкод в `generate.py` | `standard/paths.py`, env `AGENT_CODER_BOTS_DIR` | **done** `40fa7aa` | arch review |
 | S6/F11 | major | bootstrap с 0 отсутствует как tool | `tools/scaffold_project.py` + CLI `scaffold` | **done** `d95afd7` (core) + `3e88e4f` (CLI) + `f7f6ce4` (/new, B) | arch review |
-| S7/F14 | minor | `MANUAL_NOTES` в коде `generate.py` — второй источник | убрать, notes в `notes.md` | open | arch review |
+| S7/F14 | minor | `MANUAL_NOTES` в `generate.py` — второй источник | убрать, notes в `notes.md` | **closed** (MANUAL_NOTES не найден в коде; единый источник — `standard/notes.py` → `<project>.notes.md`) | arch review |
 
 ## Агентный цикл и память
 
@@ -41,10 +41,10 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | ID | sev | what | fix | status | source |
 |---|---|---|---|---|---|
 | B1 | minor | Три источника моделей: `CURATED_MODEL_IDS` (UI), `CODING_MODEL_IDS`/`AUDIT_MODEL_IDS` (роутер), `MODEL_MAIN`/`DEFAULT_MODEL_ID`. Модель без «режима» доступна в UI, но не в группе роутера | Единый `MODEL_IDS`; `RECOMMENDED_MODEL_BY_MODE` — рекомендация (не ограничение); `resolve` = recommended-first; `group_for_mode`/`default_for_mode` удалены; `test_router.py` переписан (24 → 20 тестов) | closed (`6319d38`, 5 коммитов) | session 2026-10-19 |
-| B2 | minor | `session_index`: при OSError в `load()` не сбрасывается `_loaded` (старые данные после битого файла); `float(data.get("cost"))` пропускает NaN/Inf в сортировку `list()` | В ветке OSError: `_loaded=False` + `_sessions={}`; `math.isfinite` при парсинге cost | open | аудит 2026-10-19 |
-| B3 | minor | `compression._fail_streak`/`_fail_until` — глобальные dict без блокировки. Гонки при двух loop-процессах на одну сессию | Привязать cooldown к session (поле) или `threading.Lock` | open | аудит 2026-10-19 |
-| B4 | minor | `Usage.cost` — float для денег. Для текущих сумм (<300₽/сессия) ошибка <1 коп., при масштабировании накопится | Decimal + миграция JSON-сессий (меняет формат) | open | аудит 2026-10-19 |
-| B5 | minor | `Session.save()` на каждую tool-итерацию + atomic replace. Для SSD ок, для NFS/SD — узкое место | Отложенная запись + принудительный save на аварийных выходах | open | аудит 2026-10-19 |
+| B2 | minor | `session_index`: OSError в `load()` не сбрасывал `_loaded`; NaN/Inf cost ломал сортировку | `_loaded=False` + `_sessions={}`; `math.isfinite` | **closed** (`9cd079d`: +3 теста, `test_session_index.py`) | аудит 2026-10-19 |
+| B3 | minor | `compression._fail_streak`/`_fail_until` — глобальные dict без блокировки | — | **wontfix** (single-loop asyncio: `_cooldown_active`/`_register_failure`/`_register_success` — sync без await, гонок нет; multi-process на одну сессию — вне дизайна) | аудит 2026-10-19 |
+| B4 | minor | `Usage.cost` — float для денег. <1 коп/сессия | Decimal + миграция JSON-сессий (меняет формат) | **deferred** (не блокер; делать при появлении задачи с накоплением) | аудит 2026-10-19 |
+| B5 | minor | `Session.save()` на каждую tool-итерацию + atomic replace | Отложенная запись + принудительный save на аварийных выходах | **deferred** (SSD ok; NFS/SD — отдельная задача) | аудит 2026-10-19 |
 
 ## Стандарт и проверки
 
@@ -55,7 +55,6 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | F4/D6 | minor | `E501` в lint ignore vs `ruff format line-length=88` | убрать `E501` из ignore; либо документировать зачем | **done (documented)** `257b112` (ai_image_bot): 24 случая, 22 — string-литералы данных; ignore оставлен с обоснованием | ai_image_bot |
 | F6/D1 | major | стандарт требует `license = "<SPDX>"`, про proprietary молчит | правило: closed-source → `LicenseRef-Proprietary` | **done** `b1720c7` | ai_image_bot `705054b` |
 | F7/D2 | major | `_shared-dev` требует `uv`, ai_image_bot на `pip-tools`; «aiogram приватный» — неверно | `requirements-dev.in` без pip-tools, `uv pip compile --universal`, CI на uv | **done** `1a35b9c` (lock) + `badbf65` (CI) | ai_image_bot |
-| F8/D3 | major | `coverage source = ["."]` для flat layout; стандарт требует `["<pkg>"]` | разрешить явный список пакетов (как в `packages.find`) | open | ai_image_bot |
 | F16 | major | `check_project_standard` не проверяет `ruff format --check` | новый issue id `ruff_format_not_applied`: subprocess `ruff format --check .` в base | **done** `944e30f` | agent-coder drift |
 | F17 | minor | два источника шаблонов: `_shared-dev/project-template` + `agent_coder/templates` | (a) канон — `agent_coder/templates`, `_shared-dev` ссылается; или (b) `sync_templates.py` + CI diff | open | step 2 |
 | F18 | minor | `ci-template.yml` — `pip install`, не `uv` | обновить шаблон на `uv pip compile --universal` (связано с F7) | **done** `6409403` | step 2 |
@@ -67,8 +66,6 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
 | F21 | major | локальный pytest не ловит файлы, отсутствующие в git: `templates/AGENTS.md` был на диске, но gitignored → локально 3 passed, CI 2 failed (2026-10-18) | (a) `test_templates.py` дополнительно проверяет `git ls-files agent_coder/templates/` (skip вне git-репо); (b) pre-push CI-симуляция `git clone /tmp && pytest` | **done** `5966543` (file) + `4562084` (rule) + `00885a1` (test) | CI 2026-10-18 |
 | F20 | minor | `[tool.mypy] python_version = "3.10"` в agent-coder при `requires-python >=3.12` | выровнять до `"3.12"` | **done** (отдельный коммит вместе с этим патчем FINDINGS) | peek pyproject |
 
-| F28 | minor | `builder_bot`: UP046 в `app/calculators/base.py` — `class CalcResult(BaseModel, Generic[ValuesT])` vs PEP 695. ruff fix помечен **unsafe** (меняет runtime generic pydantic) | снять per-file-ignore в `builder_bot/pyproject.toml` после миграции на `class CalcResult[ValuesT: BaseModel](BaseModel)` + прогон 525 тестов. Не блокирует standard | open | builder_bot 2026-10-18 |
-| F29 | major | `futures_3.0`: src-layout (`src/trading/`) без корневых `pyproject.toml`, `README.md`, `tests/`, `requirements*.in`; `D .cursorrules`, `?? .promt` в git status | (a) поднять корневые pyproject/README/tests, код оставить в `src/`; (b) признать особым случаем и не применять стандарт. Решение владельца — структурный ACT | open | 2026-10-18 |
 
 ## Per-project (историческое, `_migrations/<project>.md`)
 
