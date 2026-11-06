@@ -607,3 +607,91 @@ async def test_compress_empty_reply_still_counts_usage():
     # тоже учитывается.
     assert s.total_usage.cost == pytest.approx(pre_cost + 0.01)
     assert s.request_count == pre_count
+
+
+# --- стоимость сжатия: факт провайдера и fallback по каталогу ---
+
+
+class _ZeroCostClient(_FakeClient):
+    """Провайдер не отдал cost в usage (бывает у прокси) — cost=0.0."""
+
+    async def chat(self, messages, **kwargs):
+        self.calls.append({"messages": messages, "kwargs": kwargs})
+        return _FakeResponse(
+            self.reply, Usage(input_tokens=100, output_tokens=20, cost=0.0)
+        )
+
+
+def _session_for_compress():
+    s = _mk_session()
+    s.messages = [{"role": "system", "content": "SYSTEM"}]
+    for i in range(14):
+        s.messages.append({"role": "user", "content": f"задача {i}"})
+        s.messages.append({"role": "assistant", "content": f"ответ {i}"})
+    return s
+
+
+@pytest.mark.asyncio
+async def test_compression_cost_from_provider_usage():
+    """cost берётся из usage провайдера как есть — это факт, не пересчёт."""
+    from agent_coder.agent.compression import compress
+
+    s = _session_for_compress()
+    comp = await compress(s, _FakeClient(reply="СЖАТО"))
+    assert comp is not None
+    assert comp.cost == pytest.approx(0.01)
+
+
+@pytest.mark.asyncio
+async def test_compression_cost_fallback_when_provider_silent(monkeypatch):
+    """usage.cost=0 → считаем по каталогу, а не показываем «бесплатно»."""
+    from agent_coder.agent import compression
+
+    s = _session_for_compress()
+    comp = await compression.compress(s, _ZeroCostClient(reply="СЖАТО"))
+    assert comp is not None
+    # haiku-5.5 с ценой 10.55/1M и ~десятком токенов входа: копейки, но > 0.
+    assert comp.cost > 0.0
+
+
+@pytest.mark.asyncio
+async def test_compression_cost_uses_tier_above_threshold(monkeypatch):
+    """Fallback-расчёт учитывает long-context тир: ×5 выше порога.
+
+    Порог опускаем до 10 токенов, чтобы попасть в тир на короткой истории,
+    и сравниваем два прогона: под порогом (1000) и над ним (5) — при
+    одинаковых messages цена должна отличаться ровно в TIER_FACTOR.
+    """
+    from dataclasses import replace
+
+    from agent_coder.agent import compression
+    from agent_coder.model_catalog import catalog
+
+    base = catalog.get(compression.config.SUMMARY_MODEL)
+    assert base is not None
+    priced = replace(base, input_price=1000.0, output_price=0.0, context=10**9)
+    monkeypatch.setattr(catalog, "get", lambda mid: priced)
+
+    s1 = _session_for_compress()
+    monkeypatch.setattr(compression, "TIER_THRESHOLD_TOKENS", 10_000)
+    low = await compression.compress(s1, _ZeroCostClient(reply="СЖАТО"))
+    assert low is not None and low.cost > 0
+
+    s2 = _session_for_compress()
+    monkeypatch.setattr(compression, "TIER_THRESHOLD_TOKENS", 10)
+    high = await compression.compress(s2, _ZeroCostClient(reply="СЖАТО"))
+    assert high is not None
+
+    assert high.cost / low.cost == pytest.approx(compression.TIER_FACTOR, rel=0.01)
+
+
+@pytest.mark.asyncio
+async def test_compression_cost_zero_for_unpriced_model(monkeypatch):
+    """Модель без цены в каталоге → 0.0 (посчитать нельзя), без падения."""
+    from agent_coder.agent import compression
+
+    monkeypatch.setattr(compression.config, "SUMMARY_MODEL", "нет/такой-модели")
+    s = _session_for_compress()
+    comp = await compression.compress(s, _ZeroCostClient(reply="СЖАТО"))
+    assert comp is not None
+    assert comp.cost == 0.0
