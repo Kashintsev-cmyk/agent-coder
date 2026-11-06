@@ -222,6 +222,9 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^wc\s+(-\w+\s+)?\S+$"),
     re.compile(r"^find\s+\S+(\s+-name\s+\S+)?(\s+-type\s+\w+)?(\s+-maxdepth\s+\d+)?$"),
     re.compile(r"^tree(\s+-\w+)*(\s+\S+)?$"),
+    # --- Контрольные суммы (read-only) ---
+    re.compile(r"^md5sum(\s+-\S+)*(\s+\S+)*$"),
+    re.compile(r"^sha(?:1|224|256|384|512)sum(\s+-\S+)*(\s+\S+)*$"),
     # --- Утилиты ---
     re.compile(r"^which\s+\S+$"),
     re.compile(
@@ -248,7 +251,7 @@ _ALLOWED_PIPES = re.compile(
     r"find|sort|column|nl|rev|xxd|od|hexdump|"
     # B9.2g.6: текстовые утилиты (sed/awk дополнительно
     # проверяются в _is_read_only_part).
-    r"sed|awk|rg|diff|cmp|comm|git)(?:\s+|$)",
+    r"sed|awk|rg|diff|cmp|comm|git|md5sum|sha(?:1|224|256|384|512)sum)(?:\s+|$)",
     re.IGNORECASE,
 )
 
@@ -475,9 +478,7 @@ def _is_safe_sed(cmd: str) -> bool:
         return False
     if not re.search(r"\s-n(?:\s|$)", cmd):
         return False
-    if re.search(r"(?:^|[;{}\d,$/])\s*[wWrRe](?:\s|['\x22]|$)", cmd):
-        return False
-    return True
+    return not re.search(r"(?:^|[;{}\d,$/])\s*[wWrRe](?:\s|['\x22]|$)", cmd)
 
 
 def _is_safe_awk(cmd: str) -> bool:
@@ -499,9 +500,7 @@ def _is_safe_awk(cmd: str) -> bool:
         r"\bsystem\s*\(|\bgetline\b|\bclose\s*\(|\bfflush\b", cmd, re.IGNORECASE
     ):
         return False
-    if re.search(r"[>|]", cmd):
-        return False
-    return True
+    return not re.search(r"[>|]", cmd)
 
 
 def _is_read_only_part(part: str) -> bool:
@@ -529,9 +528,7 @@ def _is_read_only_part(part: str) -> bool:
     # B9.2g.6: sed/awk — только печать, без записи/исполнения.
     if part.startswith("sed") and not _is_safe_sed(part):
         return False
-    if part.startswith("awk") and not _is_safe_awk(part):
-        return False
-    return True
+    return not (part.startswith("awk") and not _is_safe_awk(part))
 
 
 def _is_safe_command(args: dict[str, Any]) -> bool:
@@ -574,11 +571,11 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
 # областью аудита. Системные диагностики (df/ps/journalctl/docker ps/...)
 # в гейт-набор не входят и проходят как раньше.
 _SCOPE_ALL_PATH_CMDS = frozenset(
-    "cat head tail less more wc file stat strings nl xxd od hexdump tree".split()
+    ["cat", "head", "tail", "less", "more", "wc", "file", "stat", "strings", "nl", "xxd", "od", "hexdump", "tree"]
 )
 _SCOPE_FIND_CMDS = frozenset({"find"})
 # grep/rg/sed/awk: первый не-флаговый арг — паттерн/программа, пути после.
-_SCOPE_ARGS_AFTER_FIRST = frozenset("grep egrep fgrep rg sed awk gawk".split())
+_SCOPE_ARGS_AFTER_FIRST = frozenset(["grep", "egrep", "fgrep", "rg", "sed", "awk", "gawk"])
 # Фрагменты программ (sed/awk), не пути: '{print $1}', 's/a/b/', 'x=1'...
 _PROG_FRAGMENT = re.compile(r"[{}$()|;&=]")
 
@@ -620,11 +617,7 @@ def _scope_violation(cmd: str, scopes: list[str]) -> str | None:
             continue
         for tok in cands:
             if (
-                not tok
-                or tok.startswith("-")
-                or tok.startswith("%")
-                or tok.isdigit()
-                or _PROG_FRAGMENT.search(tok)
+                not tok or tok.startswith(("-", "%")) or tok.isdigit() or _PROG_FRAGMENT.search(tok)
             ):
                 continue
             if tok.startswith("~"):
