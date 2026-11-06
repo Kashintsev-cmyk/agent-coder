@@ -243,7 +243,10 @@ _ALLOWED_PIPES = re.compile(
     r"systemctl|journalctl|docker|lsof|du|smem|pmap|vmstat|iostat|mpstat|"
     r"which|uname|id|whoami|hostname|date|findmnt|stat|file|"
     r"lsblk|blkid|swapon|pstree|tree|readlink|realpath|locale|"
-    r"find|sort|column|nl|rev|xxd|od|hexdump|git)(?:\s+|$)",
+    r"find|sort|column|nl|rev|xxd|od|hexdump|"
+    # B9.2g.6: текстовые утилиты (sed/awk дополнительно
+    # проверяются в _is_read_only_part).
+    r"sed|awk|rg|diff|cmp|comm|git)(?:\s+|$)",
     re.IGNORECASE,
 )
 
@@ -281,6 +284,8 @@ _MUTATING_PIPE_PATTERNS = re.compile(
     r"submodule|worktree|config|branch\s+-[dDmMcC]|"
     r"tag\s+-[dasf]|remote\s+(?:add|remove|set-url|rename|set-head|prune)|"
     r"reflog\s+(?:expire|delete))\b"
+    # B9.2g.6: rg умеет исполнение через --pre (препроцессор).
+    r"|rg\s[^;|&]*--pre(?:-glob)?(?:=|\s)"
     r")",
     re.IGNORECASE,
 )
@@ -449,6 +454,54 @@ def _is_safe_git_metadata(cmd: str) -> bool:
     return False
 
 
+def _strip_sq(text: str) -> str:
+    """Вырезать одинарные кавычки: внутри '...' shell НЕ интерпретирует
+    $, {}, () и т.д. Двойные кавычки не трогаем: там shell расширяет
+    $ и backticks."""
+    return re.sub(r"'[^']*'", "''", text)
+
+
+def _is_safe_sed(cmd: str) -> bool:
+    """sed — read-only печать. Обязателен -n (выборочная печать).
+
+    Запрещены: -i/--in-place, -f/--file (скрипт из файла), команды
+    w/W (запись в файл), r/R (вставка файла), e (исполнение) —
+    включая флаги s///w и s///e. Эвристика по позиции команды."""
+    if not re.match(r"^sed(\s|$)", cmd):
+        return False
+    if re.search(r"\s-i|--in-place|\s-f(?:\s|=)|--file=", cmd):
+        return False
+    if not re.search(r"\s-n(?:\s|$)", cmd):
+        return False
+    if re.search(r"(?:^|[;{}\d,$/])\s*[wWrRe](?:\s|['\x22]|$)", cmd):
+        return False
+    return True
+
+
+def _is_safe_awk(cmd: str) -> bool:
+    """awk — read-only фильтрация/печать (B9.2g.6, строгая версия).
+
+    Запрещены: -f/--file (программа из файла), -W exec/source,
+    system(), getline, close(), fflush — внешние процессы/IO.
+    Запрещены | и > в сырой строке: output-redirect awk
+    ('{print > "f"}', '{print | "cmd"}') прячется в одинарных
+    кавычках — _strip_sq в _is_read_only_part вырезал бы его.
+    Известные FP (safe-side, уходят в approval): сравнения '> N'
+    и разделитель -F'|' внутри программы.
+    """
+    if not re.match(r"^awk(\s|$)", cmd):
+        return False
+    if re.search(r"\s-f(?:\s|=|$)|--file=|\s-W\s*(?:exec|source)\b", cmd):
+        return False
+    if re.search(
+        r"\bsystem\s*\(|\bgetline\b|\bclose\s*\(|\bfflush\b", cmd, re.IGNORECASE
+    ):
+        return False
+    if re.search(r"[>|]", cmd):
+        return False
+    return True
+
+
 def _is_read_only_part(part: str) -> bool:
     """Единый предикат read-only сегмента (B9.2g.5, шаг 2).
 
@@ -461,7 +514,7 @@ def _is_read_only_part(part: str) -> bool:
         return False
     # ; & ` $ < > ( ) { } и \n (\n — разделитель команд в shell,
     # B9.2g.2: `ls | cat\nrm -rf X` шёл в shell).
-    if re.search(r"[;&`$<>(){}\n]", part):
+    if re.search(r"[;&`$<>(){}\n]", _strip_sq(part)):
         return False
     if not _ALLOWED_PIPES.match(part):
         return False
@@ -470,6 +523,11 @@ def _is_read_only_part(part: str) -> bool:
     # B9.2g.5: git в pipe — только read-only метаданные
     # (git log --output=..., archive, bundle, format-patch, fast-export).
     if part.startswith("git ") and not _is_safe_git_metadata(part):
+        return False
+    # B9.2g.6: sed/awk — только печать, без записи/исполнения.
+    if part.startswith("sed") and not _is_safe_sed(part):
+        return False
+    if part.startswith("awk") and not _is_safe_awk(part):
         return False
     return True
 
@@ -504,9 +562,9 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
         return all(_is_read_only_part(part) for part in parts)
 
     # Одиночная команда
-    if _FORBIDDEN.search(cmd):
+    if _FORBIDDEN.search(_strip_sq(cmd)):
         return False
-    return any(p.match(cmd) for p in _SAFE_PATTERNS)
+    return _is_read_only_part(cmd) or any(p.match(cmd) for p in _SAFE_PATTERNS)
 
 
 async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:

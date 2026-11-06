@@ -20,8 +20,17 @@ def test_env_in_pipe_blocked():
     assert _cmd("cat /etc/hostname | printenv") is False
 
 
-def test_awk_in_pipe_blocked():
-    assert _cmd("ps aux | awk '{print $2}'") is False
+def test_awk_safe_in_pipe_allowed():
+    # B9.2g.6: безопасный awk в pipe разрешён (печать/фильтрация).
+    assert _cmd("ps aux | awk '{print $2}'") is True
+
+
+def test_awk_dangerous_in_pipe_blocked():
+    assert _cmd("ps aux | awk '{system(\"reboot\")}'") is False
+    assert _cmd("ps aux | awk '{print > \"/tmp/pwn\"}'") is False
+    assert _cmd("ps aux | awk '{print >> \"/tmp/pwn\"}'") is False
+    assert _cmd("ps aux | awk '{\"ls\" | getline x}'") is False
+    assert _cmd("ps aux | awk -f /tmp/s.awk") is False
 
 
 def test_sed_in_pipe_blocked():
