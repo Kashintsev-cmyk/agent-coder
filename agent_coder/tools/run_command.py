@@ -225,6 +225,25 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     # --- Контрольные суммы (read-only) ---
     re.compile(r"^md5sum(\s+-\S+)*(\s+\S+)*$"),
     re.compile(r"^sha(?:1|224|256|384|512)sum(\s+-\S+)*(\s+\S+)*$"),
+    re.compile(r"^b2sum(\s+-\S+)*(\s+\S+)*$"),
+    re.compile(r"^cksum(\s+-\S+)*(\s+\S+)*$"),
+    # --- Система (read-only) ---
+    re.compile(r"^lscpu(\s+-\w+)*$"),
+    re.compile(r"^lsmem(\s+-\w+)*$"),
+    re.compile(r"^lsmod$"),
+    re.compile(r"^lspci(\s+-\w+)*$"),
+    re.compile(r"^lsusb(\s+-\w+)*$"),
+    # --- Процессы ---
+    re.compile(r"^pidof\s+\S+$"),
+    # --- Текст ---
+    re.compile(r"^strings(\s+-\w+)*\s+\S+$"),
+    re.compile(r"^paste(\s+-\w+)*\s+\S+(\s+\S+)*$"),
+    re.compile(r"^fold(\s+-\w+)*\s+\S+$"),
+    # --- Утилиты ---
+    re.compile(r"^whereis\s+\S+$"),
+    re.compile(r"^type\s+\S+$"),
+    re.compile(r"^basename\s+\S+$"),
+    re.compile(r"^dirname\s+\S+$"),
     # --- Утилиты ---
     re.compile(r"^which\s+\S+$"),
     re.compile(
@@ -251,7 +270,7 @@ _ALLOWED_PIPES = re.compile(
     r"find|sort|column|nl|rev|xxd|od|hexdump|"
     # B9.2g.6: текстовые утилиты (sed/awk дополнительно
     # проверяются в _is_read_only_part).
-    r"sed|awk|rg|diff|cmp|comm|git|md5sum|sha(?:1|224|256|384|512)sum)(?:\s+|$)",
+    r"sed|awk|rg|diff|cmp|comm|git|md5sum|sha(?:1|224|256|384|512)sum|b2sum|cksum|lscpu|lsmem|lsmod|lspci|lsusb|pidof|strings|paste|fold|whereis|type|basename|dirname)(?:\s+|$)",
     re.IGNORECASE,
 )
 
