@@ -22,3 +22,14 @@ def test_registered_and_allowed_in_plan_audit() -> None:
     assert reg.is_call_allowed(Mode.PLAN, tool, {})
     assert reg.is_call_allowed(Mode.AUDIT, tool, {})
     assert tool in reg.for_mode(Mode.PLAN)
+
+
+def test_pytest_command_has_noconftest() -> None:
+    """M3 (8f0cd848): pytest запускается с --noconftest (RCE-вектор закрыт)."""
+    from agent_coder.tools.run_checks import _CHECKS
+
+    pytest_cmds = [c for c, _ in _CHECKS if "pytest" in c]
+    assert pytest_cmds, "в _CHECKS нет pytest-команды"
+    for cmd in pytest_cmds:
+        assert "--noconftest" in cmd, cmd
+        assert "-p no:cacheprovider" in cmd, cmd

@@ -20,6 +20,32 @@ from agent_coder.log_safety import mask_secrets
 logger = logging.getLogger(__name__)
 
 
+# M3 (8f0cd848): whitelist env для untrusted subprocess. Не пропускаем
+# секреты бота (*_KEY, *_TOKEN, *_SECRET) в чужой pytest.
+_CLEAN_ENV_KEYS = (
+    "PATH",
+    "HOME",
+    "LANG",
+    "LC_ALL",
+    "PYTHONPATH",
+    "PYTHONUNBUFFERED",
+    "TMPDIR",
+    "USER",
+    "SHELL",
+    "TERM",
+)
+
+
+def clean_env() -> dict[str, str]:
+    """Окружение без секретов бота (M3): только whitelist-ключи.
+
+    Использовать для subprocess, запускающих untrusted код (pytest в
+    audited workspace). `*_KEY=`, `*_TOKEN=`, `*_SECRET=` из os.environ
+    бота не утекают.
+    """
+    return {k: os.environ[k] for k in _CLEAN_ENV_KEYS if k in os.environ}
+
+
 @dataclass(frozen=True)
 class ShellResult:
     returncode: int
@@ -46,6 +72,7 @@ async def run_shell(
     max_bytes: int = 30_000,
     mask: bool = True,
     start_new_session: bool = True,
+    env: dict[str, str] | None = None,
 ) -> ShellResult:
     """Запустить shell-команду. Никогда не бросает наружу.
 
@@ -54,6 +81,8 @@ async def run_shell(
     - mask — прогнать вывод через log_safety.mask_secrets.
     - start_new_session — новый session id у ребёнка, чтобы killpg убил
       и его потомков (важно для shell-пайпов).
+    - env — окружение subprocess; None = наследовать os.environ (по умолчанию,
+      backward-compat). Для untrusted-кода передавать clean_env() (M3).
     """
     try:
         proc = await asyncio.create_subprocess_shell(
@@ -62,6 +91,7 @@ async def run_shell(
             stdout=asyncio.subprocess.PIPE,
             stderr=asyncio.subprocess.PIPE,
             start_new_session=start_new_session,
+            env=env,
         )
     except Exception as e:
         logger.warning("run_shell: не удалось запустить процесс: %s", e)
