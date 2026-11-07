@@ -25,7 +25,16 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     if full is None:
         return f"Ошибка: путь вне рабочей директории: {rel}"
 
-    if not in_scope(rel, ctx.audit_scopes):
+    # M2: проверяем resolved-relative, а не сырой rel — иначе `bot/../.env`
+    # проходил сырую in_scope через prefix-match, хотя resolve давал `.env`.
+    try:
+        resolved_rel = str(
+            Path(full).resolve().relative_to(Path(ctx.workspace).resolve())
+        )
+    except ValueError:
+        return f"Ошибка: путь вне рабочей директории: {rel}"
+
+    if not in_scope(str(resolved_rel), ctx.audit_scopes):
         return (
             f"Ошибка: {rel!r} вне области аудита {ctx.audit_scopes}. "
             f"Читай только файлы из указанных путей."
