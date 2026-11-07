@@ -294,6 +294,9 @@ async def run_patch(
         yolo=True,
         session_id=session.id,
         work_state=None,
+        # B1a (8f0cd848): проброс scopes — иначе patch читает/пишет по всему
+        # workspace, даже если /audit был scoped. См. verify.py:192 (M1).
+        audit_scopes=session.audit_scopes or None,
     )
 
     files_changed: set[str] = set()

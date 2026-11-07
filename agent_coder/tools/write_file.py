@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
+from agent_coder.tools._scope import in_scope
 from agent_coder.tools.registry import Tool, ToolContext
 
 
@@ -20,6 +21,13 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         full.relative_to(base)
     except ValueError:
         return f"Ошибка: путь вне workspace: {rel}"
+
+    # B1b (8f0cd848): scope-gate и для записи. `..`-bypass закрыт M2 в `in_scope`.
+    if not in_scope(rel, ctx.audit_scopes):
+        return (
+            f"Ошибка: {rel!r} вне области аудита {ctx.audit_scopes}. "
+            f"Пиши только в разрешённые пути."
+        )
 
     existed = full.exists()
     try:
