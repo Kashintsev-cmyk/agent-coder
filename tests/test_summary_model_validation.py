@@ -28,8 +28,14 @@ def _entry(model_id: str):
     return catalog.get(model_id)
 
 
-def test_current_config_is_valid():
-    """Сегодняшний конфиг проходит (haiku 1M против потолка 90K)."""
+def test_current_config_is_valid(monkeypatch):
+    """Сегодняшний конфиг проходит (haiku 1M против потолка 90K).
+
+    ROUTERAI_API_KEY — deployment-секрет (в .gitignore, в CI-sim нет).
+    Тест проверяет инварианты конфига, не наличие ключа; monkeypatch
+    делает его env-independent (иначе CI-sim клон красный, локально зелёный).
+    """
+    monkeypatch.setattr(Config, "ROUTERAI_API_KEY", "test-key-for-validation")
     assert Config.validate() is True
     assert compression.summary_model_problem(config.SUMMARY_MODEL) is None
 
