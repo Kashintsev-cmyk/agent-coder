@@ -220,7 +220,9 @@ async def cmd_patch(message: Message) -> None:
     /patch <model_id> — явный override (дорого — осознанно)
 
     Не наследует session.model / model_manual — как /verify.
-    /yolo игнорируется: сам вызов /patch = подтверждение.
+    /yolo: пробрасывается как `yolo=session.yolo` (default off).
+    Сегодня PATCH_TOOLS без approval-tools → yolo не влияет на UX;
+    guard для будущих approval-required инструментов.
     """
     from agent_coder.agent.patch import run_patch
     from agent_coder.config import config
@@ -262,6 +264,7 @@ async def cmd_patch(message: Message) -> None:
             session=session,
             model=used_model,
             registry=build_registry(),
+            yolo=session.yolo,
         )
     finally:
         await client.close()

@@ -51,6 +51,10 @@ class _FakeTool:
     def to_openai_schema(self) -> dict:
         return {"type": "function", "function": {"name": self.name}}
 
+    def needs_approval(self, args) -> bool:
+        # M4 (8f0cd848): patch-цикл теперь зовёт needs_approval — fake обязан.
+        return False
+
     async def executor(self, args, ctx):
         if self.behavior == "error":
             return "Ошибка: simulated"
@@ -63,6 +67,11 @@ class _FakeRegistry:
 
     def get(self, name):
         return self._tools.get(name)
+
+    def is_call_allowed(self, mode, tool, args):
+        # M4 (8f0cd848): patch-цикл зовёт reg.is_call_allowed — fake
+        # должен повторять контракт ToolRegistry.
+        return True
 
 
 def _mk_session() -> Session:
@@ -95,7 +104,10 @@ def test_patch_tools_no_git_commit() -> None:
     assert "git_commit" not in PATCH_TOOLS
     assert "write_file" in PATCH_TOOLS
     assert "edit_file" in PATCH_TOOLS
-    assert "run_command" in PATCH_TOOLS
+    # M4 (8f0cd848): run_command убран из patch (заменён на run_checks,
+    # pytest через --noconftest + env-clean, см. defac89).
+    assert "run_checks" in PATCH_TOOLS
+    assert "run_command" not in PATCH_TOOLS
 
 
 async def test_run_patch_no_confirmed() -> None:

@@ -50,6 +50,10 @@ class _CapturingTool:
     def to_openai_schema(self):
         return {"type": "function", "function": {"name": self.name}}
 
+    def needs_approval(self, args) -> bool:
+        # M4: patch-цикл теперь зовёт needs_approval — fake обязан.
+        return False
+
     async def executor(self, args, ctx):
         self._sink.append(ctx.audit_scopes)
         return f"ok: {self.name}"
@@ -63,6 +67,10 @@ class _CapturingRegistry:
         if name in PATCH_TOOLS:
             return _CapturingTool(name, self._sink)
         return None
+
+    def is_call_allowed(self, mode, tool, args):
+        # M4: контракт ToolRegistry — fake обязан реализовать.
+        return True
 
 
 def _confirmed(text: str = "A", evidence: str = "a.py:1") -> dict:

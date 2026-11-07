@@ -42,7 +42,7 @@ PATCH_TOOLS: tuple[str, ...] = (
     "search",
     "write_file",
     "edit_file",
-    "run_command",
+    "run_checks",
     "git_status",
     "git_diff",
     "git_log",
@@ -226,6 +226,7 @@ async def run_patch(
     session: Session,
     model: str = "",
     registry: ToolRegistry | None = None,
+    yolo: bool = False,
 ) -> PatchResult:
     """Прогнать confirmed findings через модель-исполнителя.
 
@@ -235,6 +236,11 @@ async def run_patch(
 
     Возвращает PatchResult. Результат дописывается в session.patch_results
     (append), session.save() вызывается.
+
+    yolo — разрешить tools с requires_approval=True без подтверждения.
+    По умолчанию False: tools с approval в patch-цикле reject'ятся с
+    ошибкой (M4: `needs_approval` guard). Для production-CLI/Telegram —
+    `yolo=session.yolo or args.yolo`.
     """
     model = model or config.PATCH_MODEL_ID
     res = PatchResult(run_id=uuid.uuid4().hex[:8], model=model)
@@ -291,7 +297,7 @@ async def run_patch(
     ctx = ToolContext(
         workspace=session.workspace,
         mode=Mode.ACT,
-        yolo=True,
+        yolo=yolo,  # M4: проброс реального yolo (default False)
         session_id=session.id,
         work_state=None,
         # B1a (8f0cd848): проброс scopes — иначе patch читает/пишет по всему
@@ -373,11 +379,26 @@ async def run_patch(
                 result = (
                     f"Ошибка: {path} — tests/ не патчим. "
                     "Модель подгоняет assert'ы под сломанный код, это "
-                    "запрещено. Разрешено: read_file tests/, "
-                    "run_command pytest. Правь исходники, не тесты."
+                    "запрещено. Разрешено: read_file tests/, run_checks. "
+                    "Правь исходники, не тесты."
                 )
                 consecutive_errors += 1
                 logger.info("patch: reject tests/ write: %s", path)
+            elif not reg.is_call_allowed(Mode.ACT, tool_map[tc.name], tc.arguments):
+                result = (
+                    f"Ошибка: инструмент '{tc.name}' недоступен в patch "
+                    "с такими аргументами"
+                )
+                consecutive_errors += 1
+            elif tool_map[tc.name].needs_approval(tc.arguments) and not yolo:
+                result = (
+                    f"Ошибка: инструмент '{tc.name}' требует подтверждения "
+                    "(approval), но patch запущен без --yolo. "
+                    "Используй инструменты без approval (run_checks, "
+                    "read_file)."
+                )
+                consecutive_errors += 1
+                logger.info("patch: reject approval-tool: %s", tc.name)
             else:
                 # B9.2g.bench: INFO-лог ВСЕХ tool_calls — иначе в --verbose
                 # видно только LLM/HTTP, а что модель делает — нет. Ошибки

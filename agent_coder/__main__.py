@@ -288,6 +288,7 @@ async def _handle_slash(line: str, session: Session) -> bool:
                         session=session,
                         model=used,
                         registry=build_registry(),
+                        yolo=session.yolo,
                     )
                 finally:
                     await client.close()
@@ -534,7 +535,12 @@ async def _run_patch_cli(args, session) -> int:
     client = LLMClient()
     await client.start()
     try:
-        result = await run_patch(client, session, model=args.model or "")
+        result = await run_patch(
+            client,
+            session,
+            model=args.model or "",
+            yolo=getattr(args, "yolo", False) or session.yolo,
+        )
     finally:
         close = getattr(client, "close", None)
         if close is not None:
