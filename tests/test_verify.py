@@ -299,6 +299,7 @@ class _PreSession:
     reasoning_effort = "none"
 
     def __init__(self):
+        self.audit_scopes: list[str] = []
         self.work_state = {"k": "v"}
         self.verify_results = []
         self.total_usage = Usage()

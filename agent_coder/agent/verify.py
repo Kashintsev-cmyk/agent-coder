@@ -189,6 +189,9 @@ async def run_verify(
         yolo=True,  # read-only, approval не нужен
         session_id=session.id,
         work_state=None,
+        # M1 (8f0cd848): проброс scopes — иначе read_file/list_files внутри
+        # verify читают весь workspace, даже если /audit был scoped.
+        audit_scopes=session.audit_scopes or None,
     )
 
     final_parts: list[str] = []
