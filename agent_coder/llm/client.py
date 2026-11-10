@@ -345,8 +345,14 @@ def _extract_usage(response: Any) -> Usage:
 
     details = getattr(raw, "prompt_tokens_details", None)
     cache_read = 0
+    cache_write = 0
     if details is not None:
         cache_read = int(getattr(details, "cached_tokens", 0) or 0)
+        # B4.x (2026-11-10 probe): RouterAI кладёт cache_write_tokens в тот же
+        # prompt_tokens_details — раньше теряли. Cost из raw.cost уже учитывает
+        # +25% к prompt для write (probe: RATIO 1.05); поле — для метрики,
+        # не для пересчёта cost.
+        cache_write = int(getattr(details, "cache_write_tokens", 0) or 0)
 
     cost: float = 0.0
     direct = getattr(raw, "cost", None)
@@ -367,5 +373,6 @@ def _extract_usage(response: Any) -> Usage:
         input_tokens=input_tokens,
         output_tokens=output_tokens,
         cache_read_tokens=cache_read,
+        cache_write_tokens=cache_write,
         cost=cost,
     )
