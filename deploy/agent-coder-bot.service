@@ -45,6 +45,27 @@ ReadWritePaths=-/home/botuser/.cache/agent-coder
 ReadWritePaths=-/home/botuser/bots
 ReadWritePaths=-/home/botuser/projects
 
+# M7: код, тесты, конфиги и docs бота — read-only. Бот не должен
+# перезаписывать собственный код (prompt-injection / баг в write_file).
+# Перечисление подкаталогов и файлов, НЕ содержащих sessions/:
+# вложенный RO-родитель + RW-внук (sessions) в systemd 249 ведёт себя
+# непредсказуемо, поэтому не накрываем корень agent-coder/ целиком.
+# .git/ и .venv/ оставлены RW (git_commit / рантайм .venv).
+ReadOnlyPaths=/home/botuser/bots/agent-coder/agent_coder
+ReadOnlyPaths=/home/botuser/bots/agent-coder/tests
+ReadOnlyPaths=/home/botuser/bots/agent-coder/deploy
+ReadOnlyPaths=/home/botuser/bots/agent-coder/docs
+ReadOnlyPaths=/home/botuser/bots/agent-coder/benchmark
+ReadOnlyPaths=/home/botuser/bots/agent-coder/.github
+ReadOnlyPaths=/home/botuser/bots/agent-coder/pyproject.toml
+ReadOnlyPaths=/home/botuser/bots/agent-coder/AGENTS.md
+ReadOnlyPaths=/home/botuser/bots/agent-coder/.env
+ReadOnlyPaths=/home/botuser/bots/agent-coder/.env.example
+ReadOnlyPaths=/home/botuser/bots/agent-coder/README.md
+ReadOnlyPaths=/home/botuser/bots/agent-coder/LICENSE
+ReadOnlyPaths=/home/botuser/bots/agent-coder/.gitignore
+ReadOnlyPaths=/home/botuser/bots/agent-coder/.pre-commit-config.yaml
+
 StandardOutput=journal
 StandardError=journal
 

@@ -36,6 +36,42 @@ sudoers — только `ps/images/stats --no-stream/inspect/logs`.
 
 ---
 
+## M7: код бота — read-only (systemd)
+
+`deploy/agent-coder-bot.service` закрывает кодовую часть бота на запись
+(`ReadOnlyPaths=`): `agent_coder/`, `tests/`, `deploy/`, `docs/`,
+`benchmark/`, `.github/`, `pyproject.toml`, `AGENTS.md`, `.env`,
+`.env.example`, `README.md`, `LICENSE`, `.gitignore`,
+`.pre-commit-config.yaml`. `sessions/` остаётся RW (существующий
+`ReadWritePaths=`), `~/.cache/agent-coder`, `~/bots`, `~/projects` — RW.
+
+Почему перечисление, а не `ReadOnlyPaths=/home/botuser/bots/agent-coder`
+целиком: `sessions/` — RW-внук внутри RO-родителя; в systemd 249
+порядок применения (`ReadWritePaths=` затем `ReadOnlyPaths=`) делает
+поведение для вложенных путей непредсказуемым. Перечисление подкаталогов
+и файлов, не содержащих `sessions/`, безопасно и явно.
+
+`.git/` и `.venv/` оставлены RW: `git_commit` (approval-инструмент)
+пишет в `.git/`, рантайм использует `.venv/bin/python`.
+
+Проверка (после `systemctl restart agent-coder-bot`):
+
+    # код — RO (ожидаем Permission denied):
+    sudo -u botuser touch /home/botuser/bots/agent-coder/agent_coder/.m7_smoke
+
+    # sessions/ — RW (ожидаем успех):
+    sudo -u botuser touch /home/botuser/bots/agent-coder/sessions/.m7_smoke
+    sudo -u botuser rm /home/botuser/bots/agent-coder/sessions/.m7_smoke
+
+    # новый проект через /new — RW (ожидаем успех):
+    # в Telegram: /new m7-smoke
+
+`AUDIT_REPORT.md` в корне репозитория физически закроется этим же
+правилом (RO на файл) — это закрывает часть M12; отдельный fix
+(timestamped filename в `also_in_workspace=True`) — в бэклоге.
+
+---
+
 ## botctl — управление systemd-ботами
 
 `/usr/local/bin/botctl` (`root:root`, `0755`) — обёртка над `systemctl` и
