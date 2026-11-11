@@ -64,7 +64,7 @@ SERVER_OPS: list[ServerOp] = [
     ServerOp(
         "docker",
         "🐳 Docker",
-        "docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}' 2>/dev/null || echo 'Docker недоступен'",
+        "sudo -n /usr/bin/docker ps --format 'table {{.Names}}\\t{{.Status}}\\t{{.Image}}' 2>/dev/null || echo 'Docker недоступен'",
         "Запущенные контейнеры",
     ),
     # --- Логи ---

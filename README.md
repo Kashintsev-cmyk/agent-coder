@@ -50,6 +50,11 @@ remote-helper'ов, с точным учётом стоимости каждой
 - Path traversal защищён в `search`, `read_file`, `write_file`,
   `list_files`, `/new`, `/clone`
 - systemd hardening: `NoNewPrivileges`, `ProtectSystem=strict`,
+  `SupplementaryGroups=docker` **не используется** — docker read-only
+  (`/server → 🐳`) идёт через `sudo -n /usr/bin/docker
+  ps|images|stats|inspect|logs` с узким sudoers
+  (`deploy/agent-coder-docker.sudoers`; инструкция —
+  `docs/ENVIRONMENT.md`, секция «Docker read-only для /server (M6)»);
   `ReadWritePaths` для нужных директорий
 
 **Инфраструктура**

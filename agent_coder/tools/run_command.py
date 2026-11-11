@@ -191,12 +191,17 @@ _SAFE_PATTERNS: list[re.Pattern] = [
     re.compile(r"^systemctl\s+list-timers(\s+--\S+)*$"),
     re.compile(r"^systemctl\s+--failed(\s+--no-pager)?$"),
     re.compile(r"^systemd-cgtop(\s+-\w+)*$"),
-    # --- Docker ---
-    re.compile(r"^docker\s+ps(\s+-\w+)*$"),
-    re.compile(r"^docker\s+images(\s+-\w+)*$"),
-    re.compile(r"^docker\s+stats\s+--no-stream$"),
-    re.compile(r"^docker\s+inspect\s+\S+$"),
-    re.compile(r"^docker\s+logs(\s+--tail\s+\d+)?\s+\S+$"),
+    # --- Docker (M6: только read-only через sudo -n, точный путь) ---
+    # Без sudo docker-группы больше нет — прямой `docker ...` упадёт с
+    # permission denied на socket. Whitelist пропускает только sudo -n
+    # с абсолютным путём; sudoers (deploy/agent-coder-docker.sudoers)
+    # ограничивает те же подкоманды. `run/exec/rm/...` не матчатся
+    # (строгие regex с $). Pipe с sudo не проходит _ALLOWED_PIPES.
+    re.compile(r"^sudo\s+-n\s+/usr/bin/docker\s+ps(\s+-\w+)*$"),
+    re.compile(r"^sudo\s+-n\s+/usr/bin/docker\s+images(\s+-\w+)*$"),
+    re.compile(r"^sudo\s+-n\s+/usr/bin/docker\s+stats\s+--no-stream$"),
+    re.compile(r"^sudo\s+-n\s+/usr/bin/docker\s+inspect\s+\S+$"),
+    re.compile(r"^sudo\s+-n\s+/usr/bin/docker\s+logs(\s+--tail\s+\d+)?\s+\S+$"),
     # --- Сеть ---
     re.compile(r"^ss(\s+-\w+)*$"),
     re.compile(r"^netstat\s+-t\w*$"),

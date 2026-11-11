@@ -8,7 +8,9 @@ Type=simple
 User=botuser
 Group=botuser
 # botuser в группе docker — нужно для команд docker ps/images/... из /server
-SupplementaryGroups=docker
+# M6: SupplementaryGroups=docker удалено — docker-группа = root-эквивалент.
+# Read-only docker (/server → 🐳) идёт через sudo -n с узким sudoers:
+# см. deploy/agent-coder-docker.sudoers и docs/ENVIRONMENT.md.
 WorkingDirectory=/home/botuser/bots/agent-coder
 Environment=PATH=/home/botuser/bots/agent-coder/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1

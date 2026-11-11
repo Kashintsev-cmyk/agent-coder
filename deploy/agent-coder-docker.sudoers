@@ -1,0 +1,24 @@
+# /etc/sudoers.d/agent-coder-docker  (root:root 0440, visudo -c)
+#
+# M6: botuser может выполнять ТОЛЬКО read-only docker-команды без пароля.
+# Все write-операции docker (run/exec/rm/...) сюда НЕ входят — и в
+# run_command._SAFE_PATTERNS их нет (строгие regex с $).
+#
+# ВАЖНО: путь /usr/bin/docker должен совпадать с реальным (which docker).
+# Если docker установлен в /usr/local/bin/docker — поправить здесь и в
+# run_command._SAFE_PATTERNS (тоже точный путь).
+#
+# Установка:
+#   sudo install -o root -g root -m 0440 deploy/agent-coder-docker.sudoers \
+#        /etc/sudoers.d/agent-coder-docker
+#   sudo visudo -c -f /etc/sudoers.d/agent-coder-docker
+#   sudo -u botuser sudo -n /usr/bin/docker ps   # smoke от botuser
+#
+botuser ALL=(root) NOPASSWD: /usr/bin/docker ps, \
+                               /usr/bin/docker ps *, \
+                               /usr/bin/docker images, \
+                               /usr/bin/docker images *, \
+                               /usr/bin/docker stats --no-stream, \
+                               /usr/bin/docker inspect *, \
+                               /usr/bin/docker logs *, \
+                               /usr/bin/docker logs --tail * *
