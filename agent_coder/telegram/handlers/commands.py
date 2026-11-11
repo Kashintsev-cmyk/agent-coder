@@ -33,6 +33,7 @@ from .project_utils import (
     _create_project_on_disk,
     _create_session,
     _validate_project_name,
+    _workspace_allowed,
 )
 from .shared import (
     _audit_reasoning_warning,
@@ -160,15 +161,22 @@ async def cmd_new(message: Message) -> None:
 
     if arg.startswith(("/", "./", "../")):
         path = Path(arg).resolve()
-        if path.is_dir():
-            await _create_session(message.chat.id, message, str(path))
+        if not path.is_dir():
+            await message.answer(
+                f"❌ Директория не найдена: <code>{html_escape(str(path))}</code>\n"
+                f"По явным путям проект не создаётся. Используй короткое имя:\n"
+                f"<code>/new my-project</code>",
+                parse_mode="HTML",
+            )
             return
-        await message.answer(
-            f"❌ Директория не найдена: <code>{html_escape(str(path))}</code>\n"
-            f"По явным путям проект не создаётся. Используй короткое имя:\n"
-            f"<code>/new my-project</code>",
-            parse_mode="HTML",
-        )
+        ok, reason = _workspace_allowed(path)
+        if not ok:
+            await message.answer(
+                f"❌ Путь <code>{html_escape(str(path))}</code> не разрешён: {reason}",
+                parse_mode="HTML",
+            )
+            return
+        await _create_session(message.chat.id, message, str(path))
         return
 
     err = _validate_project_name(arg)

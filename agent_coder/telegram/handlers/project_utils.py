@@ -30,6 +30,31 @@ _PROJECTS_DEFAULT_DIR: Path = bots_dir()
 _PROJECT_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_.-]{0,39}$")
 
 
+def _workspace_allowed(path: Path) -> tuple[bool, str]:
+    """Проверить, разрешено ли открывать ACT-сессию в path.
+
+    Разрешено только под config.TELEGRAM_PROJECTS_DIRS (env
+    TELEGRAM_PROJECTS_DIRS, default ~/projects,~/bots).
+    Собственный код бота (репозиторий agent-coder) запрещён всегда, даже
+    если bots/ целиком входит в TELEGRAM_PROJECTS_DIRS.
+    """
+    resolved = path.resolve()
+    own_repo = Path(__file__).resolve().parents[3]  # .../agent-coder/
+    try:
+        resolved.relative_to(own_repo)
+        return False, "собственный код бота (запрещено)"
+    except ValueError:
+        pass
+    for root in config.TELEGRAM_PROJECTS_DIRS:
+        try:
+            resolved.relative_to(root.resolve())
+            return True, ""
+        except ValueError:
+            continue
+    allowed = ", ".join(str(r) for r in config.TELEGRAM_PROJECTS_DIRS)
+    return False, f"вне разрешённых корней ({allowed})"
+
+
 def _validate_project_name(name: str) -> str | None:
     """Вернуть текст ошибки или None, если имя валидно."""
     if not name:
