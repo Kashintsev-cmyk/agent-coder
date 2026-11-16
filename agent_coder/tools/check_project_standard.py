@@ -219,6 +219,39 @@ def _collect_issues(base: Path) -> list[dict[str, Any]]:
                 )
             )
 
+        mypy = tool.get("mypy", {})
+        if not isinstance(mypy, dict):
+            mypy = {}
+        if not mypy:
+            issues.append(
+                _issue(
+                    "pyproject.toml",
+                    "minor",
+                    "mypy_section_missing",
+                    "[tool.mypy] с files = [<package>]",
+                    "секции [tool.mypy] нет",
+                )
+            )
+        else:
+            files = mypy.get("files")
+            if isinstance(files, str):
+                files = [files]
+            if (
+                isinstance(files, list)
+                and files
+                and "app" in files
+                and not (base / "app").is_dir()
+            ):
+                issues.append(
+                    _issue(
+                        "pyproject.toml",
+                        "minor",
+                        "mypy_files_placeholder_app",
+                        'files = ["<package_name>"]',
+                        f"files = {files!r}",
+                    )
+                )
+
         # 4. requires-python: стандарт — 3.12+
         project = pp.get("project", {}) if isinstance(pp, dict) else {}
         if not isinstance(project, dict):

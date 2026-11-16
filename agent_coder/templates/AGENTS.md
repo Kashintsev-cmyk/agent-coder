@@ -14,7 +14,7 @@ Bootstrap нового проекта: `agent-coder scaffold --project <name>`.
 наличие и корректность:
 
 - pyproject.toml — секции [project], [tool.pytest.ini_options],
-  [tool.ruff], [tool.ruff.lint], [tool.coverage.run]
+  [tool.ruff], [tool.ruff.lint], [tool.mypy], [tool.coverage.run]
 - requirements.in — прод-зависимости
 - requirements-dev.in — из agent_coder/templates/requirements-dev-base.in
 - requirements-dev.txt — `uv pip compile --universal requirements-dev.in`
@@ -32,9 +32,14 @@ Bootstrap нового проекта: `agent-coder scaffold --project <name>`.
 
 - Python 3.12+, ruff line-length=88, select=E,F,W,I,UP,B,C4,SIM
 - Пакет = snake_case от имени проекта
-- База dev: ruff, uv, pytest, pytest-asyncio, pytest-cov (5 шт.)
-- mypy — отдельной миграцией, не в базе
-- CI: ruff check . && pytest -q (без знания имени пакета)
+- База dev: ruff, uv, pytest, pytest-asyncio, pytest-cov, mypy (6 шт.)
+- mypy — мягкий профиль (files=<пакет>, check_untyped_defs,
+  warn_unused_ignores, ignore_missing_imports); ужесточать до strict
+  по мере покрытия типами
+- CI: ruff check . && ruff format --check . && mypy && pytest -q
+  (без знания имени пакета — mypy берёт files из pyproject.toml)
+- Перезапуск бота: `sudo systemctl restart <проект>-bot.service`
+  или `sudo botctl restart <проект>-bot` (см. README проекта)
 - coverage source — имя пакета, не "app"
 
 ## Проверка

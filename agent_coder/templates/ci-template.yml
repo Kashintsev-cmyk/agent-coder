@@ -37,5 +37,8 @@ jobs:
           ruff check .
           ruff format --check .
 
+      - name: Mypy (types)
+        run: mypy
+
       - name: Tests
         run: pytest -q

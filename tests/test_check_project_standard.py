@@ -30,6 +30,10 @@ select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
 [tool.coverage.run]
 source = ["demo"]
 
+[tool.mypy]
+python_version = "3.12"
+files = ["demo"]
+
 [build-system]
 requires = ["setuptools>=68"]
 build-backend = "setuptools.build_meta"
@@ -125,6 +129,45 @@ def test_ruff_line_length_100_flagged(tmp_path: Path) -> None:
     data = asyncio.run(_run(tmp_path))
     issues = [i for i in data["issues"] if i["issue"] == "ruff_line_length_not_88"]
     assert len(issues) == 1
+
+
+def test_mypy_section_missing_flagged(tmp_path: Path) -> None:
+    import asyncio
+
+    _write_complete_skeleton(tmp_path)
+    p = tmp_path / "pyproject.toml"
+    p.write_text(
+        COMPLETE_PYPROJECT.replace(
+            '[tool.mypy]\npython_version = "3.12"\nfiles = ["demo"]\n', ""
+        ),
+        encoding="utf-8",
+    )
+    data = asyncio.run(_run(tmp_path))
+    issues = [i for i in data["issues"] if i["issue"] == "mypy_section_missing"]
+    assert issues, data["issues"]
+    assert issues[0]["severity"] == "minor"
+
+
+def test_mypy_files_placeholder_app_flagged(tmp_path: Path) -> None:
+    import asyncio
+
+    _write_complete_skeleton(tmp_path)
+    p = tmp_path / "pyproject.toml"
+    p.write_text(
+        COMPLETE_PYPROJECT.replace('files = ["demo"]', 'files = ["app"]'),
+        encoding="utf-8",
+    )
+    data = asyncio.run(_run(tmp_path))
+    issues = [i for i in data["issues"] if i["issue"] == "mypy_files_placeholder_app"]
+    assert issues, data["issues"]
+
+
+def test_complete_skeleton_has_no_mypy_issue(tmp_path: Path) -> None:
+    import asyncio
+
+    _write_complete_skeleton(tmp_path)
+    data = asyncio.run(_run(tmp_path))
+    assert not [i for i in data["issues"] if i["issue"].startswith("mypy")]
 
 
 def test_pytest_testpaths_missing_flagged(tmp_path: Path) -> None:

@@ -38,6 +38,18 @@ def test_snippet_targets_py312_and_uv() -> None:
     assert "uv" in reqs.lower() or "pip-tools" not in reqs, "reqs must be uv-based"
 
 
+def test_templates_include_mypy() -> None:
+    """mypy — часть базы: секция в сниппете, зависимость и шаг CI."""
+    files = importlib.resources.files("agent_coder.templates")
+    snippet = files.joinpath("pyproject-snippet.toml").read_text(encoding="utf-8")
+    assert "[tool.mypy]" in snippet, "snippet must define [tool.mypy]"
+    assert 'files = ["app"]' in snippet, "snippet must set mypy files placeholder"
+    reqs = files.joinpath("requirements-dev-base.in").read_text(encoding="utf-8")
+    assert "mypy" in reqs, "requirements-dev-base.in must list mypy"
+    ci = files.joinpath("ci-template.yml").read_text(encoding="utf-8")
+    assert "mypy" in ci, "ci-template.yml must run mypy"
+
+
 def test_templates_tracked_in_git() -> None:
     """F21: шаблоны должны быть в git, иначе CI-клон их не увидит.
 

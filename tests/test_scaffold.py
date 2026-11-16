@@ -64,6 +64,39 @@ def test_pyproject_valid_and_pkg_substituted(tmp_path: Path) -> None:
     assert data["tool"]["coverage"]["run"]["source"] == ["demo"]
     assert data["tool"]["setuptools"]["packages"]["find"]["include"] == ["demo*"]
     assert data["tool"]["ruff"]["target-version"] == "py312"
+    assert data["tool"]["mypy"]["files"] == ["demo"]
+    assert data["tool"]["mypy"]["python_version"] == "3.12"
+
+
+def test_readme_has_restart_section(tmp_path: Path) -> None:
+    base = tmp_path / "demo"
+    scaffold_project("demo", target=base, git_init=False)
+    text = (base / "README.md").read_text(encoding="utf-8")
+    assert "systemctl restart demo-bot.service" in text
+    assert "botctl restart demo-bot" in text
+
+
+def test_readme_has_checks_section(tmp_path: Path) -> None:
+    base = tmp_path / "demo"
+    scaffold_project("demo", target=base, git_init=False)
+    text = (base / "README.md").read_text(encoding="utf-8")
+    assert "ruff check ." in text
+    assert "mypy" in text
+    assert "pytest -q" in text
+
+
+def test_requirements_dev_includes_mypy(tmp_path: Path) -> None:
+    base = tmp_path / "demo"
+    scaffold_project("demo", target=base, git_init=False)
+    text = (base / "requirements-dev.in").read_text(encoding="utf-8")
+    assert "mypy" in text
+
+
+def test_ci_runs_mypy(tmp_path: Path) -> None:
+    base = tmp_path / "demo"
+    scaffold_project("demo", target=base, git_init=False)
+    text = (base / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "mypy" in text
 
 
 def test_pyproject_no_app_placeholder(tmp_path: Path) -> None:

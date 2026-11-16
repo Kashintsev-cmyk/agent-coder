@@ -57,6 +57,7 @@ def _read_template(name: str) -> str:
 def _render_pyproject(project: str, package: str, description: str) -> str:
     snippet = _read_template("pyproject-snippet.toml")
     snippet = snippet.replace('source = ["app"]', f'source = ["{package}"]')
+    snippet = snippet.replace('files = ["app"]', f'files = ["{package}"]')
     return (
         "[project]\n"
         f'name = "{project}"\n'
@@ -99,6 +100,32 @@ def _render_readme(project: str, package: str) -> str:
         f"    {package}/        # код\n"
         "    tests/            # pytest\n"
         "    main.py           # entry point\n"
+        "\n"
+        "## Перезапуск (systemd-бот)\n"
+        "\n"
+        "Единый способ — `systemctl`; на хосте с `botctl` (обёртка над\n"
+        "`systemctl`/`journalctl`, `/usr/local/bin/botctl`, требует sudo):\n"
+        "\n"
+        "    # вариант 1: напрямую systemd (работает всегда)\n"
+        f"    sudo systemctl restart {project}-bot.service\n"
+        f"    sudo systemctl status {project}-bot.service\n"
+        "\n"
+        "    # вариант 2: через botctl (короче, есть logs/logs-follow)\n"
+        f"    sudo botctl restart {project}-bot\n"
+        f"    sudo botctl status {project}-bot\n"
+        f"    sudo botctl logs-follow {project}-bot\n"
+        "\n"
+        "Имя юнита — `<проект>-bot.service` (дефисы, не подчёркивания).\n"
+        "Ошибка `Unit ... could not be found` = имя юнита не совпадает.\n"
+        "После правки кода: рестарт → `status` (active/running) → `logs`\n"
+        "без traceback. Проверки до рестарта: `ruff check .` и `pytest -q`.\n"
+        "\n"
+        "## Проверки\n"
+        "\n"
+        "    ruff check .            # линт\n"
+        "    ruff format --check .   # форматирование\n"
+        "    mypy                    # типы (конфиг в pyproject.toml)\n"
+        "    pytest -q               # тесты\n"
     )
 
 

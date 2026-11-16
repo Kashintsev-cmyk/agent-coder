@@ -23,6 +23,22 @@ target-version = "py312"
 select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]
 ignore = ["E501"]
 
+[tool.mypy]
+python_version = "3.12"
+# Что проверять: пакет проекта (scaffold подставит его имя сюда).
+# CI запускает `mypy` без аргументов — список берётся из files.
+files = ["app"]
+# Мягкий профиль: ловит явные ошибки, не мешает писать код.
+# Ужесточать до strict = true по мере покрытия типами.
+check_untyped_defs = true
+no_implicit_optional = true
+warn_redundant_casts = true
+warn_unused_configs = true
+warn_unused_ignores = true
+warn_return_any = true
+# Сторонние библиотеки без стабов не должны валить проверку.
+ignore_missing_imports = true
+
 [tool.coverage.run]
 source = ["app"]
 branch = true

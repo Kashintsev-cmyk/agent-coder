@@ -12,7 +12,7 @@ requirements-dev-base.in, .gitignore-base) —
 ## Обязательные файлы (наличие = MAJOR при аудите)
 
 - pyproject.toml — [project], [tool.pytest.ini_options], [tool.ruff],
-  [tool.ruff.lint], [tool.coverage.run]
+  [tool.ruff.lint], [tool.mypy], [tool.coverage.run]
 - requirements.in — прод-зависимости
 - requirements-dev.in — из agent_coder/templates/requirements-dev-base.in (scaffold копирует автоматически)
 - requirements-dev.txt — `uv pip compile --universal requirements-dev.in`
@@ -41,6 +41,9 @@ requirements-dev-base.in, .gitignore-base) —
   падает на package discovery
 - `[tool.ruff]`: `line-length = 88`, `target-version = "py312"`
 - `[tool.ruff.lint]`: `select ⊇ {E, F, W, I}`
+- `[tool.mypy]`: `files = [<package>]` (не `"app"`), `check_untyped_defs`,
+  `warn_unused_ignores`, `ignore_missing_imports = true`
+  (мягкий профиль; `strict = true` — когда пакет покрыт типами)
 - `[tool.coverage.run]`: `source = [<package>]` (не `"app"`)
 - `[tool.pytest.ini_options]`: `testpaths = ["tests"]`
 
@@ -51,9 +54,12 @@ requirements-dev-base.in, .gitignore-base) —
   select=["E","F","W","I","UP","B","C4","SIM"]
 - Пакет = snake_case от имени проекта
 - coverage source = имя пакета проекта (не "app")
-- База dev: ruff, uv, pytest, pytest-asyncio, pytest-cov (5 шт.)
-- mypy — отдельной миграцией, не в базе
-- CI: ruff check . && pytest -q (без знания имени пакета)
+- База dev: ruff, uv, pytest, pytest-asyncio, pytest-cov, mypy (6 шт.)
+- CI: ruff check . && ruff format --check . && mypy && pytest -q
+  (без знания имени пакета: mypy берёт `files` из pyproject.toml)
+- Перезапуск systemd-бота: `sudo systemctl restart <проект>-bot.service`;
+  на хосте с `botctl` — `sudo botctl restart <проект>-bot`
+  (+ `logs`/`logs-follow`). Имя юнита — дефисы, суффикс `-bot`.
 
 ## Как применять
 
