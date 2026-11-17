@@ -143,33 +143,6 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         output_price=87.11,
         tag="для кода",
     ),
-    "deepseek/deepseek-r1": ModelInfo(
-        id="deepseek/deepseek-r1",
-        name="DeepSeek R1",
-        context=64_000,
-        reasoning=True,
-        vision=False,
-        tools=True,
-        reasoning_effort=False,
-        web_search_builtin=False,
-        input_price=76.22,
-        output_price=272.22,
-        tag="глубокий аудит",
-    ),
-    "xiaomi/mimo-v2.6-flash": ModelInfo(
-        id="xiaomi/mimo-v2.6-flash",
-        name="MiMo V2.6 Flash",
-        context=262_144,
-        reasoning=True,
-        vision=True,
-        tools=True,
-        reasoning_effort=True,
-        web_search_builtin=False,
-        # TODO(pricing): verify from API.
-        input_price=0.0,
-        output_price=0.0,
-        tag="flash (fallback estimate)",
-    ),
     "z-ai/glm-5.3": ModelInfo(
         id="z-ai/glm-5.3",
         name="GLM 5.3",
@@ -206,25 +179,12 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         reasoning_effort=True,
         web_search_builtin=True,
         verbosity=True,
-        input_price=217.78,
-        output_price=1088.88,
+        input_price=213.59,
+        output_price=1067.97,
         tag="агентный кодинг",
     ),
     # --- Прочие ранее известные модели (сохранены, чтобы старые id остались
     # валидными, если пользователь вернёт их в CURATED_MODEL_IDS). ---
-    "openai/gpt-5.6-luna": ModelInfo(
-        id="openai/gpt-5.6-luna",
-        name="GPT-5.6 Luna",  # TODO(meta): сверить name/context/pricing с дампом
-        context=0,
-        reasoning=True,
-        vision=True,
-        tools=True,
-        reasoning_effort=True,
-        web_search_builtin=True,
-        input_price=0.0,
-        output_price=0.0,
-        tag="luna",
-    ),
     "anthropic/claude-haiku-5.5": ModelInfo(
         id="anthropic/claude-haiku-5.5",
         name="Claude Haiku 5.5",
@@ -332,10 +292,10 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="DeepSeek V4 Pro",
         context=1_048_576,
         reasoning=True,
-        vision=False,  # TODO(capabilities)
-        tools=False,  # TODO(capabilities)
-        reasoning_effort=False,  # TODO(capabilities)
-        web_search_builtin=False,  # TODO(capabilities)
+        vision=False,  
+        tools=False,  
+        reasoning_effort=False,  
+        web_search_builtin=False,  
         input_price=35.0,
         output_price=70.0,
         tag="умнее flash",
@@ -345,12 +305,12 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="Claude Sonnet 4.6",
         context=1_000_000,
         reasoning=True,
-        vision=False,  # TODO(capabilities)
-        tools=False,  # TODO(capabilities)
-        reasoning_effort=False,  # TODO(capabilities)
-        web_search_builtin=False,  # TODO(capabilities)
-        input_price=80.0,
-        output_price=400.0,
+        vision=True,
+        tools=True,
+        reasoning_effort=True,
+        web_search_builtin=True,
+        input_price=320.39,
+        output_price=1601.96,
         tag="топ для кода",
     ),
     "anthropic/claude-haiku-4.5": ModelInfo(
@@ -358,75 +318,23 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         name="Claude Haiku 4.5",
         context=200_000,
         reasoning=True,
-        vision=False,  # TODO(capabilities)
-        tools=False,  # TODO(capabilities)
-        reasoning_effort=False,  # TODO(capabilities)
-        web_search_builtin=False,  # TODO(capabilities)
-        input_price=27.0,
-        output_price=135.0,
+        vision=True,
+        tools=True,
+        reasoning_effort=False,
+        web_search_builtin=True,
+        input_price=106.8,
+        output_price=533.99,
         tag="быстрая Anthropic",
-    ),
-    "openai/gpt-5-nano": ModelInfo(
-        id="openai/gpt-5-nano",
-        name="GPT-5 Nano",
-        context=400_000,
-        reasoning=True,
-        vision=False,  # TODO(capabilities)
-        tools=False,  # TODO(capabilities)
-        reasoning_effort=False,  # TODO(capabilities)
-        web_search_builtin=False,  # TODO(capabilities)
-        input_price=1.4,
-        output_price=11.0,
-        tag="очень дешёвая",
-    ),
-    "openai/gpt-5.4-mini": ModelInfo(
-        id="openai/gpt-5.4-mini",
-        name="GPT-5.4 Mini",
-        context=400_000,
-        reasoning=True,
-        vision=False,  # TODO(capabilities)
-        tools=False,  # TODO(capabilities)
-        reasoning_effort=False,  # TODO(capabilities)
-        web_search_builtin=False,  # TODO(capabilities)
-        input_price=20.0,
-        output_price=120.0,
-        tag="баланс цена/качество",
-    ),
-    "openai/gpt-5.4": ModelInfo(
-        id="openai/gpt-5.4",
-        name="GPT-5.4",
-        context=1_050_000,
-        reasoning=True,
-        vision=False,  # TODO(capabilities)
-        tools=False,  # TODO(capabilities)
-        reasoning_effort=False,  # TODO(capabilities)
-        web_search_builtin=False,  # TODO(capabilities)
-        input_price=68.0,
-        output_price=400.0,
-        tag="топ OpenAI",
-    ),
-    "google/gemini-3.5-flash": ModelInfo(
-        id="google/gemini-3.5-flash",
-        name="Gemini 3.5 Flash",
-        context=1_048_576,
-        reasoning=True,
-        vision=False,  # TODO(capabilities)
-        tools=False,  # TODO(capabilities)
-        reasoning_effort=False,  # TODO(capabilities)
-        web_search_builtin=False,  # TODO(capabilities)
-        input_price=40.0,
-        output_price=240.0,
-        tag="длинный контекст",
     ),
     "google/gemini-2.5-flash": ModelInfo(
         id="google/gemini-2.5-flash",
         name="Gemini 2.5 Flash",
         context=1_048_576,
         reasoning=True,
-        vision=False,  # TODO(capabilities)
-        tools=False,  # TODO(capabilities)
-        reasoning_effort=False,  # TODO(capabilities)
-        web_search_builtin=False,  # TODO(capabilities)
+        vision=False,  
+        tools=False,  
+        reasoning_effort=False,  
+        web_search_builtin=False,  
         input_price=8.0,
         output_price=67.0,
         tag="дешёвый Gemini",

@@ -9,6 +9,7 @@ from openai import APIConnectionError, APITimeoutError, RateLimitError
 
 from agent_coder.config import config
 from agent_coder.llm.router import FALLBACK_ERRORS, RouterState, router
+from agent_coder.models import find_model
 
 
 @pytest.fixture
@@ -63,19 +64,23 @@ def test_max_input_tokens_respects_fill_ratio(fresh_router):
     assert fresh_router.max_input_tokens("z-ai/glm-5.3") == int(
         1_048_576 * config.CONTEXT_FILL_RATIO
     )
-    # R1: 64 000 * 0.8
-    assert fresh_router.max_input_tokens("deepseek/deepseek-r1") == int(
-        64_000 * config.CONTEXT_FILL_RATIO
+    # mistral-nemo: 131 072 * 0.8
+    assert fresh_router.max_input_tokens("mistralai/mistral-nemo") == int(
+        131_072 * config.CONTEXT_FILL_RATIO
     )
 
 
 def test_fits_context_small_task_fits_r1(fresh_router):
-    assert fresh_router.fits_context("deepseek/deepseek-r1", 10_000) is True
+    assert fresh_router.fits_context("mistralai/mistral-nemo", 10_000) is True
 
 
-def test_fits_context_large_task_does_not_fit_r1(fresh_router):
-    # 100k токенов > 64k * 0.8 = 51.2k → R1 не влезает.
-    assert fresh_router.fits_context("deepseek/deepseek-r1", 100_000) is False
+def test_fits_context_large_task_does_not_fit_small_ctx(fresh_router):
+    """Задача больше context*fill_ratio — не влезает (без хардкода порога)."""
+    model_id = config.MODEL_IDS[0]
+    model = find_model(model_id)
+    assert model is not None
+    over = int(model.context * config.CONTEXT_FILL_RATIO) + 1
+    assert fresh_router.fits_context(model_id, over) is False
     assert fresh_router.fits_context("moonshotai/kimi-k2.7-code", 100_000) is True
     assert fresh_router.fits_context("z-ai/glm-5.3", 100_000) is True
 
