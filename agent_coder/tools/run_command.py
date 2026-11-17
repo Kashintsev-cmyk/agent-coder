@@ -426,11 +426,25 @@ def _is_safe_git_metadata(cmd: str) -> bool:
             "--delete",
             "--move",
             "--copy",
+            # B9.2g.7: -u/--set-upstream-to и --edit-description пишут
+            # в .git/config (или зовут редактор), хотя sub выводит «список».
+            "-u",
+            "--set-upstream-to",
+            "--unset-upstream",
+            "--edit-description",
         }
         for a in args:
-            if a in MUT or a.startswith(("-d", "-D", "-m", "-M", "-c", "-C")):
+            if a in MUT or a.startswith(("-d", "-D", "-m", "-M", "-c", "-C", "-u")):
                 return False
-            if a.startswith(("--force", "--delete", "--move")):
+            if a.startswith(
+                (
+                    "--force",
+                    "--delete",
+                    "--move",
+                    "--set-upstream-to",
+                    "--edit-description",
+                )
+            ):
                 return False
         return True
 
@@ -480,6 +494,69 @@ def _is_safe_git_metadata(cmd: str) -> bool:
                 return False
         return True
 
+    return False
+
+
+# B9.2g.7: пишущие флаги у «в целом read-only» команд.
+# Шаблоны вида `^dmesg(\\s+\\S+)*$` / `^tree(\\s+-\\w+)*(\\s+\\S+)?$`
+# пропускали ЛЮБОЙ аргумент, включая флаги, которые пишут на диск или
+# чистят состояние ядра:
+#   dmesg -C/-c -D/-E -n  — очистка/правка ring buffer'а ядра;
+#   tree -o FILE          — запись вывода в произвольный файл;
+#   nvidia-smi --filename=/-l/--loop — запись в файл, бесконечный цикл;
+#   file -C -m            — компиляция magic-файла на диск.
+# Проверяем токены, а не регулярку: один список и на одиночные команды,
+# и на части pipe, чтобы ветки не разъезжались.
+_MUTATING_FLAGS: dict[str, tuple[str, ...]] = {
+    "dmesg": (
+        "-C",
+        "-c",
+        "-D",
+        "-E",
+        "-n",
+        "-T",
+        "-w",  # follow: не пишет, но висит до таймаута 300с
+        "--follow",
+        "--clear",
+        "--read-clear",
+        "--console-off",
+        "--console-on",
+        "--console-level",
+    ),
+    "tree": ("-o", "--output"),
+    "nvidia-smi": ("-l", "-f", "--loop", "--filename"),
+    "file": ("-C", "-c", "-m", "-f"),
+}
+
+
+def _has_mutating_flag(cmd: str) -> bool:
+    """Есть ли у read-only команды флаг, который пишет/чистит (B9.2g.7)."""
+    if not cmd:
+        return False
+    try:
+        tokens = shlex.split(cmd)
+    except ValueError:
+        return True  # не разобрали — safe-side: аргументы непрозрачны
+    if not tokens:
+        return False
+    flags = _MUTATING_FLAGS.get(tokens[0].rsplit("/", 1)[-1])
+    if not flags:
+        return False
+    for tok in tokens[1:]:
+        if tok == "--":
+            break
+        for flag in flags:
+            if tok == flag or tok.startswith(flag + "="):
+                return True
+            # слитный кластер коротких флагов: `-lC`, `-no`
+            if (
+                len(flag) == 2
+                and not flag.startswith("--")
+                and tok.startswith("-")
+                and not tok.startswith("--")
+                and flag[1] in tok[1:]
+            ):
+                return True
     return False
 
 
@@ -545,6 +622,9 @@ def _is_read_only_part(part: str) -> bool:
         return False
     if _MUTATING_PIPE_PATTERNS.match(part):
         return False
+    # B9.2g.7: пишущий флаг у read-only команды (`tree -o`, `dmesg -C`).
+    if _has_mutating_flag(part):
+        return False
     # B9.2g.5: git в pipe — только read-only метаданные
     # (git log --output=..., archive, bundle, format-patch, fast-export).
     if part.startswith("git ") and not _is_safe_git_metadata(part):
@@ -587,6 +667,9 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
     # Одиночная команда
     if _FORBIDDEN.search(_strip_sq(cmd)):
         return False
+    # B9.2g.7: флаг записи не пропускаем даже если regex шаблона совпал.
+    if _has_mutating_flag(cmd):
+        return False
     return _is_read_only_part(cmd) or any(p.match(cmd) for p in _SAFE_PATTERNS)
 
 
@@ -595,11 +678,28 @@ def _is_safe_command(args: dict[str, Any]) -> bool:
 # областью аудита. Системные диагностики (df/ps/journalctl/docker ps/...)
 # в гейт-набор не входят и проходят как раньше.
 _SCOPE_ALL_PATH_CMDS = frozenset(
-    ["cat", "head", "tail", "less", "more", "wc", "file", "stat", "strings", "nl", "xxd", "od", "hexdump", "tree"]
+    [
+        "cat",
+        "head",
+        "tail",
+        "less",
+        "more",
+        "wc",
+        "file",
+        "stat",
+        "strings",
+        "nl",
+        "xxd",
+        "od",
+        "hexdump",
+        "tree",
+    ]
 )
 _SCOPE_FIND_CMDS = frozenset({"find"})
 # grep/rg/sed/awk: первый не-флаговый арг — паттерн/программа, пути после.
-_SCOPE_ARGS_AFTER_FIRST = frozenset(["grep", "egrep", "fgrep", "rg", "sed", "awk", "gawk"])
+_SCOPE_ARGS_AFTER_FIRST = frozenset(
+    ["grep", "egrep", "fgrep", "rg", "sed", "awk", "gawk"]
+)
 # Фрагменты программ (sed/awk), не пути: '{print $1}', 's/a/b/', 'x=1'...
 _PROG_FRAGMENT = re.compile(r"[{}$()|;&=]")
 
@@ -611,9 +711,7 @@ def _gate_candidates(basename: str, tokens: list[str]) -> list[str] | None:
     if basename in _SCOPE_FIND_CMDS:
         return tokens[1:2]  # у find путь — первый аргумент
     if basename in _SCOPE_ARGS_AFTER_FIRST:
-        non_flag = [
-            t for t in tokens[1:] if not t.startswith("-") and not t.isdigit()
-        ]
+        non_flag = [t for t in tokens[1:] if not t.startswith("-") and not t.isdigit()]
         return non_flag[1:]  # [0] — паттерн/программа
     return None
 
@@ -641,13 +739,15 @@ def _scope_violation(cmd: str, scopes: list[str]) -> str | None:
             continue
         for tok in cands:
             if (
-                not tok or tok.startswith(("-", "%")) or tok.isdigit() or _PROG_FRAGMENT.search(tok)
+                not tok
+                or tok.startswith(("-", "%"))
+                or tok.isdigit()
+                or _PROG_FRAGMENT.search(tok)
             ):
                 continue
             if tok.startswith("~"):
                 return (
-                    f"Ошибка: путь {tok!r} (вне workspace) "
-                    f"вне области аудита {scopes}"
+                    f"Ошибка: путь {tok!r} (вне workspace) вне области аудита {scopes}"
                 )
             rel = tok
             globbed = re.split(r"[*?\[]", tok)[0]
