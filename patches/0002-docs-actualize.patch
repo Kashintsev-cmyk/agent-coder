@@ -1,0 +1,127 @@
+diff --git a/README.md b/README.md
+index f58249f..d6b9da7 100644
+--- a/README.md
++++ b/README.md
+@@ -487,7 +487,7 @@ ID сессии — 8 hex-символов.
+     # установка с dev-зависимостями
+     pip install -e ".[dev]"
+ 
+-    # тесты (311)
++    # тесты (1217)
+     pytest -q
+ 
+     # линтер
+@@ -496,9 +496,9 @@ ID сессии — 8 hex-символов.
+     # типы
+     mypy agent_coder tests
+ 
+-CI (GitHub Actions) прогоняет `ruff check .`, `mypy agent_coder tests` и
+-`pytest -q -n auto` на Python 3.10 / 3.11 / 3.12 при каждом push в `master`
+-и в PR.
++CI (GitHub Actions) прогоняет `ruff check .` и `pytest -q -n auto` на
++Python 3.12 / 3.13 при каждом push в `master` и в PR. `mypy` в CI **не
++запускается** — типы проверяются вручную (см. ниже про baseline).
+ 
+ ## Известные ограничения
+ 
+@@ -512,12 +512,17 @@ CI (GitHub Actions) прогоняет `ruff check .`, `mypy agent_coder tests`
+ - PDF-отчётов нет — только Markdown.
+ - Медиа удаляются по retention: файлы старше `MEDIA_RETENTION_DAYS` (30)
+   подчищает фоновая задача раз в сутки. При `/delete` — сразу.
+-- `mypy` в CI исключает `agent_coder/telegram/handlers/**`:
+-  ~150 ошибок `union-attr` от aiogram 3.x
++- `mypy` исключает `agent_coder/telegram/handlers/**` (`pyproject.toml`,
++  `[tool.mypy] excludes`): ~150 ошибок `union-attr` от aiogram 3.x
+   (`Message | InaccessibleMessage | None`). Все одного класса —
+   mypy не видит защитных `if not session`, которые есть в коде.
+   Чинить через хелпер `_msg(query)` — 2–3 часа рефакторинга без
+-  функциональной пользы; отложено.
++  функциональной пользы; отложено. Baseline на остальном коде —
++  24 ошибки в 4 файлах (`loop.py` 16, `__main__.py` 6,
++  `tool_extract.py` 2, `compression.py` 1).
++- Код бота (`agent_coder/`, `tests/`, `docs/`, `deploy/`) смонтирован
++  **read-only** в юните (M7): бот не правит собственный код. Правки идут
++  патчем — `patches/README.md`, `patches/export.sh`.
+ - systemd hardening даёт боту право писать в `~/bots` и `~/projects`
+   (для `/new`, `/clone`, `/ghnew`). В пределах одного пользователя
+   это приемлемо.
+diff --git a/docs/ENVIRONMENT.md b/docs/ENVIRONMENT.md
+index 918b74f..958b666 100644
+--- a/docs/ENVIRONMENT.md
++++ b/docs/ENVIRONMENT.md
+@@ -54,6 +54,11 @@ sudoers — только `ps/images/stats --no-stream/inspect/logs`.
+ `.git/` и `.venv/` оставлены RW: `git_commit` (approval-инструмент)
+ пишет в `.git/`, рантайм использует `.venv/bin/python`.
+ 
++`patches/` намеренно **не** в `ReadOnlyPaths`: это рабочий каталог схемы
++«правка только патчем» — бот складывает туда дифы, с хоста они
++накладываются на живое дерево. Регламент и скрипты — `patches/README.md`,
++`patches/export.sh`, `patches/doctor.sh`.
++
+ Проверка (после `systemctl restart agent-coder-bot`):
+ 
+     # код — RO (ожидаем Permission denied):
+@@ -66,9 +71,10 @@ sudoers — только `ps/images/stats --no-stream/inspect/logs`.
+     # новый проект через /new — RW (ожидаем успех):
+     # в Telegram: /new m7-smoke
+ 
+-`AUDIT_REPORT.md` в корне репозитория физически закроется этим же
+-правилом (RO на файл) — это закрывает часть M12; отдельный fix
+-(timestamped filename в `also_in_workspace=True`) — в бэклоге.
++`AUDIT_REPORT.md` в корне репозитория в `ReadOnlyPaths` **не входит** и
++физически writable — но он и не отслеживается git (`.gitignore:22`), так
++что правки в нём не попадут в патч. Отдельный fix (timestamped filename
++в `also_in_workspace=True`) — в бэклоге (M12).
+ 
+ ---
+ 
+diff --git a/docs/FINDINGS.md b/docs/FINDINGS.md
+index cd2b644..372237b 100644
+--- a/docs/FINDINGS.md
++++ b/docs/FINDINGS.md
+@@ -32,6 +32,7 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
+ | A8 | major | три риска после A1–A7: (1) `MIN_OLD_SHARE` блокировал сжатие при огромном recent (несколько `read_file` по 80–200 КБ) → old копится, loop может упереться; (2) `read_file.MAX_BYTES=200k` → одно чтение ~51k токенов (85% soft); (3) `MAX_ITERATIONS_AUDIT=300 × 4 = 1200` итераций за запуск — дорого | (1) аварийный режим: total > soft×2 И old ≥ 3000 → сжимать принудительно; (2) MAX_BYTES 200k→80k (~20k токенов); (3) AUDIT 300→200 (800 макс) | **done** `3d1d70f` + `a499783` + `983560b` | session 2026-10-19 |
+ | A9 | major | аудит `93108d9a` сжёг ~1000₽ с нулевым результатом: (1) loop на `read_file` — watchdog по ошибкам молчал (результат «успешный»); (2) ротация моделей при 429/timeout множила расход (итерация × 3 модели); (3) не было потолка трат | (1) бюджетные cap `MAX_COST_PER_TASK=200₽` / `MAX_COST_PER_SESSION=300₽`; (2) ротация убрана: 429/timeout → стоп `provider_error` (сессия сохранена, продолжение кнопкой), 402 → `LLMError(retryable=False)`; (3) watchdog «нет прогресса» `MAX_ITERATIONS_NO_PROGRESS=10` (прогресс = изменение work_state или успешный мутирующий tool) | **done** (коммит в сессии 2026-10-19) | session 2026-10-19 |
+ | A10 | major | рассинхрон UI и истории при смене режима: `/mode audit` менял только `session.mode`, `session.model` оставался deepseek-v4-flash; UI показывал deepseek, роутер при запуске подменял на kimi. Плюс `Session.new(model=MODEL_MAIN)` при создании AUDIT-сессии сразу ставил coding-модель | `config.RECOMMENDED_MODEL_BY_MODE` (рекомендация, не ограничение) + `_apply_recommended_model` при смене режима (обе точки) + `Session.new` по режиму; `model_manual=True` не перекрывается; валидация recommended ∈ CURATED. Группы/роутер не тронуты (единый `MODEL_IDS` — отдельный ACT) | **done** (коммит в сессии 2026-10-19) | session 2026-10-19 |
++| A11 | major | «read-only» whitelist `run_command` пропускал **пишущие** флаги: `dmesg -C/-c/-D/-E/-n/--clear` (чистка ring buffer ядра), `tree -o FILE` (запись листинга в файл), `nvidia-smi --filename=`/`-l`/`--loop` (запись в файл, бесконечный цикл до таймаута 300 с), `file -C -m` (компиляция magic-файла на диск), `git branch -u/--set-upstream-to` (мутация config репо). Причина: `_SAFE_PATTERNS` матчил команду и её `-\w+`-флаги, не различая чтение и запись; для `git branch` `_is_safe_git_metadata` не знал про `-u`. Обход давал запись в FS и в состояние ядра без approval | `_MUTATING_FLAGS: dict[str, tuple[str, ...]]` + `_has_mutating_flag()` — проверка по токенам (не по regex), вызов в обеих ветках: pipe `run_command.py:626`, одиночная `:671`; `git branch` — `MUT` расширен `-u`/`--set-upstream-to`/`-v`. Регресс: `tests/test_run_command_regex_mutations.py` (reject мутаций, allow read-only, `git branch`) | **done** `e1fe8f5` | session 2026-11-17 |
+ 
+ ## Backlog agent-coder (B-серия)
+ 
+@@ -65,6 +66,7 @@ Severity: major (ломает цикл/данные), minor (долг/неудо
+ | F22 | minor | Model 'x-ai/grok-4.20' отсутствует в каталоге: warning при `import config` → placeholder без метаданных (pytest output, 2026-10-18) | (a) добавить модель в `_FALLBACK_CATALOG`; (b) логировать только при первом использовании, не на import; (c) убрать из .env | **done** `c720bee`: grok-4.20 в fallback (реальные данные), `_make_placeholder(warn=...)`, init тихий | pytest |
+ | F21 | major | локальный pytest не ловит файлы, отсутствующие в git: `templates/AGENTS.md` был на диске, но gitignored → локально 3 passed, CI 2 failed (2026-10-18) | (a) `test_templates.py` дополнительно проверяет `git ls-files agent_coder/templates/` (skip вне git-репо); (b) pre-push CI-симуляция `git clone /tmp && pytest` | **done** `5966543` (file) + `4562084` (rule) + `00885a1` (test) | CI 2026-10-18 |
+ | F20 | minor | `[tool.mypy] python_version = "3.10"` в agent-coder при `requires-python >=3.12` | выровнять до `"3.12"` | **done** (отдельный коммит вместе с этим патчем FINDINGS) | peek pyproject |
++| F30 | major | M7 (код RO) оставлял бота без легального способа править свой код: любая правка упиралась в `Read-only file system`. Обходные пути ломали tooling: `git worktree` в корне репо давал `ruff format --check` 46 файлов вместо 23, `.sandbox` — то же; клон вне workspace недостижим (`write_file`/`edit_file` отвергают путь вне workspace, проверено на `../projects/...`); `rm` заблокирован `_HARD_BLOCK` | схема «клон → патч → apply с хоста»: `patches/export.sh` (`new`/`export`/`check`/`status`) + `patches/doctor.sh` (6 read-only проверок) + регламент в `patches/README.md`. Клон — `sessions/patch-work/NAME`: внутри workspace, RW, в `.gitignore` (ruff/pytest его не видят). `check` валидирует патч в чистом клоне: `git apply --check` → ruff по файлам патча → полный pytest | **done** `f612309` | session 2026-11-17 |
+ 
+ 
+ ## Per-project (историческое, `_migrations/<project>.md`)
+diff --git a/docs/SESSION_LOG.md b/docs/SESSION_LOG.md
+index bc1f5b2..4ebb733 100644
+--- a/docs/SESSION_LOG.md
++++ b/docs/SESSION_LOG.md
+@@ -18,6 +18,17 @@
+ - tests/test_catalog_freshness.py — no stray / no zero ctx+prices / no TODO.
+ - tests/test_router.py decouple от deepseek-r1.
+ - Коммит: c3a317a.
++- **Whitelist `run_command`: закрыты 5 дыр записи** (`e1fe8f5`).
++  `_MUTATING_FLAGS` + `_has_mutating_flag()` — токенная проверка,
++  вызов в pipe (`:626`) и одиночной ветке (`:671`). Отклоняются
++  `dmesg -C/-c/-D/-E/-n`, `tree -o`, `nvidia-smi --filename=/-l`,
++  `file -C -m`, `git branch -u`. Регресс —
++  `tests/test_run_command_regex_mutations.py` (3 теста).
++- **Схема «правка только патчем»** (`f612309`): `patches/export.sh`
++  (`new`/`export`/`check`/`status`), `patches/doctor.sh`, регламент в
++  `patches/README.md`. Клон — `sessions/patch-work/NAME` (единственное
++  место, которое одновременно внутри workspace, RW и невидимо для
++  ruff/pytest). Закрывает F30: M7 больше не тупик.
+ 
+ ## Probe-факты (RouterAI, 2026-11-16)
+ 
+@@ -35,3 +46,7 @@
+ - P1: model_catalog.py (API+TTL) — сейчас models.py статический.
+ - P2: streaming SSE, web_search tool-loop.
+ - agent-coder: mypy pre-existing 24 errors (loop.py, __main__.py).
++- Документация после M7-патчей: обновить `docs/ENVIRONMENT.md` (M7 →
++  схема патчей), `AGENTS.md` (устаревшее расхождение `--model` —
++  закрыто `7bf3708`, но `AGENTS.md` в `.gitignore`, патчем не провести:
++  нужна ручная правка с хоста).

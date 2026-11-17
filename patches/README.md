@@ -190,7 +190,7 @@ sudo systemctl daemon-reload && sudo systemctl restart agent-coder-bot
 
 На хосте на 2026-11-17 это сделано: drop-in снят, `DropInPaths=` пуст,
 юнит установлен из `deploy/`, `PrivateTmp=yes` сохранён, TMPDIR —
-`~/.cache/agent-coder/tmp`, 1210 passed.
+`~/.cache/agent-coder/tmp`, 1217 passed.
 
 ## ВАЖНО: TMPDIR не должен указывать в репозиторий
 
@@ -212,7 +212,7 @@ sudo systemctl daemon-reload && sudo systemctl restart agent-coder-bot
 добавлен `ExecStartPre=/bin/mkdir -p`, а `apply.sh B` создаёт каталог при
 установке.
 
-Проверено: 1210 passed при `TMPDIR` = `~/.cache/agent-coder/tmp` и при
+Проверено: 1217 passed при `TMPDIR` = `~/.cache/agent-coder/tmp` и при
 неопределённом `TMPDIR`; `ruff check` чисто; `systemd-analyze verify` —
 без ошибок.
 
@@ -244,6 +244,22 @@ read-only (`ReadOnlyPaths=` в `deploy/agent-coder-bot.service`, M7). Это н�
 ```
 
 Состояние: `./patches/export.sh status`, здоровье схемы: `./patches/doctor.sh`.
+
+## Что патчем не провести
+
+Два независимых ограничения. Патч требует, чтобы файл был **отслеживаемым**
+(git) — иначе `git diff` его не увидит и в `patches/*.patch` он не попадёт.
+И патч можно применить только к тому, что лежит в репозитории.
+
+| Файл | RO (M7) | В git | Как править |
+|---|---|---|---|
+| `AGENTS.md` | да (`:75`) | **нет** — `.gitignore:28` | вручную с хоста |
+| `README.md` | да (`:78`) | да | патчем (`0002`) |
+| `docs/*.md` | да (`:68-73`) | да | патчем (`0002`) |
+
+`AGENTS.md` игнорируется (`.gitignore:28`), `git log -- AGENTS.md` пуст:
+`git diff` его не покажет, `export.sh` не экспортирует. Правку вносит
+человек с хоста, бот может только показать готовый текст.
 
 ## Почему клон именно в `sessions/patch-work/`
 
@@ -279,4 +295,41 @@ read-only (`ReadOnlyPaths=` в `deploy/agent-coder-bot.service`, M7). Это н�
   `.venv/bin/ruff format --check <files>`.
 - `mypy agent_coder/` → **24 ошибки** в 4 файлах (`loop.py` 16,
   `__main__.py` 6, `tool_extract.py` 2, `compression.py` 1).
-- `pytest` → **1217 passed** на коммите `e1fe8f5`.
+- `pytest` → **1217 passed** на коммите `f612309`.
+
+## Реестр патчей
+
+| Патч | Статус | Находка |
+|---|---|---|
+| `0001-run-command-mutating-flags.patch` | **применён** `e1fe8f5`, в дереве | мутирующие флаги у read-only команд проходили whitelist |
+| `0002-docs-actualize.patch` | не применён, ложится на `f612309` | `README.md` + `docs/` расходились с кодом (тесты 311 vs 1217, CI 3.10–3.12 vs 3.12–3.13, ложный mypy в CI, RO-статус `AUDIT_REPORT.md`) |
+| `AGENTS.md.diff` | не применён — **файл вне git** | раздел «Известные расхождения» описывал баг `--model`, закрытый в `7bf3708` |
+
+`0002` — только документация (4 файла, +38/−10). Проверка: `./patches/export.sh
+check docs-actualize` → `apply --check` чисто, `.py` в патче нет (ruff
+пропущен по дизайну), `pytest` 1217 passed.
+
+`AGENTS.md.diff` — не git-патч: `AGENTS.md` в `.gitignore:28`. Ручное
+применение с хоста:
+
+```bash
+cd /home/botuser/bots/agent-coder
+sudo patch -p1 --dry-run < patches/AGENTS.md.diff   # проверить
+sudo patch -p1 < patches/AGENTS.md.diff             # применить
+```
+
+
+`0001` закрывал 5 дыр в `_SAFE_PATTERNS` (`agent_coder/tools/run_command.py`):
+
+| Команда | Что пропускалось | Что делало |
+|---|---|---|
+| `dmesg` | `-C` / `-c` / `-D` / `-E` / `-n` / `--clear` | очистка и правка ring buffer ядра |
+| `tree` | `-o FILE` | запись листинга в файл |
+| `nvidia-smi` | `--filename=`, `-l`, `--loop` | запись в файл, бесконечный цикл |
+| `file` | `-C -m` | запись скомпилированного magic-файла |
+| `git branch` | `-u` / `--set-upstream-to`, `-v` | мутация config репозитория |
+
+Фикс — `_MUTATING_FLAGS` + `_has_mutating_flag()`, вызов в обеих ветках
+(pipe на `:626` и одиночная команда на `:671`); для `git branch` расширен
+`_is_safe_git_metadata`. Регресс — `tests/test_run_command_regex_mutations.py`
+(3 теста: reject мутаций, allow read-only, `git branch`).

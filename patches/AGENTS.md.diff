@@ -1,0 +1,20 @@
+--- a/AGENTS.md
++++ b/AGENTS.md
+@@ -46,12 +46,11 @@
+ 
+ ### Известные расхождения (чинить при касании)
+ 
+-- **`--model` в CLI не ставит `model_manual=True`** (`__main__.py:334,339`):
+-  явный `--model X` перекрывается роутером (`loop.run` → recommended),
+-  если `MODEL_ROUTER_ENABLED=1`. В Telegram `setmodel` ставит флаг
+-  (`session_menu.py:95`). Один и тот же «выбор модели пользователем» —
+-  разное поведение. Фикс: в CLI при явном `--model` (≠ дефолт) ставить
+-  `model_manual=True`.
++- **`--model` в CLI и Telegram** — исправлено в `7bf3708` (B1, шаг 4):
++  `agent_coder/__main__.py:643,654` ставит `model_manual=args.model is not None`,
++  ровно как `setmodel` в Telegram (`session_menu.py:95`). Роутер явный выбор
++  больше не перекрывает. Если правишь выбор модели — держи оба пути
++  одинаковыми и добавь тест в `tests/`.
+ 
+ Сверено с кодом 2026-10-19: `config.validate()` вызывается в обеих
+ точках (`__main__.py:300`, `bot.py:111`) — расхождения нет.
