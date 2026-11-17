@@ -29,6 +29,11 @@ _CLEAN_ENV_KEYS = (
     "LC_ALL",
     "PYTHONPATH",
     "PYTHONUNBUFFERED",
+    # TEMP/TMP — не дубли TMPDIR: часть утилит читает только их. При
+    # PrivateTmp=yes они указывают в воркспейс, иначе временные файлы
+    # untrusted-подпроцесса уходят в невидимый снаружи /tmp.
+    "TEMP",
+    "TMP",
     "TMPDIR",
     "USER",
     "SHELL",

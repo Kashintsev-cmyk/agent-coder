@@ -14,6 +14,19 @@ Group=botuser
 WorkingDirectory=/home/botuser/bots/agent-coder
 Environment=PATH=/home/botuser/bots/agent-coder/.venv/bin:/usr/local/bin:/usr/bin:/bin
 Environment=PYTHONUNBUFFERED=1
+# PrivateTmp=true ниже изолирует /tmp: временные файлы, созданные внутри
+# юнита, не видны снаружи и исчезают при рестарте. Уводим их в кэш-каталог,
+# чтобы к ним был доступ с хоста (отладка, отчёты, разбор упавших прогонов).
+#
+# НЕ в воркспейс: tmp/ внутри репозитория сделал бы pytest tmp_path и любые
+# временные файлы «собственным кодом бота» — _workspace_allowed() запрещает
+# открывать ACT-сессию в этом дереве (2 теста M5 падали).
+# TMPDIR читает Python/tempfile, TEMP/TMP — портируемый код и часть утилит.
+Environment=TMPDIR=/home/botuser/.cache/agent-coder/tmp
+Environment=TEMP=/home/botuser/.cache/agent-coder/tmp
+Environment=TMP=/home/botuser/.cache/agent-coder/tmp
+# tempfile не создаёт базовый каталог сам — заводим заранее.
+ExecStartPre=/bin/mkdir -p /home/botuser/.cache/agent-coder/tmp
 ExecStart=/home/botuser/bots/agent-coder/.venv/bin/agent-coder-bot
 Restart=always
 RestartSec=5
@@ -38,7 +51,7 @@ LockPersonality=true
 # Что боту разрешено писать:
 # - sessions/ (история, медиа, отчёты, индекс сессий)
 # - telegram_state.json (active session)
-# - ~/.cache/agent-coder (кэш каталога моделей)
+# - ~/.cache/agent-coder (кэш каталога моделей + TMPDIR, см. выше)
 ReadWritePaths=/home/botuser/bots/agent-coder/sessions
 ReadWritePaths=-/home/botuser/.cache/agent-coder
 # Куда бот создаёт новые проекты (папки) и куда клонирует репо

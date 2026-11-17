@@ -42,3 +42,4 @@ benchmark/routerai_models.json
 benchmark/verify_results/
 .git.backup-*/
 AUDIT_REPORT.md
+tmp/

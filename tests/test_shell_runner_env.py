@@ -37,6 +37,22 @@ def test_clean_env_only_whitelist_keys(monkeypatch):
     assert set(env) <= set(_CLEAN_ENV_KEYS)
 
 
+def test_clean_env_passes_temp_tmp(monkeypatch):
+    """TEMP/TMP пробрасываются наравне с TMPDIR.
+
+    PrivateTmp=yes (агент-coder): юнит задаёт TMPDIR/TEMP/TMP в воркспейс.
+    Если пробросить только TMPDIR, утилита, читающая TMP/TEMP (или
+    портируемый код), уйдёт в приватный /tmp — файл станет невидим снаружи.
+    """
+    monkeypatch.setenv("TMPDIR", "/w/tmp")
+    monkeypatch.setenv("TEMP", "/w/tmp")
+    monkeypatch.setenv("TMP", "/w/tmp")
+    env = clean_env()
+    assert env.get("TMPDIR") == "/w/tmp"
+    assert env.get("TEMP") == "/w/tmp"
+    assert env.get("TMP") == "/w/tmp"
+
+
 @pytest.mark.asyncio
 async def test_run_shell_passes_env(monkeypatch):
     """run_shell(env=...) пробрасывает env в create_subprocess_shell."""
