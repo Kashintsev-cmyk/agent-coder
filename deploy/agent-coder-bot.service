@@ -57,6 +57,7 @@ ReadWritePaths=-/home/botuser/.cache/agent-coder
 # Куда бот создаёт новые проекты (папки) и куда клонирует репо
 ReadWritePaths=-/home/botuser/bots
 ReadWritePaths=-/home/botuser/projects
+ReadWritePaths=-/home/botuser/.cache/pre-commit
 
 # M7: код, тесты, конфиги и docs бота — read-only. Бот не должен
 # перезаписывать собственный код (prompt-injection / баг в write_file).
