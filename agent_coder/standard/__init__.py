@@ -13,6 +13,7 @@ from agent_coder.standard.paths import ENV_BOTS_DIR, bots_dir, project_dir
 from agent_coder.standard.render import render_markdown
 from agent_coder.standard.state import (
     ENV_STATE_DIR,
+    StateWriteError,
     build_state,
     read_state,
     state_dir,
@@ -29,6 +30,7 @@ __all__ = [
     "FixSpec",
     "Issue",
     "Severity",
+    "StateWriteError",
     "bots_dir",
     "build_state",
     "collect_issues",

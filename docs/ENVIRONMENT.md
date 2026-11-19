@@ -45,6 +45,17 @@ sudoers — только `ps/images/stats --no-stream/inspect/logs`.
 `.pre-commit-config.yaml`. `sessions/` остаётся RW (существующий
 `ReadWritePaths=`), `~/.cache/agent-coder`, `~/bots`, `~/projects` — RW.
 
+`ProtectHome=read-only` делает RO **весь** `/home`, поэтому любой каталог
+вне репо, куда бот пишет, обязан быть перечислен в `ReadWritePaths=`.
+`~/.agent-coder` (state миграций, `standard/state.py: state_dir()`) был
+пропущен → `mkdir` давал `EROFS` (errno 30), `/migrate apply` падал
+исключением в `dp.errors()` вместо сообщения. Добавлено:
+
+    ReadWritePaths=-/home/botuser/.agent-coder
+
+Признак в журнале: `migrate: state write failed ...` (`StateWriteError`).
+Проверка: `touch /home/botuser/.agent-coder/projects/.probe`.
+
 Почему перечисление, а не `ReadOnlyPaths=/home/botuser/bots/agent-coder`
 целиком: `sessions/` — RW-внук внутри RO-родителя; в systemd 249
 порядок применения (`ReadWritePaths=` затем `ReadOnlyPaths=`) делает

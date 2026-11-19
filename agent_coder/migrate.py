@@ -12,10 +12,12 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
 from pathlib import Path
 
 from agent_coder.standard import (
+    StateWriteError,
     build_state,
     collect_issues,
     notes_dir,
@@ -26,6 +28,8 @@ from agent_coder.standard import (
     write_if_changed,
     write_state,
 )
+
+logger = logging.getLogger(__name__)
 
 
 def _parse_projects(raw: list[str]) -> list[str]:
@@ -55,13 +59,28 @@ def migrate_one(project: str, *, write: bool = True) -> dict:
     if not write:
         return report
 
-    state_file = write_state(project, state)
+    try:
+        state_file = write_state(project, state)
+    except StateWriteError as exc:
+        # Не роняем хендлер: /migrate apply показывает внятную ошибку с путём.
+        logger.warning("migrate: state write failed for %s: %s", project, exc)
+        report["error"] = "state_write_failed"
+        report["path"] = str(exc.path)
+        report["reason"] = exc.cause.strerror or str(exc.cause)
+        return report
     report["state"] = str(state_file)
 
     notes_md = read_notes(project)
     md = render_markdown(project, summary, notes_md=notes_md)
     md_path = notes_dir() / f"{project}.md"
-    changed = write_if_changed(md_path, md)
+    try:
+        changed = write_if_changed(md_path, md)
+    except StateWriteError as exc:
+        logger.warning("migrate: md write failed for %s: %s", project, exc)
+        report["error"] = "md_write_failed"
+        report["path"] = str(exc.path)
+        report["reason"] = exc.cause.strerror or str(exc.cause)
+        return report
     report["md"] = str(md_path)
     report["md_changed"] = changed
 
@@ -100,7 +119,11 @@ def main() -> int:
         r = migrate_one(name, write=not args.json)
         reports.append(r)
         if "error" in r:
-            print(f"[{name}] ERROR: {r['error']} ({r['path']})", file=sys.stderr)
+            reason = f" — {r['reason']}" if r.get("reason") else ""
+            print(
+                f"[{name}] ERROR: {r['error']} ({r['path']}){reason}",
+                file=sys.stderr,
+            )
         else:
             extra = ""
             if "md_changed" in r:

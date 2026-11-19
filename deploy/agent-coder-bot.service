@@ -58,6 +58,9 @@ ReadWritePaths=-/home/botuser/.cache/agent-coder
 ReadWritePaths=-/home/botuser/bots
 ReadWritePaths=-/home/botuser/projects
 ReadWritePaths=-/home/botuser/.cache/pre-commit
+# state миграций (standard/state.py: state_dir()) — вне репозитория,
+# раньше отсутствовал здесь → EROFS на write_state
+ReadWritePaths=-/home/botuser/.agent-coder
 
 # M7: код, тесты, конфиги и docs бота — read-only. Бот не должен
 # перезаписывать собственный код (prompt-injection / баг в write_file).

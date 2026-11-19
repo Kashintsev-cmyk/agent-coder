@@ -70,6 +70,30 @@ def _chunks(text: str, n: int = 3500) -> list[str]:
     return [text[i : i + n] for i in range(0, len(text), n)] or [""]
 
 
+_WRITE_ERRORS = {
+    "state_write_failed": "не удалось записать state",
+    "md_write_failed": "не удалось записать .md",
+}
+
+
+def _error_text(name: str, report: dict) -> str:
+    """Человеческий текст ошибки миграции (write-fail получает подсказку)."""
+    code = str(report.get("error", "?"))
+    path = html_escape(str(report.get("path", "?")))
+    reason = report.get("reason")
+    head = _WRITE_ERRORS.get(code)
+    if head is None:
+        return f"❌ Ошибка: {html_escape(code)} (<code>{path}</code>)"
+    text = (
+        f"❌ {html_escape(name)}: {head}\n"
+        f"<code>{path}</code>\n"
+        f"Причина: {html_escape(str(reason)) if reason else '—'}\n\n"
+        f"Каталог должен быть доступен на запись (права + "
+        f"<code>ReadWritePaths</code> в systemd-юните)."
+    )
+    return text
+
+
 @router.message(Command("migrate"))
 async def cmd_migrate(message: Message) -> None:
     parts = (message.text or "").split(maxsplit=1)
@@ -134,8 +158,7 @@ async def cb_migrate_apply(query: CallbackQuery) -> None:
     r = migrate_one(name, write=True)
     if "error" in r:
         await query.message.edit_text(
-            f"❌ Ошибка: {html_escape(r['error'])} "
-            f"(<code>{html_escape(r.get('path', '?'))}</code>)",
+            _error_text(name, r),
             parse_mode="HTML",
         )
         return

@@ -9,6 +9,7 @@ import pytest
 
 from agent_coder.standard import (
     ENV_STATE_DIR,
+    StateWriteError,
     build_state,
     read_state,
     state_dir,
@@ -118,3 +119,32 @@ def test_write_if_changed_creates_parents(tmp_path: Path) -> None:
     p = tmp_path / "a" / "b" / "c.txt"
     assert write_if_changed(p, "x") is True
     assert p.is_file()
+
+
+def test_write_state_raises_clear_error_on_readonly_dir(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Read-only ФС (прод: ProtectHome=read-only) — StateWriteError с путём."""
+    monkeypatch.setenv(ENV_STATE_DIR, str(tmp_path / "state"))
+    # каталог на месте, но родитель — файл: mkdir упадёт с ENOTDIR/OSError
+    blocker = tmp_path / "state"
+    blocker.write_text("not a dir", encoding="utf-8")
+    with pytest.raises(StateWriteError) as exc:
+        write_state("demo", {"a": 1})
+    assert exc.value.path == state_path("demo")
+    assert "state" in str(exc.value)
+    assert exc.value.cause is not None
+
+
+def test_write_if_changed_raises_clear_error(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    blocker = tmp_path / "dir"
+    blocker.write_text("not a dir", encoding="utf-8")
+    with pytest.raises(StateWriteError):
+        write_if_changed(blocker / "x.md", "content")
+
+
+def test_state_write_error_is_runtime_error() -> None:
+    """Хендлеры ловят StateWriteError; он должен быть RuntimeError-совместим."""
+    assert issubclass(StateWriteError, RuntimeError)

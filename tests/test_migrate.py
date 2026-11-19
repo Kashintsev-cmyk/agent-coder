@@ -7,7 +7,12 @@ from pathlib import Path
 import pytest
 
 from agent_coder import migrate
-from agent_coder.standard import ENV_BOTS_DIR, ENV_NOTES_DIR, ENV_STATE_DIR
+from agent_coder.standard import (
+    ENV_BOTS_DIR,
+    ENV_NOTES_DIR,
+    ENV_STATE_DIR,
+    StateWriteError,
+)
 
 
 def _make_project(root: Path, name: str) -> Path:
@@ -107,3 +112,61 @@ def test_cli_main_ok(env: dict[str, Path]) -> None:
         sys.argv = argv
     assert rc == 0
     assert (env["notes"] / "demo.md").is_file()
+
+
+def test_state_write_error_returns_dict_not_raise(
+    env: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """EROFS на state не должен вылетать наружу в dp.errors()."""
+    _make_project(env["bots"], "demo")
+    err = OSError(30, "Read-only file system")
+
+    def boom(project: str, state: dict) -> Path:
+        raise StateWriteError(env["state"] / project / "state.json", err)
+
+    monkeypatch.setattr(migrate, "write_state", boom)
+    r = migrate.migrate_one("demo")
+    assert r["error"] == "state_write_failed"
+    assert r["path"].endswith("demo/state.json")
+    assert r["reason"] == "Read-only file system"
+    # .md не пишется, если state не удался — иначе рассинхрон view/state
+    assert not (env["notes"] / "demo.md").is_file()
+
+
+def test_md_write_error_returns_dict_not_raise(
+    env: dict[str, Path], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    _make_project(env["bots"], "demo")
+    err = OSError(13, "Permission denied")
+
+    def boom(path: Path, content: str) -> bool:
+        raise StateWriteError(path, err)
+
+    monkeypatch.setattr(migrate, "write_if_changed", boom)
+    r = migrate.migrate_one("demo")
+    assert r["error"] == "md_write_failed"
+    assert r["reason"] == "Permission denied"
+    # state уже записан — это ожидаемо и не откатывается
+    assert (env["state"] / "demo" / "state.json").is_file()
+
+
+def test_cli_reports_write_error(
+    env: dict[str, Path], monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture
+) -> None:
+    _make_project(env["bots"], "demo")
+    err = OSError(30, "Read-only file system")
+
+    def boom(project: str, state: dict) -> Path:
+        raise StateWriteError(env["state"] / project / "state.json", err)
+
+    monkeypatch.setattr(migrate, "write_state", boom)
+    import sys
+
+    argv = sys.argv
+    sys.argv = ["agent-coder-migrate", "--project", "demo"]
+    try:
+        rc = migrate.main()
+    finally:
+        sys.argv = argv
+    assert rc == 1
+    assert "state_write_failed" in capsys.readouterr().err
