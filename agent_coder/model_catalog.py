@@ -327,7 +327,9 @@ class ModelCatalog:
         if client is None:
             client = httpx.AsyncClient(timeout=self._api_timeout)
         # mypy не сужает тип после присваивания в if — фиксируем явно.
-        assert client is not None
+
+        if client is None:
+            raise RuntimeError("Client initialization failed")
 
         url = f"{self._api_base_url.rstrip('/')}/models"
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}

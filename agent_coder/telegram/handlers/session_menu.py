@@ -77,7 +77,7 @@ async def cb_model_info(query: CallbackQuery) -> None:
 
     _fit_modes = _cfg.MODEL_MODE_FIT.get(model_id, [])
     if _fit_modes:
-        lines.append(f"🎯 Подходит для: {", ".join(_fit_modes)}")
+        lines.append(f"🎯 Подходит для: {', '.join(_fit_modes)}")
     if is_current:
         lines.append("")
         lines.append("✅ <b>Это текущая модель</b>")
@@ -202,7 +202,7 @@ async def cb_tier_toggle(query: CallbackQuery) -> None:
         await query.message.edit_reply_markup(
             reply_markup=keyboards.session_menu_keyboard(session)
         )
-    except Exception:
+    except Exception:  # nosec B110
         pass
     await query.answer(f"Service tier: {nxt}")
 
@@ -230,7 +230,7 @@ async def cb_web_toggle(query: CallbackQuery) -> None:
         await query.message.edit_reply_markup(
             reply_markup=keyboards.session_menu_keyboard(session)
         )
-    except Exception:
+    except Exception:  # nosec B110
         pass
     await query.answer(f"Web search: {'вкл' if session.web_search else 'выкл'}")
 

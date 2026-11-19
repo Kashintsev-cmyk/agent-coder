@@ -405,7 +405,7 @@ async def cb_yolo_toggle(query: CallbackQuery) -> None:
         await query.message.edit_reply_markup(
             reply_markup=keyboards.session_menu_keyboard(session),
         )
-    except Exception:
+    except Exception:  # nosec B110
         pass
     await query.answer("YOLO: " + ("вкл ⚡" if session.yolo else "выкл 🔒"))
 

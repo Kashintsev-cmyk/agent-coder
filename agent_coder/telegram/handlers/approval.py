@@ -28,7 +28,7 @@ async def cb_approve(query: CallbackQuery) -> None:
                 reply_markup=None,
                 parse_mode="HTML",
             )
-        except Exception:
+        except Exception:  # nosec B110
             pass
     else:
         await query.answer("Устарело", show_alert=True)
@@ -47,7 +47,7 @@ async def cb_deny(query: CallbackQuery) -> None:
                 reply_markup=None,
                 parse_mode="HTML",
             )
-        except Exception:
+        except Exception:  # nosec B110
             pass
     else:
         await query.answer("Устарело", show_alert=True)

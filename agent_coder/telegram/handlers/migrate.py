@@ -155,7 +155,7 @@ async def cb_migrate_apply(query: CallbackQuery) -> None:
 async def cb_migrate_no(query: CallbackQuery) -> None:
     try:
         await query.message.edit_text("❌ Отменено", reply_markup=None)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     await query.answer()
 

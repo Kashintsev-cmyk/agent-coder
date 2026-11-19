@@ -77,7 +77,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         try:
             proc.kill()
             await proc.wait()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         return f"search_history: таймаут {TIMEOUT_SEC}с"
 

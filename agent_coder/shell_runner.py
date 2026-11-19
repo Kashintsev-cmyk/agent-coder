@@ -111,7 +111,7 @@ async def run_shell(
         _kill_proc_tree(proc, use_group=start_new_session)
         try:
             await proc.wait()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         return ShellResult(
             returncode=-1,
@@ -148,5 +148,5 @@ def _kill_proc_tree(proc, *, use_group: bool) -> None:
             pass
     try:
         proc.kill()
-    except Exception:
+    except Exception:  # nosec B110
         pass

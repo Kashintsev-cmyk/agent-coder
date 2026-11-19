@@ -120,7 +120,7 @@ async def cb_continue_task(query: CallbackQuery, bot: Bot) -> None:
     # Снимаем кнопки, чтобы не нажали дважды
     try:
         await query.message.edit_reply_markup(reply_markup=None)
-    except Exception:
+    except Exception:  # nosec B110
         pass
     await query.answer("Продолжаю…")
 
@@ -344,14 +344,14 @@ async def _run_task(
         if not _shutting_down:
             try:
                 await bot.send_message(chat_id, "⏹ Отменено")
-            except Exception:
+            except Exception:  # nosec B110
                 pass
         raise
     except Exception as e:
         logger.exception("task failed")
         try:
             await bot.send_message(chat_id, f"❌ Ошибка: {e}")
-        except Exception:
+        except Exception:  # nosec B110
             pass
     finally:
         if client is not None:

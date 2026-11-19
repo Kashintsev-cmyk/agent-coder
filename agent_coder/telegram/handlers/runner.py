@@ -241,7 +241,7 @@ class _TaskRunner:
                         reply_markup=None,
                         parse_mode="HTML",
                     )
-                except Exception:
+                except Exception:  # nosec B110
                     pass
             return False
         finally:

@@ -154,7 +154,7 @@ async def _run() -> None:
                     "❌ Ошибка — попробуй ещё раз",
                     show_alert=True,
                 )
-        except Exception:
+        except Exception:  # nosec B110
             pass  # не даём упасть внутри обработчика ошибок
 
         return True  # не пробрасывать дальше

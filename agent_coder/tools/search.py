@@ -72,7 +72,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         try:
             proc.kill()
             await proc.wait()
-        except Exception:
+        except Exception:  # nosec B110
             pass
         return f"search: таймаут {TIMEOUT_SEC}с (ripgrep не завершился)"
     stdout = out.decode("utf-8", errors="replace").strip()

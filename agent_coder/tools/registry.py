@@ -53,7 +53,7 @@ class Tool:
             try:
                 if self.is_safe_call(args):
                     return False
-            except Exception:
+            except Exception:  # nosec B110
                 pass  # любая ошибка в проверке = требуем подтверждение
         return True
 
