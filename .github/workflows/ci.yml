@@ -34,6 +34,10 @@ jobs:
       - name: Ruff
         run: ruff check .
 
+      - name: Bandit security scan
+        if: matrix.python-version == '3.12'
+        run: python3 -m bandit -r agent_coder -c bandit.yaml
+
       - name: Pytest
         run: pytest -q -n auto
         env:
