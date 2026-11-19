@@ -1,0 +1,15 @@
+exclude_dirs:
+  - tests
+  - .venv
+  - build
+  - dist
+  - .backups
+  - sessions
+  - patches
+  - benchmark
+
+skips:
+  - B404   # import subprocess: git/rg/ruff вызываются с фиксированными аргументами
+  - B603   # subprocess без shell=True, аргументы не из пользовательского ввода
+  - B607   # короткие пути "git", "rg", "ruff" из PATH
+  - B311   # random.uniform для jitter при retry, не для криптографии
