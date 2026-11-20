@@ -33,6 +33,70 @@ logger = logging.getLogger(__name__)
 logger.addFilter(SecretFilter())
 
 
+def _apply_cache_anchor(
+    messages: list[dict[str, Any]],
+    stable_count: int | None,
+) -> list[dict[str, Any]]:
+    """Поставить cache_control на последнее СТАБИЛЬНОЕ сообщение.
+
+    Почему не top-level `cache_control` (probe RouterAI 2026-11-20):
+
+    - top-level `extra_body.cache_control` ставит точку кэша в КОНЕЦ
+      запроса. Пока волатильные блоки ([WORK_STATE], [ПРОЧИТАННЫЕ ФАЙЛЫ])
+      лежали в начале system, конец запроса приходился на стабильную
+      историю — кэш попадал. После выноса этих блоков в хвост точка
+      попала на волатильный хвост: каждый turn уникален, cache=0
+      (замер: 0/0/0 против 4200/4199 — 27 запросов подряд с промахом).
+    - breakpoint в `content` последнего стабильного сообщения даёт
+      попадание на всём стабильном префиксе, а хвост после него кэш не
+      ломает.
+
+    `stable_count` — сколько ведущих сообщений стабильны (история сессии
+    без волатильного хвоста). None — считаем стабильным всё.
+
+    Возвращает НОВЫЙ список: исходные сообщения (история сессии) не
+    мутируются, иначе точка кэша осела бы в session.messages.
+    """
+    if not messages:
+        return messages
+    end = len(messages) if stable_count is None else min(stable_count, len(messages))
+    if end <= 0:
+        return messages
+
+    # Ближайшее к концу стабильной части сообщение с непустым content:
+    # у assistant с tool_calls content=None, у него кэшировать нечего.
+    idx = None
+    for i in range(end - 1, -1, -1):
+        if messages[i].get("content"):
+            idx = i
+            break
+    if idx is None:
+        return messages
+
+    anchor = dict(messages[idx])
+    content = anchor["content"]
+    marker = {"type": "ephemeral"}
+
+    if isinstance(content, str):
+        anchor["content"] = [{"type": "text", "text": content, "cache_control": marker}]
+    elif isinstance(content, list) and content:
+        blocks = [dict(b) if isinstance(b, dict) else b for b in content]
+        for block in reversed(blocks):
+            if isinstance(block, dict) and block.get("type") == "text":
+                block["cache_control"] = marker
+                break
+        else:
+            if isinstance(blocks[-1], dict):
+                blocks[-1]["cache_control"] = marker
+        anchor["content"] = blocks
+    else:
+        return messages
+
+    out = list(messages)
+    out[idx] = anchor
+    return out
+
+
 def _build_request_kwargs(
     model: str,
     messages: list[dict[str, Any]],
@@ -156,6 +220,7 @@ class LLMClient:
         service_tier: str | None = None,
         verbosity: str | None = None,
         session_id: str = "",
+        stable_count: int | None = None,
     ) -> ChatResponse:
         """Один вызов LLM с retry.
 
@@ -176,9 +241,11 @@ class LLMClient:
             session_id=session_id,
         )
 
-        # Кэш провайдера (проверено probe'ами RouterAI):
-        # - Anthropic кэширует только с явным cache_control в extra_body.
-        #   Второй запрос: 3627 cached из 3643 input, cost в 4× ниже (B9.2g).
+        # Кэш провайдера (проверено probe'ами RouterAI 2026-11-20):
+        # - Anthropic кэширует только с явным cache_control. Точку ставим в
+        #   content последнего СТАБИЛЬНОГО сообщения (_apply_cache_anchor):
+        #   top-level cache_control ставит её в КОНЕЦ запроса, а там теперь
+        #   волатильный хвост → каждый turn уникален (замер: 27/27 cache=0).
         # - OpenAI (GPT-6/5.x) и DeepSeek кэшируют АВТОМАТИЧЕСКИ, но только
         #   при стабильном ПРЕФИКСЕ запроса. Любой волатильный блок в начале
         #   (system, раньше истории) сбивает кэш на всём контексте — поэтому
@@ -187,7 +254,7 @@ class LLMClient:
         #   запрос с новым ключом всегда промахивается (контроль: 0 vs 12618).
         #   Стабильность держит x-session-id (см. выше).
         if model.startswith("anthropic/"):
-            kwargs.setdefault("extra_body", {})["cache_control"] = {"type": "ephemeral"}
+            kwargs["messages"] = _apply_cache_anchor(messages, stable_count)
 
         logger.info(
             "LLM → model=%s msgs=%d tools=%d reasoning=%s",

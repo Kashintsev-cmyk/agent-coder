@@ -295,9 +295,10 @@ class AgentLoop:
             # получается коэффициент перевода эвристики в реальные токены.
             sent_estimate_tokens = compression.estimate_tokens(self.session.messages)
 
+            request_messages, stable_count = self._request_payload()
             try:
                 response = await self.client.chat(
-                    messages=self._request_messages(),
+                    messages=request_messages,
                     model=self.session.model,
                     tools=self.registry.openai_schemas(self.session.mode),
                     reasoning_effort=self.session.reasoning_effort,
@@ -306,6 +307,7 @@ class AgentLoop:
                     verbosity=self.session.verbosity or None,
                     temperature=config.TEMPERATURE,
                     session_id=self.session.id,
+                    stable_count=stable_count,
                 )
             except LLMError as e:
                 # Доменная ошибка LLM-слоя (402 и т.п.) — не retryable,
@@ -692,9 +694,10 @@ class AgentLoop:
             self.session.work_state, sort_keys=True, ensure_ascii=False
         )
 
+        request_messages, stable_count = self._request_payload()
         try:
             response = await self.client.chat(
-                messages=self._request_messages(),
+                messages=request_messages,
                 model=self.session.model,
                 tools=self.registry.openai_schemas(self.session.mode),
                 reasoning_effort=self.session.reasoning_effort,
@@ -703,6 +706,7 @@ class AgentLoop:
                 verbosity=self.session.verbosity or None,
                 temperature=config.TEMPERATURE,
                 session_id=self.session.id,
+                stable_count=stable_count,
             )
         except Exception as e:
             logger.warning("post-audit guard: LLM error: %s", e)
@@ -802,19 +806,32 @@ class AgentLoop:
         else:
             self.session.messages[0] = {"role": "system", "content": prompt}
 
-    def _request_messages(self) -> list[dict[str, Any]]:
-        """Список сообщений для запроса к LLM.
+    def _request_payload(self) -> tuple[list[dict[str, Any]], int | None]:
+        """Сообщения для запроса + сколько ведущих из них стабильны.
 
         История сессии + волатильный хвост [WORK_STATE]/[ПРОЧИТАННЫЕ ФАЙЛЫ]
         последним сообщением. Хвост — только в копии запроса, в
         session.messages он не пишется (иначе история пухнет и кэш ломается).
+
+        Второй элемент — `stable_count` для cache_anchor Anthropic: точка
+        кэша должна стоять на последнем СТАБИЛЬНОМ сообщении. Если поставить
+        её на конец запроса (top-level cache_control), она попадёт на хвост,
+        и каждый turn промахнётся (probe 2026-11-20: 27/27 cache=0).
+        None — хвоста нет, стабилен весь запрос.
         """
         tail = volatile_block(
             self._work_state_handle(), self.session.read_paths or None
         )
         if not tail:
-            return self.session.messages
-        return [*self.session.messages, {"role": "user", "content": tail}]
+            return self.session.messages, None
+        return (
+            [*self.session.messages, {"role": "user", "content": tail}],
+            len(self.session.messages),
+        )
+
+    def _request_messages(self) -> list[dict[str, Any]]:
+        """Сообщения запроса без метаданных кэша (см. _request_payload)."""
+        return self._request_payload()[0]
 
 
 def _build_user_content(task: str, images: list | None) -> str | list[dict[str, Any]]:
