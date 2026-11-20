@@ -52,9 +52,7 @@ SESSIONS_PER_PAGE = 8
 # callback_data ограничен 64 байтами: "sessions_page:N" — 15 символов при N<10^5.
 
 
-def sessions_keyboard(
-    sessions: list[Session], page: int = 0
-) -> InlineKeyboardMarkup:
+def sessions_keyboard(sessions: list[Session], page: int = 0) -> InlineKeyboardMarkup:
     """Карусель сессий: SESSIONS_PER_PAGE на страницу + навигация.
 
     Страницы 0..(pages-1); page зажимается в допустимый диапазон.
