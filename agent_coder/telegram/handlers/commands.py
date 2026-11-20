@@ -460,11 +460,34 @@ async def cb_new(query: CallbackQuery, bot: Bot) -> None:
 async def cb_sessions(query: CallbackQuery) -> None:
     sessions = Session.list_all()
     if not sessions:
-        await query.answer("Сессий нет", show_alert=True)
+        await query.message.edit_text("Сессий пока нет. /projects — выбрать проект.")
+        await query.answer()
         return
     await query.message.edit_text(
         "📚 <b>Последние сессии:</b>\n\nВыбери:",
         reply_markup=keyboards.sessions_keyboard(sessions),
+        parse_mode="HTML",
+    )
+    await query.answer()
+
+
+@router.callback_query(F.data.startswith("sessions_page:"))
+async def cb_sessions_page(query: CallbackQuery) -> None:
+    """Переключение страницы карусели /sessions."""
+    raw = (query.data or "").removeprefix("sessions_page:")
+    try:
+        page = int(raw)
+    except ValueError:
+        await query.answer("Некорректная страница")
+        return
+    sessions = Session.list_all()
+    if not sessions:
+        await query.message.edit_text("Сессий пока нет. /projects — выбрать проект.")
+        await query.answer()
+        return
+    await query.message.edit_text(
+        "📚 <b>Последние сессии:</b>\n\nВыбери:",
+        reply_markup=keyboards.sessions_keyboard(sessions, page=page),
         parse_mode="HTML",
     )
     await query.answer()

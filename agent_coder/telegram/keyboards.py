@@ -48,9 +48,23 @@ def confirm_create_project_keyboard(name: str) -> InlineKeyboardMarkup:
     )
 
 
-def sessions_keyboard(sessions: list[Session]) -> InlineKeyboardMarkup:
+SESSIONS_PER_PAGE = 8
+# callback_data ограничен 64 байтами: "sessions_page:N" — 15 символов при N<10^5.
+
+
+def sessions_keyboard(
+    sessions: list[Session], page: int = 0
+) -> InlineKeyboardMarkup:
+    """Карусель сессий: SESSIONS_PER_PAGE на страницу + навигация.
+
+    Страницы 0..(pages-1); page зажимается в допустимый диапазон.
+    """
+    total = len(sessions)
+    pages = max(1, (total + SESSIONS_PER_PAGE - 1) // SESSIONS_PER_PAGE)
+    page = max(0, min(page, pages - 1))
+
     rows = []
-    for s in sessions[:15]:
+    for s in sessions[page * SESSIONS_PER_PAGE : (page + 1) * SESSIONS_PER_PAGE]:
         icon = "🟡" if s.mode.value == "plan" else "🟢"
         cost = s.total_usage.cost
         title = (s.title or "(без названия)")[:35]
@@ -62,6 +76,25 @@ def sessions_keyboard(sessions: list[Session]) -> InlineKeyboardMarkup:
                 )
             ]
         )
+    # Навигация: ◀  2/17  ▶ (показывается, только если страниц > 1)
+    if pages > 1:
+        nav: list[InlineKeyboardButton] = []
+        if page > 0:
+            nav.append(
+                InlineKeyboardButton(
+                    text="◀", callback_data=f"sessions_page:{page - 1}"
+                )
+            )
+        nav.append(
+            InlineKeyboardButton(text=f"{page + 1}/{pages}", callback_data="noop")
+        )
+        if page < pages - 1:
+            nav.append(
+                InlineKeyboardButton(
+                    text="▶", callback_data=f"sessions_page:{page + 1}"
+                )
+            )
+        rows.append(nav)
     rows.append([InlineKeyboardButton(text="⬅️ Назад", callback_data="back")])
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
