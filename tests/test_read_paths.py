@@ -12,7 +12,7 @@ import pytest
 
 from agent_coder.agent import loop as loop_mod
 from agent_coder.agent.loop import AgentLoop, LoopEvents
-from agent_coder.agent.prompts import Mode, system_prompt
+from agent_coder.agent.prompts import Mode, system_prompt, volatile_block
 from agent_coder.agent.session import Session
 from agent_coder.agent.work_state import make_read_digest, render_read_paths
 from agent_coder.llm.types import AssistantMessage, ChatResponse, ToolCall, Usage
@@ -82,15 +82,18 @@ def test_render_hidden_counter() -> None:
 
 
 def test_prompt_includes_read_paths() -> None:
-    p = system_prompt(Mode.AUDIT, "/tmp", read_paths={"x.py": "x.py (5): def foo"})
-    assert "[ПРОЧИТАННЫЕ ФАЙЛЫ]" in p
-    assert "x.py" in p
+    """read_paths уходят в волатильный хвост, не в system."""
+    tail = volatile_block(None, {"x.py": "x.py (5): def foo"})
+    assert "[ПРОЧИТАННЫЕ ФАЙЛЫ]" in tail
+    assert "x.py" in tail
+    assert "[ПРОЧИТАННЫЕ ФАЙЛЫ] — уже читал" not in system_prompt(Mode.AUDIT, "/tmp")
 
 
 def test_prompt_without_read_paths_no_block() -> None:
     """Без read_paths блока нет (правило в audit_standard.md упоминает
     название — проверяем специфичную строку блока, не подстроку)."""
     assert "[ПРОЧИТАННЫЕ ФАЙЛЫ] — уже читал" not in system_prompt(Mode.AUDIT, "/tmp")
+    assert volatile_block(None, None) == ""
 
 
 # ---------- session roundtrip ----------

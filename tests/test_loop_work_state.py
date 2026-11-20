@@ -55,16 +55,21 @@ def test_work_state_handle_shares_live_dict() -> None:
     assert h.get()["findings"] == ["a"]
 
 
-def test_refresh_system_prompt_includes_work_state() -> None:
+def test_refresh_system_prompt_excludes_work_state() -> None:
+    """System стабилен: work_state в него не попадает, он в хвосте запроса."""
     s = _session()
     s.work_state = {"findings": ["src/x.py"], "todo": ["fix y"]}
     loop = _loop(s)
     loop._refresh_system_prompt()
     system = s.messages[0]
     assert system["role"] == "system"
-    assert "[WORK_STATE]" in system["content"]
-    assert "src/x.py" in system["content"]
-    assert "fix y" in system["content"]
+    assert "[WORK_STATE]" not in system["content"]
+    assert "src/x.py" not in system["content"]
+    tail = loop._request_messages()[-1]
+    assert tail["role"] == "user"
+    assert "[WORK_STATE]" in tail["content"]
+    assert "src/x.py" in tail["content"]
+    assert "fix y" in tail["content"]
 
 
 def test_refresh_system_prompt_empty_state_no_block() -> None:
@@ -72,18 +77,22 @@ def test_refresh_system_prompt_empty_state_no_block() -> None:
     loop = _loop(s)
     loop._refresh_system_prompt()
     assert "[WORK_STATE]" not in s.messages[0]["content"]
+    assert loop._request_messages() == s.messages
 
 
 def test_refresh_updates_existing_system_message() -> None:
-    """Повторный refresh (после update_work_state) обновляет, не дублирует."""
+    """Повторный refresh не дублирует system; волатильное меняется только в хвосте."""
     s = _session()
     loop = _loop(s)
     loop._refresh_system_prompt()
     n_before = len(s.messages)
+    system_before = s.messages[0]["content"]
     s.work_state = {"findings": ["a"]}
     loop._refresh_system_prompt()
     assert len(s.messages) == n_before  # не добавилось второе system
-    assert "[WORK_STATE]" in s.messages[0]["content"]
+    assert s.messages[0]["content"] == system_before  # стабильный префикс цел
+    assert "[WORK_STATE]" in loop._request_messages()[-1]["content"]
+    assert "[WORK_STATE]" not in s.messages[-1].get("content", "")
 
 
 # --- B9.1: reminder + post-audit guard ---------------------------------

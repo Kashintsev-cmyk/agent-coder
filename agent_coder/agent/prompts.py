@@ -125,25 +125,21 @@ def _with_rules(base: str, workspace: str) -> str:
 def system_prompt(
     mode: Mode,
     workspace: str,
-    work_state: object | None = None,
-    read_paths: dict[str, str] | None = None,
     audit_scopes: list[str] | None = None,
 ) -> str:
-    """Собрать system prompt для главного агента.
+    """Собрать СТАБИЛЬНЫЙ system prompt для главного агента.
 
     Единый принцип: PLAN/ACT/AUDIT получают _WORK_STATE_RULE (structured
-    memory — инвариант, факты должны переживать compress) и, если передан
-    непустой work_state, блок [WORK_STATE]. Специфика режима — в его
-    SYSTEM_* / audit_standard.md, не здесь.
+    memory — инвариант, факты должны переживать compress). Специфика режима —
+    в его SYSTEM_* / audit_standard.md, не здесь.
 
     AUDIT — без _with_rules (AGENTS.md): аудит идёт по audit_standard.md,
     это отдельное решение, не часть structured memory.
 
-    work_state — WorkStateHandle (см. agent/work_state.py) или None.
-    read_paths — {path: digest} уже прочитанных файлов (переживает
-    compress) или None. Блок [ПРОЧИТАННЫЕ ФАЙЛЫ] — чтобы модель не
-    перечитывала целиком (сессия 6cc7d5bd: 55 повторов = деньги).
-    None (telegram/тесты) — правило есть, блоки — нет.
+    Внутрь НЕ входят волатильные блоки [WORK_STATE] и [ПРОЧИТАННЫЕ ФАЙЛЫ]:
+    они меняются почти каждую итерацию, а system — это начало запроса.
+    Любая правка в нём сбивает OpenAI prefix-кэш на всём контексте.
+    Их отдаёт volatile_block() и loop добавляет в хвост запроса.
 
     audit_scopes — B11.3: относительные пути из --scope/--scope-file.
     Только для AUDIT: встраивается блок «Область аудита» в audit_standard.
@@ -157,19 +153,36 @@ def system_prompt(
         base = template.format(workspace=workspace)
 
     base = base + "\n\n" + _WORK_STATE_RULE
+    if mode == Mode.AUDIT:
+        return base
+    return _with_rules(base, workspace)
+
+
+def volatile_block(
+    work_state: object | None = None,
+    read_paths: dict[str, str] | None = None,
+) -> str:
+    """Волатильный хвост запроса: [WORK_STATE] + [ПРОЧИТАННЫЕ ФАЙЛЫ].
+
+    Пустая строка, если блокам нечего показать. Вызывающий кладёт результат
+    последним сообщением ТОЛЬКО в запрос к LLM, не в историю сессии.
+
+    work_state — WorkStateHandle (см. agent/work_state.py) или None.
+    read_paths — {path: digest} уже прочитанных файлов (переживает
+    compress) или None. Блок [ПРОЧИТАННЫЕ ФАЙЛЫ] — чтобы модель не
+    перечитывала целиком (сессия 6cc7d5bd: 55 повторов = деньги).
+    """
+    parts: list[str] = []
     if work_state is not None:
         from agent_coder.agent.work_state import render_for_prompt
 
         block = render_for_prompt(getattr(work_state, "_state", None))
         if block:
-            base = base + "\n\n" + block
+            parts.append(block)
     if read_paths:
         from agent_coder.agent.work_state import render_read_paths
 
         rp_block = render_read_paths(read_paths)
         if rp_block:
-            base = base + "\n\n" + rp_block
-
-    if mode == Mode.AUDIT:
-        return base
-    return _with_rules(base, workspace)
+            parts.append(rp_block)
+    return "\n\n".join(parts)

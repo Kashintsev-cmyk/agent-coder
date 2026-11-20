@@ -13,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_coder.agent import compression, history_archive, tool_extract
-from agent_coder.agent.prompts import Mode, system_prompt
+from agent_coder.agent.prompts import Mode, system_prompt, volatile_block
 from agent_coder.agent.session import Session
 from agent_coder.agent.work_state import WorkStateHandle, make_read_digest
 from agent_coder.config import config
@@ -128,6 +128,8 @@ class AgentLoop:
         self._router_state = RouterState(
             manual_model=session.model if session.model_manual else None,
         )
+        # Ключ, по которому собран текущий stable system (см. _refresh_system_prompt).
+        self._system_key: tuple | None = None
 
     async def run(self, task: str, images: list | None = None) -> LoopResult:
         # Бюджет: если сессия уже за потолком — не начинаем (не жжём).
@@ -295,7 +297,7 @@ class AgentLoop:
 
             try:
                 response = await self.client.chat(
-                    messages=self.session.messages,
+                    messages=self._request_messages(),
                     model=self.session.model,
                     tools=self.registry.openai_schemas(self.session.mode),
                     reasoning_effort=self.session.reasoning_effort,
@@ -692,7 +694,7 @@ class AgentLoop:
 
         try:
             response = await self.client.chat(
-                messages=self.session.messages,
+                messages=self._request_messages(),
                 model=self.session.model,
                 tools=self.registry.openai_schemas(self.session.mode),
                 reasoning_effort=self.session.reasoning_effort,
@@ -776,13 +778,22 @@ class AgentLoop:
         # B11.3: audit_scopes — только у AUDIT-сессии; [] → None, чтобы
         # не инжектить пустой блок «Область аудита».
         scopes = getattr(self.session, "audit_scopes", None) or None
+        # Стабильный system зависит только от режима, workspace и scopes.
+        # Пересобираем лишь при смене ключа (AGENTS.md читается с диска
+        # внутри system_prompt — не делаем это каждую итерацию).
+        key = (self.session.mode, self.session.workspace, tuple(scopes or ()))
+        if (
+            key == self._system_key
+            and self.session.messages
+            and self.session.messages[0].get("role") == "system"
+        ):
+            return
         prompt = system_prompt(
             self.session.mode,
             self.session.workspace,
-            self._work_state_handle(),
-            self.session.read_paths,
             audit_scopes=scopes,
         )
+        self._system_key = key
         if (
             not self.session.messages
             or self.session.messages[0].get("role") != "system"
@@ -790,6 +801,20 @@ class AgentLoop:
             self.session.messages.insert(0, {"role": "system", "content": prompt})
         else:
             self.session.messages[0] = {"role": "system", "content": prompt}
+
+    def _request_messages(self) -> list[dict[str, Any]]:
+        """Список сообщений для запроса к LLM.
+
+        История сессии + волатильный хвост [WORK_STATE]/[ПРОЧИТАННЫЕ ФАЙЛЫ]
+        последним сообщением. Хвост — только в копии запроса, в
+        session.messages он не пишется (иначе история пухнет и кэш ломается).
+        """
+        tail = volatile_block(
+            self._work_state_handle(), self.session.read_paths or None
+        )
+        if not tail:
+            return self.session.messages
+        return [*self.session.messages, {"role": "user", "content": tail}]
 
 
 def _build_user_content(task: str, images: list | None) -> str | list[dict[str, Any]]:
