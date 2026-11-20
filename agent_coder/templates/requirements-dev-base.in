@@ -1,5 +1,7 @@
 # ============================================================
-# База dev-зависимостей для Python-проектов
+# База dev-зависимостей для Python-проектов.
+# Обязательный профиль: ruff, pytest/coverage и mypy.
+# Расширенный профиль scaffold: Bandit, pip-audit и build.
 # Скопировать в новый проект как requirements-dev.in.
 # Требует наличия requirements.in в том же каталоге.
 # Сборка: uv pip compile --universal requirements-dev.in
@@ -19,3 +21,10 @@ pytest-cov>=5.0
 
 # Типы
 mypy>=1.11
+
+# Отчёт покрытия (без порога до появления репрезентативного набора тестов)
+
+# Расширенный профиль: security/dependency audit и сборка пакета
+bandit>=1.7
+pip-audit>=2.7
+build>=1.2

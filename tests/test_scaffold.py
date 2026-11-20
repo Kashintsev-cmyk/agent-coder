@@ -82,14 +82,20 @@ def test_readme_has_checks_section(tmp_path: Path) -> None:
     text = (base / "README.md").read_text(encoding="utf-8")
     assert "ruff check ." in text
     assert "mypy" in text
-    assert "pytest -q" in text
+    assert "pytest -q --cov --cov-report=term-missing" in text
+    assert "bandit -q -r ." in text
+    assert "pip-audit -r requirements-dev.txt" in text
+    assert "python -m build" in text
 
 
-def test_requirements_dev_includes_mypy(tmp_path: Path) -> None:
+def test_requirements_dev_includes_extended_quality_tools(tmp_path: Path) -> None:
     base = tmp_path / "demo"
     scaffold_project("demo", target=base, git_init=False)
     text = (base / "requirements-dev.in").read_text(encoding="utf-8")
     assert "mypy" in text
+    assert "bandit" in text
+    assert "pip-audit" in text
+    assert "build" in text
 
 
 def test_ci_runs_mypy(tmp_path: Path) -> None:
@@ -97,6 +103,10 @@ def test_ci_runs_mypy(tmp_path: Path) -> None:
     scaffold_project("demo", target=base, git_init=False)
     text = (base / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     assert "mypy" in text
+    assert "pytest -q --cov --cov-report=term-missing" in text
+    assert "bandit -q -r ." in text
+    assert "pip-audit -r requirements-dev.txt" in text
+    assert "python -m build" in text
 
 
 def test_pyproject_no_app_placeholder(tmp_path: Path) -> None:

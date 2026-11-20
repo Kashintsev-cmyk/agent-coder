@@ -34,7 +34,11 @@ def test_init_marker_present():
 
 def test_required_present_and_nonempty():
     missing = [n for n in REQUIRED if not (TEMPLATES / n).exists()]
-    empty = [n for n in REQUIRED if (TEMPLATES / n).exists() and (TEMPLATES / n).stat().st_size == 0]
+    empty = [
+        n
+        for n in REQUIRED
+        if (TEMPLATES / n).exists() and (TEMPLATES / n).stat().st_size == 0
+    ]
     assert not missing, f"нет шаблонов: {missing}"
     assert not empty, f"пустые шаблоны: {empty}"
 

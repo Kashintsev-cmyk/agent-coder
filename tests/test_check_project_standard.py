@@ -192,7 +192,7 @@ def test_ruff_select_incomplete_flagged(tmp_path: Path) -> None:
     p.write_text(
         COMPLETE_PYPROJECT.replace(
             'select = ["E", "F", "W", "I", "UP", "B", "C4", "SIM"]',
-            'select = ["E", "W"]',
+            'select = ["E", "W", "UP"]',
         ),
         encoding="utf-8",
     )
@@ -234,6 +234,47 @@ def test_ci_not_flagged_when_no_remote(tmp_path: Path) -> None:
     data = asyncio.run(_run(tmp_path))
     issues = [i for i in data["issues"] if i["issue"] == "ci_missing_with_remote"]
     assert issues == []
+
+
+def test_ci_missing_quality_checks_flagged(tmp_path: Path) -> None:
+    import asyncio
+
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "ci.yml").write_text("jobs:\n  test:\n    steps: []\n", encoding="utf-8")
+    data = asyncio.run(_run(tmp_path))
+    issues = {i["issue"] for i in data["issues"]}
+    assert {
+        "ci_coverage_missing",
+        "ci_bandit_missing",
+        "ci_pip_audit_missing",
+        "ci_build_missing",
+    }.issubset(issues)
+
+
+def test_ci_quality_checks_satisfy_profile(tmp_path: Path) -> None:
+    import asyncio
+
+    wf = tmp_path / ".github" / "workflows"
+    wf.mkdir(parents=True)
+    (wf / "ci.yml").write_text(
+        "pytest -q --cov --cov-report=term-missing\n"
+        "bandit -q -r .\n"
+        "pip-audit -r requirements-dev.txt\n"
+        "python -m build\n",
+        encoding="utf-8",
+    )
+    data = asyncio.run(_run(tmp_path))
+    issues = {i["issue"] for i in data["issues"]}
+    assert not (
+        {
+            "ci_coverage_missing",
+            "ci_bandit_missing",
+            "ci_pip_audit_missing",
+            "ci_build_missing",
+        }
+        & issues
+    )
 
 
 # --- path guards ---

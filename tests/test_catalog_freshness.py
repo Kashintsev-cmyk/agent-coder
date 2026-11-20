@@ -1,4 +1,5 @@
 """_FALLBACK_CATALOG не должен содержать мёртвые/неполные записи."""
+
 from __future__ import annotations
 
 from pathlib import Path
@@ -36,7 +37,8 @@ def test_no_zero_context() -> None:
 
 def test_no_zero_prices() -> None:
     bad = sorted(
-        m for m, v in _FALLBACK_CATALOG.items()
+        m
+        for m, v in _FALLBACK_CATALOG.items()
         if v.input_price <= 0 or v.output_price <= 0
     )
     assert not bad, f"нулевые цены: {bad}"

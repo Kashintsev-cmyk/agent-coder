@@ -40,12 +40,47 @@ requirements-dev-base.in, .gitignore-base) —
 - `[tool.setuptools.packages.find]` (или `py-modules`) — иначе `pip install -e .`
   падает на package discovery
 - `[tool.ruff]`: `line-length = 88`, `target-version = "py312"`
-- `[tool.ruff.lint]`: `select ⊇ {E, F, W, I}`
+- `[tool.ruff.lint]`: `select ⊇ {E, F, W, I, UP, B, C4, SIM}`
 - `[tool.mypy]`: `files = [<package>]` (не `"app"`), `check_untyped_defs`,
   `warn_unused_ignores`, `ignore_missing_imports = true`
   (мягкий профиль; `strict = true` — когда пакет покрыт типами)
 - `[tool.coverage.run]`: `source = [<package>]` (не `"app"`)
 - `[tool.pytest.ini_options]`: `testpaths = ["tests"]`
+
+## Профили качества и CI
+
+### Базовый профиль (обязателен)
+
+CI новых Python-проектов должен выполнять:
+
+1. `ruff check .` и `ruff format --check .` — линт и проверка формата;
+2. `mypy` — типы согласно `[tool.mypy].files`;
+3. `pytest -q --cov --cov-report=term-missing` — тесты и отчёт покрытия.
+
+Покрытие включается сразу, но процентный порог не задаётся scaffold: один
+smoke-тест не является репрезентативной базой для quality gate. Порог вводится
+в проекте отдельно, когда набор тестов действительно покрывает критичные
+сценарии. CI использует одинаковые команды для всех проектов scaffold.
+
+### Расширенный профиль (рекомендуется для приложений и публикуемых пакетов)
+
+- `bandit -q -r .` — статические проверки безопасности Python-кода;
+- `pip-audit -r requirements-dev.txt` — известные уязвимости зависимостей;
+- `python -m build` — проверка сборки дистрибутива.
+
+Инструменты расширенного профиля включены в scaffold и его CI и обязательны для
+сгенерированных проектов. В существующем проекте исключение допустимо только с
+обоснованием в документации проекта и согласованным изменением CI. Эти проверки
+не заменяют review, управление секретами, обновления зависимостей и проверки
+GitHub Actions.
+
+### Границы детерминированного checker
+
+`check_project_standard` проверяет структуру и декларативные настройки, включая
+требуемый набор Ruff, но не подтверждает, что CI реально запустил каждую
+команду или что сканеры завершились успешно. Для фактического статуса используйте
+результаты CI. Новые требования к профилям добавляйте вместе с тестами checker и
+scaffold.
 
 ## Конвенции
 
@@ -54,9 +89,11 @@ requirements-dev-base.in, .gitignore-base) —
   select=["E","F","W","I","UP","B","C4","SIM"]
 - Пакет = snake_case от имени проекта
 - coverage source = имя пакета проекта (не "app")
-- База dev: ruff, uv, pytest, pytest-asyncio, pytest-cov, mypy (6 шт.)
-- CI: ruff check . && ruff format --check . && mypy && pytest -q
-  (без знания имени пакета: mypy берёт `files` из pyproject.toml)
+- База dev: ruff, uv, pytest, pytest-asyncio, pytest-cov, mypy; расширенный
+  набор scaffold: bandit, pip-audit, build
+- CI: ruff check . && ruff format --check . && mypy &&
+  pytest -q --cov --cov-report=term-missing, затем bandit, pip-audit, build
+  (mypy берёт `files` из pyproject.toml)
 - Перезапуск systemd-бота: `sudo systemctl restart <проект>-bot.service`;
   на хосте с `botctl` — `sudo botctl restart <проект>-bot`
   (+ `logs`/`logs-follow`). Имя юнита — дефисы, суффикс `-bot`.

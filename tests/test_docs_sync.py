@@ -68,8 +68,7 @@ def test_all_tools_documented_in_readme():
 def test_all_bot_commands_documented_in_telegram_md():
     doc = TELEGRAM_MD.read_text(encoding="utf-8")
     missing = sorted(
-        c for c in _bot_commands()
-        if not re.search(rf"`/{c}(?:`|\s|\|)", doc)
+        c for c in _bot_commands() if not re.search(rf"`/{c}(?:`|\s|\|)", doc)
     )
     assert not missing, (
         f"Команды есть в BOT_COMMANDS, но не упомянуты в docs/TELEGRAM.md: "

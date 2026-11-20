@@ -32,7 +32,10 @@ REQUIRED_FILES: tuple[str, ...] = (
     "README.md",
     "AGENTS.md",
 )
-REQUIRED_RUFF_SELECT: frozenset[str] = frozenset({"E", "F", "I"})
+# Базовый профиль проверок; расширенные проверки описаны в project_standard.md.
+REQUIRED_RUFF_SELECT: frozenset[str] = frozenset(
+    {"E", "F", "W", "I", "UP", "B", "C4", "SIM"}
+)
 
 # Инструменты и мета-репо: не проекты под стандартом bots/.
 # Проверка в _execute (tool), adapter _collect_issues не исключает —
@@ -340,6 +343,23 @@ def _collect_issues(base: Path) -> list[dict[str, Any]]:
             ci_text = ci_path.read_text(encoding="utf-8")
         except OSError:
             ci_text = ""
+        required_ci_checks = {
+            "ci_coverage_missing": "pytest -q --cov --cov-report=term-missing",
+            "ci_bandit_missing": "bandit -q -r .",
+            "ci_pip_audit_missing": "pip-audit -r requirements-dev.txt",
+            "ci_build_missing": "python -m build",
+        }
+        for issue, command in required_ci_checks.items():
+            if command not in ci_text:
+                issues.append(
+                    _issue(
+                        ".github/workflows/ci.yml",
+                        "minor",
+                        issue,
+                        f"CI runs `{command}`",
+                        "command not found",
+                    )
+                )
         m = re.search(r"python-version:\s*\[([^\]]+)\]", ci_text)
         if m:
             versions = m.group(1)

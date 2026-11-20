@@ -48,5 +48,13 @@ jobs:
       - name: Mypy (types)
         run: mypy
 
-      - name: Tests
-        run: pytest -q
+      - name: Tests + coverage
+        run: pytest -q --cov --cov-report=term-missing
+
+      - name: Security checks
+        run: |
+          bandit -q -r .
+          pip-audit -r requirements-dev.txt
+
+      - name: Build package
+        run: python -m build

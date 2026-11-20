@@ -32,12 +32,13 @@ Bootstrap нового проекта: `agent-coder scaffold --project <name>`.
 
 - Python 3.12+, ruff line-length=88, select=E,F,W,I,UP,B,C4,SIM
 - Пакет = snake_case от имени проекта
-- База dev: ruff, uv, pytest, pytest-asyncio, pytest-cov, mypy (6 шт.)
+- База dev: ruff, uv, pytest, pytest-asyncio, pytest-cov, mypy; scaffold
+  дополнительно включает Bandit, pip-audit и build.
+- CI: Ruff check/format, mypy, pytest-cov без начального порога, Bandit,
+  pip-audit и проверка сборки `python -m build`.
 - mypy — мягкий профиль (files=<пакет>, check_untyped_defs,
   warn_unused_ignores, ignore_missing_imports); ужесточать до strict
-  по мере покрытия типами
-- CI: ruff check . && ruff format --check . && mypy && pytest -q
-  (без знания имени пакета — mypy берёт files из pyproject.toml)
+  по мере покрытия типами.
 - Перезапуск бота: `sudo systemctl restart <проект>-bot.service`
   или `sudo botctl restart <проект>-bot` (см. README проекта)
 - coverage source — имя пакета, не "app"

@@ -125,7 +125,10 @@ def _render_readme(project: str, package: str) -> str:
         "    ruff check .            # линт\n"
         "    ruff format --check .   # форматирование\n"
         "    mypy                    # типы (конфиг в pyproject.toml)\n"
-        "    pytest -q               # тесты\n"
+        "    pytest -q --cov --cov-report=term-missing  # тесты + покрытие\n"
+        "    bandit -q -r .                 # анализ безопасности\n"
+        "    pip-audit -r requirements-dev.txt  # уязвимости зависимостей\n"
+        "    python -m build                # сборка дистрибутива\n"
     )
 
 
