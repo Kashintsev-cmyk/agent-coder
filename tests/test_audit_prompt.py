@@ -84,6 +84,15 @@ def test_has_anti_hallucination_block() -> None:
     assert "не подтверждено" in text
 
 
+def test_audit_prompt_does_not_ask_questions_for_missing_context() -> None:
+    text = " ".join(load_audit_standard().split())
+    assert "НЕ задавай вопросов пользователю" in text
+    assert "Не хватает контекста — не задавай вопрос" in text
+    assert "продолжай аудит без уточняющих вопросов" in text
+    assert "уточняющий вопрос" not in text
+    assert "задай уточняющие вопросы" not in text
+
+
 def test_has_confidence_column() -> None:
     text = load_audit_standard()
     assert "Confidence" in text
