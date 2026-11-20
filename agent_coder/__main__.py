@@ -283,7 +283,7 @@ async def _handle_slash(line: str, session: Session) -> bool:
                 client = LLMClient()
                 await client.start()
                 try:
-                    result = await run_patch(
+                    patch_result = await run_patch(
                         client=client,
                         session=session,
                         model=used,
@@ -292,19 +292,21 @@ async def _handle_slash(line: str, session: Session) -> bool:
                     )
                 finally:
                     await client.close()
-                if result.error:
-                    ui.print_error(result.error)
+                if patch_result.error:
+                    ui.print_error(patch_result.error)
                 else:
                     ui.print_success(
-                        f"Готово: {result.iterations} итераций, {result.cost:.2f}₽"
+                        f"Готово: {patch_result.iterations} итераций, {patch_result.cost:.2f}₽"
                     )
-                    if result.files_changed:
-                        ui.print_info(f"Изменено файлов: {len(result.files_changed)}")
-                        for fp in result.files_changed:
+                    if patch_result.files_changed:
+                        ui.print_info(
+                            f"Изменено файлов: {len(patch_result.files_changed)}"
+                        )
+                        for fp in patch_result.files_changed:
                             ui.print_info(f"  {fp}")
-                    if result.git_diff_stat:
-                        ui.print_info(result.git_diff_stat)
-                    if result.budget_exceeded:
+                    if patch_result.git_diff_stat:
+                        ui.print_info(patch_result.git_diff_stat)
+                    if patch_result.budget_exceeded:
                         ui.print_info(
                             f"⚠ Бюджет patch исчерпан "
                             f"({config.MAX_COST_PATCH:.0f}₽), правки частичные."
