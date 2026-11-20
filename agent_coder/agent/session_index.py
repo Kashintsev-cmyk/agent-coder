@@ -39,6 +39,18 @@ logger = logging.getLogger(__name__)
 INDEX_VERSION = 1
 INDEX_FILENAME = "index.json"
 
+# Файлы в SESSIONS_DIR, которые НЕ являются сессиями. Держим в одном месте:
+# list_all() и rebuild() должны пропускать их одинаково, иначе число *.json
+# на диске никогда не сойдётся с размером индекса и list_all() будет
+# пересобирать индекс при каждом вызове (полный ре-парс 350 файлов на
+# каждое нажатие /sessions).
+NON_SESSION_FILES = frozenset({INDEX_FILENAME, "telegram_state.json"})
+
+
+def is_session_file(name: str) -> bool:
+    """Является ли имя файла в SESSIONS_DIR файлом сессии."""
+    return name.endswith(".json") and name not in NON_SESSION_FILES
+
 
 class _HasMeta(Protocol):
     """Минимальный интерфейс, который нужен индексу от сессии."""
@@ -277,7 +289,7 @@ class SessionIndex:
 
         parsed: dict[str, SessionMeta] = {}
         for p in sessions_dir.glob("*.json"):
-            if p.name == INDEX_FILENAME:
+            if not is_session_file(p.name):
                 continue
             try:
                 data = json.loads(p.read_text(encoding="utf-8"))

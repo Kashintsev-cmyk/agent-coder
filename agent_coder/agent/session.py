@@ -116,6 +116,12 @@ class Session:
     request_count: int = 0
     created_at: float = field(default_factory=time.time)
     updated_at: float = field(default_factory=time.time)
+    # A12: объект собран из sidecar-индекса (from_meta) и НЕ содержит
+    # messages/read_paths/work_state — только метаданные. save() такого
+    # объекта затёр бы историю на диске пустым списком. Поэтому save()
+    # для light-сессии падает с RuntimeError: нужен Session.load(id).
+    # repr/compare/init выключены: это флаг происхождения, не данные.
+    _light: bool = field(default=False, repr=False, compare=False, init=False)
 
     @classmethod
     def new(
@@ -262,6 +268,9 @@ class Session:
 
     def to_dict(self) -> dict[str, Any]:
         d = asdict(self)
+        # A12: флаг происхождения объекта — не данные сессии. В файл не
+        # пишем, иначе from_dict(**data) получит неожидаемый kwargs.
+        d.pop("_light", None)
         d["mode"] = self.mode.value
         d["total_usage"] = asdict(self.total_usage)
         return d
@@ -332,7 +341,7 @@ class Session:
         except ValueError:
             mode = Mode.ACT
         usage = Usage(cost=float(meta.cost))
-        return cls(
+        session = cls(
             id=meta.id,
             workspace=meta.workspace,
             model=meta.model,
@@ -343,9 +352,23 @@ class Session:
             updated_at=meta.updated_at,
             total_usage=usage,
         )
+        session._light = True
+        return session
 
     def save(self) -> Path:
-        """Атомарная запись: tmp + os.replace (защита от SIGKILL/диска)."""
+        """Атомарная запись: tmp + os.replace (защита от SIGKILL/диска).
+
+        A12: light-сессию (из from_meta/list_all) сохранять нельзя — у неё
+        нет messages/read_paths/work_state, и запись стёрла бы историю
+        файла на диске. Такой объект годен только для UI-списка; для
+        изменений нужен Session.load(id).
+        """
+        if self._light:
+            raise RuntimeError(
+                f"save() на light-сессии {self.id}: нет messages/read_paths/"
+                "work_state (объект из list_all/from_meta). Используй "
+                "Session.load(id) — запись затёрла бы историю на диске."
+            )
         config.SESSIONS_DIR.mkdir(parents=True, exist_ok=True)
         path = config.SESSIONS_DIR / f"{self.id}.json"
         payload = json.dumps(self.to_dict(), ensure_ascii=False, indent=2)
@@ -392,15 +415,17 @@ class Session:
         if not config.SESSIONS_DIR.exists():
             return []
 
-        from agent_coder.agent.session_index import INDEX_FILENAME
+        from agent_coder.agent import session_index
         from agent_coder.agent.session_index import index as _idx
 
         # Защита от рассинхрона: пользователь мог вручную удалить/добавить
-        # *.json, а индекс остался старым.
+        # *.json, а индекс остался старым. Не-сессионные файлы
+        # (index.json, telegram_state.json) — через is_session_file(),
+        # иначе счётчики не сойдутся никогда (A13).
         disk_ids = {
             p.stem
             for p in config.SESSIONS_DIR.glob("*.json")
-            if p.name != INDEX_FILENAME
+            if session_index.is_session_file(p.name)
         }
         need_rebuild = False
         if _idx.count() == 0 or len(disk_ids) != _idx.count():
