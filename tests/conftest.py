@@ -15,6 +15,14 @@ import tempfile
 _TEST_BOTS_DIR = tempfile.mkdtemp(prefix="agent-coder-test-bots-")
 os.environ.setdefault("AGENT_CODER_BOTS_DIR", _TEST_BOTS_DIR)
 
+# ВАЖНО: SESSIONS_DIR тоже через env ДО любого import agent_coder.
+# config.SESSIONS_DIR (config.py:307) кэшируется при import; часть кода
+# (session.py, verify.py, loop.py) дергает session.save() в тестах —
+# если env не задан, все копии указывают на боевой sessions/, и каждый
+# запуск pytest оставляет ~25 пустых тестовых сессий в проде
+# (incident 2026-11-17..20: 116 /tmp-сессий с фикстурами model='m').
+os.environ.setdefault("SESSIONS_DIR", os.path.join(_TEST_BOTS_DIR, "sessions"))
+
 
 @atexit.register
 def _cleanup_test_bots_dir() -> None:
