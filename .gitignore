@@ -11,6 +11,12 @@ sessions/
 .mypy_cache/
 .ruff_cache/
 
+# Покрытие тестами
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
 # Бэкапы и артефакты сборки
 .backups/
 agent_coder.bak_*/
