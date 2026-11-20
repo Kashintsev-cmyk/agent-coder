@@ -70,7 +70,5 @@ def test_execute_gates_in_audit() -> None:
     from agent_coder.tools.run_command import run_command_tool
 
     ctx = ToolContext(workspace=".", mode=Mode.ACT, audit_scopes=SCOPES)
-    out = asyncio.run(
-        run_command_tool.executor({"command": "cat config.py"}, ctx)
-    )
+    out = asyncio.run(run_command_tool.executor({"command": "cat config.py"}, ctx))
     assert "вне области аудита" in out

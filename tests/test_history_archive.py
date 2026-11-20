@@ -12,9 +12,7 @@ from agent_coder.agent import history_archive
 @pytest.fixture
 def session_id(monkeypatch, tmp_path):
     """Изолированный SESSIONS_DIR + фиксированный id."""
-    monkeypatch.setattr(
-        type(history_archive.config), "SESSIONS_DIR", tmp_path, raising=False
-    )
+    monkeypatch.setattr(history_archive.config, "SESSIONS_DIR", tmp_path)
     return "testsess"
 
 

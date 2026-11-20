@@ -1,12 +1,22 @@
 """Fixture: копирует futures_3.0 (без venv/data/.git) в worktree для аудита."""
+
 import shutil
 import sys
 from pathlib import Path
 
 _SRC = Path("/home/botuser/bots/futures_3.0")
 _IGNORE = shutil.ignore_patterns(
-    "venv", ".venv", "__pycache__", ".git", "data", "catboost_info",
-    "*.tar.gz", "*.pdf", "logs", ".pytest_cache", "manifest_server.txt",
+    "venv",
+    ".venv",
+    "__pycache__",
+    ".git",
+    "data",
+    "catboost_info",
+    "*.tar.gz",
+    "*.pdf",
+    "logs",
+    ".pytest_cache",
+    "manifest_server.txt",
 )
 
 

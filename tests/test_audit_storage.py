@@ -147,6 +147,7 @@ def test_save_meta_total_files(tmp_path):
     assert meta["coverage_count"] == 1
     assert meta["coverage_remaining"] == 1
 
+
 def test_prepare_fresh_archives_not_deletes(tmp_path):
     """B11.2c: fresh=True архивирует с timestamp, findings сохраняются."""
     ws = str(tmp_path)
@@ -186,4 +187,3 @@ def test_prepare_fresh_multiple_archives(tmp_path):
     archives = list(pd.parent.glob(f"{pd.name}-*"))
     archives = [d for d in archives if d != pd]
     assert len(archives) == 2, f"ожидалось 2 архива, найдено {len(archives)}"
-

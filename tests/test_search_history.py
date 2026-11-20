@@ -12,9 +12,7 @@ from agent_coder.tools.search_history import search_history_tool
 
 @pytest.fixture
 def ctx(tmp_path, monkeypatch):
-    monkeypatch.setattr(
-        type(history_archive.config), "SESSIONS_DIR", tmp_path, raising=False
-    )
+    monkeypatch.setattr(history_archive.config, "SESSIONS_DIR", tmp_path)
     return ToolContext(workspace=str(tmp_path), mode=Mode.ACT, session_id="s1")
 
 

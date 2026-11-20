@@ -31,9 +31,13 @@ def test_pipe_bypass_b92g5_output_flags() -> None:
 
     assert not _is_safe_command({"command": "git log --output=/tmp/x -2 | cat"})
     assert not _is_safe_command({"command": "git archive -o /tmp/z.tar HEAD | cat"})
-    assert not _is_safe_command({"command": "git bundle create /tmp/b.bundle HEAD | cat"})
+    assert not _is_safe_command(
+        {"command": "git bundle create /tmp/b.bundle HEAD | cat"}
+    )
     assert not _is_safe_command({"command": "git format-patch -o /tmp/p HEAD | cat"})
-    assert not _is_safe_command({"command": "git fast-export --all --output=/tmp/e | cat"})
+    assert not _is_safe_command(
+        {"command": "git fast-export --all --output=/tmp/e | cat"}
+    )
     assert not _is_safe_command({"command": "find . -fprint /tmp/x | cat"})
 
 
