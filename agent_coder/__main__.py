@@ -182,15 +182,12 @@ async def _handle_slash(line: str, session: Session) -> bool:
         _print_help()
     elif cmd == "plan":
         session.mode = Mode.PLAN
-        session.messages = []
         ui.print_success("Режим: plan (только чтение)")
     elif cmd == "act":
         session.mode = Mode.ACT
-        session.messages = []
         ui.print_success("Режим: act (можно менять)")
     elif cmd == "audit":
         session.mode = Mode.AUDIT
-        session.messages = []
         ui.print_success("Режим: audit (строгий аудитор, только чтение)")
     elif cmd == "cost":
         ui.print_total_usage(session.total_usage, session.request_count)

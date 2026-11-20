@@ -274,9 +274,11 @@ async def cmd_mode(message: Message) -> None:
         return
     new_mode = valid[parts[1].strip()]
     if session.mode != new_mode:
+        # История не сбрасывается: режим влияет на system prompt и доступные
+        # инструменты, а system prompt пересобирается на каждом запуске
+        # (AgentLoop._refresh_system_prompt). Сброс терял контекст без нужды.
         session.mode = new_mode
         _apply_recommended_model(session)
-        session.messages = []
         session.save()
     extra = _audit_reasoning_warning(session) if new_mode == Mode.AUDIT else ""
     await message.answer(
@@ -526,9 +528,9 @@ async def cb_mode(query: CallbackQuery) -> None:
         await query.answer("Неизвестный режим", show_alert=True)
         return
     if session.mode != new_mode:
+        # История сохраняется — см. cmd_mode.
         session.mode = new_mode
         _apply_recommended_model(session)
-        session.messages = []
         session.save()
     extra = _audit_reasoning_warning(session) if new_mode == Mode.AUDIT else ""
     await query.message.edit_text(
