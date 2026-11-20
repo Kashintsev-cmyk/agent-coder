@@ -206,7 +206,7 @@ async def cmd_new(message: Message) -> None:
 
 @router.message(Command("sessions"))
 async def cmd_sessions(message: Message) -> None:
-    sessions = Session.list_all()
+    sessions = Session.list_all(chat_id=message.chat.id)
     if not sessions:
         await message.answer("Сессий пока нет. /projects — выбрать проект.")
         return
@@ -458,7 +458,7 @@ async def cb_new(query: CallbackQuery, bot: Bot) -> None:
 
 @router.callback_query(F.data == "sessions")
 async def cb_sessions(query: CallbackQuery) -> None:
-    sessions = Session.list_all()
+    sessions = Session.list_all(chat_id=query.message.chat.id)
     if not sessions:
         await query.message.edit_text("Сессий пока нет. /projects — выбрать проект.")
         await query.answer()
@@ -480,7 +480,7 @@ async def cb_sessions_page(query: CallbackQuery) -> None:
     except ValueError:
         await query.answer("Некорректная страница")
         return
-    sessions = Session.list_all()
+    sessions = Session.list_all(chat_id=query.message.chat.id)
     if not sessions:
         await query.message.edit_text("Сессий пока нет. /projects — выбрать проект.")
         await query.answer()

@@ -29,6 +29,7 @@ import json
 import logging
 import math
 import os
+import tempfile
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -36,7 +37,7 @@ from typing import Any, Protocol
 
 logger = logging.getLogger(__name__)
 
-INDEX_VERSION = 1
+INDEX_VERSION = 2
 INDEX_FILENAME = "index.json"
 
 # Файлы в SESSIONS_DIR, которые НЕ являются сессиями. Держим в одном месте:
@@ -50,6 +51,33 @@ NON_SESSION_FILES = frozenset({INDEX_FILENAME, "telegram_state.json"})
 def is_session_file(name: str) -> bool:
     """Является ли имя файла в SESSIONS_DIR файлом сессии."""
     return name.endswith(".json") and name not in NON_SESSION_FILES
+
+
+def _temp_roots() -> tuple[str, ...]:
+    """Корни временных каталогов: системный TMPDIR и классический /tmp.
+
+    Второй нужен отдельно: в проде TMPDIR указывает на
+    ~/.cache/agent-coder/tmp, а мусор A11 писался в /tmp (203 сессии) —
+    проверка только по gettempdir() их не увидит.
+    """
+    roots = {tempfile.gettempdir().rstrip("/"), os.path.join(os.sep, "tmp")}
+    return tuple(sorted(r for r in roots if r))
+
+
+def is_scrap_workspace(workspace: str) -> bool:
+    """Сессия во временном каталоге — след pytest-прогона, не работа юзера.
+
+    `run_checks` запускает pytest с `--noconftest`, поэтому conftest не
+    изолирует SESSIONS_DIR и фикстуры пишут сессии прямо в боевой каталог
+    (A11: 203 из 346 сессий с workspace=/tmp, 94 с model='m'). Такие
+    сессии не должны всплывать в /sessions и не получают владельца.
+
+    Сравниваем с системным tempdir, а не с литералом "/tmp": уважает
+    TMPDIR и не ловит B108 от bandit.
+    """
+    if not workspace:
+        return False
+    return any(workspace == r or workspace.startswith(r + "/") for r in _temp_roots())
 
 
 class _HasMeta(Protocol):
@@ -79,6 +107,12 @@ class SessionMeta:
     request_count: int
     created_at: float
     updated_at: float
+    # B2 provenance: логическое имя проекта. Пусто = неизвестно.
+    project: str = ""
+    # Владелец сессии в Telegram (0 = неизвестен: старые сессии, CLI).
+    # Нужен, чтобы /sessions показывал сессии своего чата, а не весь
+    # каталог (было 346 сессий = 44 страницы, включая мусор от pytest).
+    chat_id: int = 0
 
     @classmethod
     def from_session(cls, s: _HasMeta) -> SessionMeta:
@@ -102,6 +136,8 @@ class SessionMeta:
             request_count=int(getattr(s, "request_count", 0) or 0),
             created_at=float(getattr(s, "created_at", 0.0) or 0.0),
             updated_at=float(getattr(s, "updated_at", 0.0) or 0.0),
+            project=str(getattr(s, "project", "") or ""),
+            chat_id=int(getattr(s, "chat_id", 0) or 0),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -201,6 +237,8 @@ class SessionIndex:
                     request_count=int(data.get("request_count", 0) or 0),
                     created_at=float(data.get("created_at", 0.0) or 0.0),
                     updated_at=float(data.get("updated_at", 0.0) or 0.0),
+                    project=str(data.get("project", "") or ""),
+                    chat_id=int(data.get("chat_id", 0) or 0),
                 )
             except (TypeError, ValueError) as exc:
                 logger.warning("Пропускаю запись %r в индексе: %s", sid, exc)

@@ -69,6 +69,10 @@ class Session:
     # B2 provenance: логическое имя проекта (na_shtile, weather-bot,
     # agent_coder). Пусто = неизвестно (старые сессии / CLI без --project).
     project: str = ""
+    # Владелец сессии в Telegram. 0 = неизвестен (старые сессии, CLI).
+    # Зачем: /sessions показывал весь каталог (346 сессий, 44 страницы),
+    # включая чужие и мусорные — юзер листал каталог вместо своих сессий.
+    chat_id: int = 0
     title: str = ""
     reasoning_effort: str = DEFAULT_REASONING
     web_search: bool = False
@@ -133,6 +137,7 @@ class Session:
         web_search: bool = False,
         model_manual: bool = False,
         project: str = "",
+        chat_id: int = 0,
     ) -> Session:
         return cls(
             id=uuid.uuid4().hex[:8],
@@ -140,6 +145,7 @@ class Session:
             model=model,
             mode=mode,
             project=project,
+            chat_id=chat_id,
             title=title,
             web_search=web_search,
             model_manual=model_manual,
@@ -313,6 +319,8 @@ class Session:
             data["audit_scopes"] = []
         if "project" not in data:
             data["project"] = ""
+        if "chat_id" not in data:
+            data["chat_id"] = 0
 
         # Разовая чистка: если в истории есть DSML-мусор (старые версии
         # кода не фильтровали) — убираем при загрузке.
@@ -351,6 +359,8 @@ class Session:
             created_at=meta.created_at,
             updated_at=meta.updated_at,
             total_usage=usage,
+            project=meta.project,
+            chat_id=meta.chat_id,
         )
         session._light = True
         return session
@@ -405,8 +415,11 @@ class Session:
             return None
 
     @classmethod
-    def list_all(cls) -> list[Session]:
+    def list_all(cls, chat_id: int | None = None) -> list[Session]:
         """Список сессий для UI — читает sidecar-индекс, а не полные JSON.
+
+        chat_id — если задан, вернуть только сессии этого чата (0 = legacy
+        без владельца). None — весь каталог (CLI, скрипты, обслуживание).
 
         При рассинхроне (число *.json != число записей в индексе) —
         автоматический rebuild. Полные messages в результат не грузятся;
@@ -439,14 +452,71 @@ class Session:
         if need_rebuild:
             _idx.rebuild(config.SESSIONS_DIR)
 
-        return [cls.from_meta(m) for m in _idx.list()]
+        metas = _idx.list()
+        if chat_id is not None:
+            metas = [m for m in metas if m.chat_id == chat_id]
+        return [cls.from_meta(m) for m in metas]
 
     @classmethod
-    def latest(cls, workspace: str | None = None) -> Session | None:
-        for s in cls.list_all():
+    def latest(
+        cls, workspace: str | None = None, chat_id: int | None = None
+    ) -> Session | None:
+        for s in cls.list_all(chat_id=chat_id):
             if workspace is None or s.workspace == workspace:
                 return s
         return None
+
+    @classmethod
+    def backfill_chat_id(cls, chat_id: int) -> int:
+        """Проставить владельца legacy-сессиям (chat_id=0). Вернуть число правок.
+
+        Нужна один раз после появления поля: у сессий, созданных раньше,
+        chat_id нет → они не попадают в /sessions своего чата (юзер видел
+        пустой список). Запускается из адаптера (bot.py) на старте, до
+        первых записей, иначе живой процесс перезапишет файл без поля.
+
+        Мусор от pytest (workspace=/tmp) намеренно не трогаем: он должен
+        остаться с 0 и не всплывать в списке.
+
+        Правка минимальная: читаем сырой JSON, ставим одно поле, пишем
+        атомарно. Остальные поля не пере-сериализуются через dataclass —
+        неизвестные ключи сохраняются.
+        """
+        import json as _json
+
+        done = 0
+        for meta in cls.list_all():
+            if meta.chat_id != 0:
+                continue
+            from agent_coder.agent.session_index import is_scrap_workspace
+
+            if is_scrap_workspace(meta.workspace):
+                continue
+            if meta.request_count <= 0 and meta.total_usage.cost <= 0.0:
+                continue
+            path = config.SESSIONS_DIR / f"{meta.id}.json"
+            try:
+                data = _json.loads(path.read_text(encoding="utf-8"))
+            except (OSError, ValueError) as e:
+                logger.warning("backfill chat_id: пропускаю %s (%s)", meta.id, e)
+                continue
+            data["chat_id"] = chat_id
+            tmp = path.with_name(path.name + ".tmp")
+            try:
+                tmp.write_text(
+                    _json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8"
+                )
+                os.replace(tmp, path)
+                done += 1
+            except OSError as e:
+                logger.warning("backfill chat_id: не записал %s (%s)", meta.id, e)
+                tmp.unlink(missing_ok=True)
+        if done:
+            from agent_coder.agent.session_index import index as _idx
+
+            _idx.rebuild(config.SESSIONS_DIR)
+            logger.info("backfill chat_id: проставлен владелец %d сессиям", done)
+        return done
 
     def delete(self) -> int:
         """Удалить файл сессии и связанные audit-отчёты.

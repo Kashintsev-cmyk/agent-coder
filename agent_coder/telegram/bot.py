@@ -11,6 +11,7 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.types import BotCommand, ErrorEvent
 
 from agent_coder.agent.media_cleanup import cleanup_old_media
+from agent_coder.agent.session import Session
 from agent_coder.config import config
 from agent_coder.model_catalog import catalog
 from agent_coder.telegram import handlers
@@ -122,6 +123,21 @@ async def _run() -> None:
     )
     logging.getLogger("httpx").setLevel(logging.WARNING)
     logging.getLogger("aiogram.event").setLevel(logging.WARNING)
+
+    # Одноразовая миграция: у сессий, созданных до появления chat_id,
+    # владелец неизвестен (0) → они не попадали бы в /sessions своего чата.
+    # Делаем здесь, на старте, до первых записей: живой процесс со старым
+    # кодом иначе перезапишет файл/индекс без поля.
+    try:
+        migrated = Session.backfill_chat_id(config.TELEGRAM_USER_ID)
+        if migrated:
+            logging.getLogger(__name__).info(
+                "chat_id backfill: %d сессий закреплено за чатом %s",
+                migrated,
+                config.TELEGRAM_USER_ID,
+            )
+    except Exception as e:  # nosec B110 — миграция не должна валить старт
+        logging.getLogger(__name__).warning("chat_id backfill failed: %s", e)
 
     bot = Bot(
         token=config.TELEGRAM_TOKEN,
