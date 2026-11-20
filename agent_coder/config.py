@@ -1,6 +1,7 @@
 """Конфигурация agent-coder."""
 
 import os
+import sys
 from pathlib import Path
 from typing import ClassVar
 
@@ -13,6 +14,50 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 # override=False: не затирать уже установленные переменные окружения
 # (приоритет у того, что реально экспортировано в shell/systemd).
 load_dotenv(BASE_DIR / ".env", override=False)
+
+
+_PYTEST_MARKERS = ("PYTEST_CURRENT_TEST", "PYTEST_VERSION")
+
+
+def _running_under_pytest() -> bool:
+    """Идёт ли прогон pytest прямо сейчас.
+
+    ``PYTEST_CURRENT_TEST`` pytest выставляет на время каждого теста,
+    ``PYTEST_VERSION`` — на весь процесс. Достаточно любого: цель —
+    не пропустить прогон, а не отличить виды прогонов.
+
+    Читаем через ``os.environ``, а не ``os.getenv``: это внутренние
+    маркеры pytest, а не переменные конфигурации — тесты
+    ``test_config_defaults``/``test_docs_sync`` сканируют ``getenv`` в
+    config.py и потребовали бы внести их в ``.env.example`` и README.
+    """
+    if any(marker in os.environ for marker in _PYTEST_MARKERS):
+        return True
+    return "pytest" in sys.modules
+
+
+def _resolve_sessions_dir(base_dir: Path) -> Path:
+    """Каталог сессий с защитой боевого ``sessions/`` от тестов (A10).
+
+    Приоритет:
+    1. ``SESSIONS_DIR`` в окружении — как задано (прод, systemd, CI).
+    2. Прогон pytest без явного env — временный каталог вне репозитория.
+    3. Иначе — штатный ``<repo>/sessions``.
+
+    Зачем (2): ``tests/conftest.py`` изолирует каталог, но он грузится
+    только в обычном прогоне. ``pytest --noconftest`` его пропускает, и
+    каждый такой прогон оставлял в боевом каталоге ~56 файлов
+    (`model="m"`, `workspace="/tmp"`). Защита должна быть в коде, а не
+    только в фикстуре.
+    """
+    explicit = os.getenv("SESSIONS_DIR")
+    if explicit:
+        return Path(explicit)
+    if _running_under_pytest():
+        import tempfile
+
+        return Path(tempfile.mkdtemp(prefix="agent-coder-pytest-sessions-"))
+    return base_dir / "sessions"
 
 
 def _env_int(name: str, default: str) -> int:
@@ -304,7 +349,7 @@ class Config:
     APPROVAL_TIMEOUT: float = float(os.getenv("APPROVAL_TIMEOUT", "900"))
 
     # Путь сессий
-    SESSIONS_DIR: Path = Path(os.getenv("SESSIONS_DIR", str(BASE_DIR / "sessions")))
+    SESSIONS_DIR: Path = _resolve_sessions_dir(BASE_DIR)
 
     @classmethod
     def validate(cls) -> bool:
