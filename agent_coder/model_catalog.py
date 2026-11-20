@@ -450,6 +450,14 @@ class ModelCatalog:
             pricing.get("completion"),
             units.get("completion"),
         )
+        cache_read_price = self._price_per_million(
+            pricing.get("input_cache_read"),
+            units.get("input_cache_read", units.get("prompt")),
+        )
+        cache_write_price = self._price_per_million(
+            pricing.get("input_cache_write"),
+            units.get("input_cache_write", units.get("prompt")),
+        )
 
         # tag в API нет — берём из fallback, если есть.
         fallback = _FALLBACK_CATALOG.get(mid)
@@ -482,6 +490,8 @@ class ModelCatalog:
             web_search_builtin=web_search_builtin,
             input_price=input_price,
             output_price=output_price,
+            cache_read_price=cache_read_price,
+            cache_write_price=cache_write_price,
             tag=tag,
         )
 

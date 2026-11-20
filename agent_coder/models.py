@@ -71,6 +71,10 @@ class ModelInfo:
     description: str = ""  # краткое описание от RouterAI (RU)
     input_price: float = 0.0  # ₽ за 1M
     output_price: float = 0.0  # ₽ за 1M
+    # Цена чтения из кэша / записи в кэш, ₽ за 1M. 0.0 — кэш у модели не
+    # тарифицируется (или RouterAI не отдал цену).
+    cache_read_price: float = 0.0
+    cache_write_price: float = 0.0
     tag: str = ""
 
     def __post_init__(self) -> None:
