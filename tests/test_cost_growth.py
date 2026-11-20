@@ -312,8 +312,9 @@ def test_summary_cost_at_soft_limit_stays_in_cheap_tier(model):
 
 def test_extra_pricing_keys_do_not_break_parsing():
     """Живой API кроме prompt/completion отдаёт input_cache_read/write,
-    web_search и т.п. Парсер обязан брать только две скалярные ставки
-    и не превращать цену в ноль из-за незнакомых ключей.
+    web_search и т.п. Парсер обязан брать скалярные ставки prompt/
+    completion и цены кэша, а незнакомые ключи (web_search) игнорировать —
+    и не превращать цену в ноль из-за них.
     """
     raw = {
         "id": config.DEFAULT_MODEL_ID,
@@ -332,3 +333,7 @@ def test_extra_pricing_keys_do_not_break_parsing():
     info = ModelCatalog()._parse_one(raw)
     assert info.input_price == pytest.approx(2.5, rel=1e-9)
     assert info.output_price == pytest.approx(10.0, rel=1e-9)
+    # Кэш (probe 2026-11-20): цены берутся из pricing.input_cache_*.
+    # Haiku 5.5: read = 0.1x prompt, write = 1.25x prompt.
+    assert info.cache_read_price == pytest.approx(1.0, rel=1e-9)
+    assert info.cache_write_price == pytest.approx(3.0, rel=1e-9)
