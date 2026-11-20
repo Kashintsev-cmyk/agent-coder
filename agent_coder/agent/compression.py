@@ -294,7 +294,8 @@ def format_for_summary(messages: list[dict[str, Any]]) -> str:
             elif text:
                 parts.append(f"АССИСТЕНТ:\n{text}")
         elif role == "tool":
-            name = tool_names.get(m.get("tool_call_id"), "")
+            tc_id = m.get("tool_call_id")
+            name = tool_names.get(tc_id, "") if isinstance(tc_id, str) else ""
             label = f"[TOOL {name}]" if name else "[TOOL]"
             extracted = tool_extract.extract(
                 name or "", {}, content, 2048, for_summary=True
@@ -574,6 +575,7 @@ async def compress(session, client) -> CompressionResult | None:
                 model=config.SUMMARY_MODEL,
                 reasoning_effort="none",
                 temperature=0.0,
+                session_id=session.id,
             )
             break
         except Exception as e:

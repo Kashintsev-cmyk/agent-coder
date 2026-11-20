@@ -303,6 +303,7 @@ class AgentLoop:
                     service_tier=self.session.service_tier or config.SERVICE_TIER,
                     verbosity=self.session.verbosity or None,
                     temperature=config.TEMPERATURE,
+                    session_id=self.session.id,
                 )
             except LLMError as e:
                 # Доменная ошибка LLM-слоя (402 и т.п.) — не retryable,
@@ -388,15 +389,15 @@ class AgentLoop:
                     sent_estimate_tokens or response.usage.input_tokens
                 )
 
-            msg = response.message
-            if msg.content:
-                await _maybe_await(self.events.on_assistant_text, msg.content)
+            assistant_msg = response.message
+            if assistant_msg.content:
+                await _maybe_await(self.events.on_assistant_text, assistant_msg.content)
 
             assistant_history: dict[str, Any] = {
                 "role": "assistant",
-                "content": msg.content or "",
+                "content": assistant_msg.content or "",
             }
-            if msg.tool_calls:
+            if assistant_msg.tool_calls:
                 assistant_history["tool_calls"] = [
                     {
                         "id": tc.id,
@@ -406,11 +407,11 @@ class AgentLoop:
                             "arguments": json.dumps(tc.arguments, ensure_ascii=False),
                         },
                     }
-                    for tc in msg.tool_calls
+                    for tc in assistant_msg.tool_calls
                 ]
             self.session.add_message(assistant_history)
 
-            if not msg.tool_calls:
+            if not assistant_msg.tool_calls:
                 self.session.save()
                 break  # B9.1: post-audit guard проверяется после for
 
@@ -420,7 +421,7 @@ class AgentLoop:
                 self.session.work_state, sort_keys=True, ensure_ascii=False
             )
             progress_made = False
-            for tc in msg.tool_calls:
+            for tc in assistant_msg.tool_calls:
                 await self._handle_tool_call(tc)
                 # Новый путь чтения/поиска — прогресс, даже в AUDIT/PLAN
                 # (там мутаций нет по дизайну, прогресс = охват нового).
@@ -699,6 +700,7 @@ class AgentLoop:
                 service_tier=self.session.service_tier or config.SERVICE_TIER,
                 verbosity=self.session.verbosity or None,
                 temperature=config.TEMPERATURE,
+                session_id=self.session.id,
             )
         except Exception as e:
             logger.warning("post-audit guard: LLM error: %s", e)
@@ -729,15 +731,15 @@ class AgentLoop:
                 work_state_updates=inc,
             )
 
-        msg = response.message
-        if msg.content:
-            await _maybe_await(self.events.on_assistant_text, msg.content)
+        assistant_msg = response.message
+        if assistant_msg.content:
+            await _maybe_await(self.events.on_assistant_text, assistant_msg.content)
 
         assistant_history: dict[str, Any] = {
             "role": "assistant",
-            "content": msg.content or "",
+            "content": assistant_msg.content or "",
         }
-        if msg.tool_calls:
+        if assistant_msg.tool_calls:
             assistant_history["tool_calls"] = [
                 {
                     "id": tc.id,
@@ -747,12 +749,12 @@ class AgentLoop:
                         "arguments": json.dumps(tc.arguments, ensure_ascii=False),
                     },
                 }
-                for tc in msg.tool_calls
+                for tc in assistant_msg.tool_calls
             ]
         self.session.add_message(assistant_history)
 
-        if msg.tool_calls:
-            for tc in msg.tool_calls:
+        if assistant_msg.tool_calls:
+            for tc in assistant_msg.tool_calls:
                 await self._handle_tool_call(tc)
 
         self.session.save()

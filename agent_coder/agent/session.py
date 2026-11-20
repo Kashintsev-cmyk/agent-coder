@@ -441,8 +441,10 @@ class Session:
                     try:
                         p.unlink()
                         removed += 1
-                    except Exception:
-                        pass
+                    except OSError:
+                        logger.warning(
+                            "Не удалось удалить файл аудита %s", p, exc_info=True
+                        )
 
         # Медиа сессии (sessions/media/<id>/) — удаляем рекурсивно
         media_root = config.SESSIONS_DIR / "media" / self.id

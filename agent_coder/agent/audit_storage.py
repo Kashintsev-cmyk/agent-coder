@@ -49,7 +49,9 @@ def _slug(workspace: str) -> str:
     """
     ws = Path(workspace).resolve()
     name = re.sub(r"[^\w.-]+", "-", ws.name).strip("-") or "project"
-    digest = hashlib.sha1(str(ws).encode("utf-8")).hexdigest()[:8]
+    digest = hashlib.sha1(str(ws).encode("utf-8"), usedforsecurity=False).hexdigest()[
+        :8
+    ]
     return f"{name}-{digest}"
 
 

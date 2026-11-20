@@ -44,3 +44,27 @@ class TestUsage:
         assert c.cache_read_tokens == 2
         assert c.cache_write_tokens == 3
         assert c.cost == 0.75
+
+
+def test_format_short_shows_cache_write():
+    u = Usage(input_tokens=100, output_tokens=20, cache_write_tokens=50, cost=0.1)
+    assert "write 50" in u.format_short()
+
+
+def test_format_short_omits_write_when_zero():
+    u = Usage(input_tokens=100, output_tokens=20, cache_read_tokens=30, cost=0.1)
+    out = u.format_short()
+    assert "write" not in out
+    assert "cache 30" in out
+
+
+def test_format_short_cache_read_before_write_before_cost():
+    u = Usage(
+        input_tokens=1,
+        output_tokens=2,
+        cache_read_tokens=3,
+        cache_write_tokens=4,
+        cost=0.25,
+    )
+    out = u.format_short()
+    assert out.index("cache 3") < out.index("write 4") < out.index("0.25")

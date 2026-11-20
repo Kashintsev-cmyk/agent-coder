@@ -240,6 +240,7 @@ async def run_verify(
                     model=model,
                     tools=[] if force_final else schemas,
                     reasoning_effort=session.reasoning_effort,
+                    session_id=session.id,
                 ),
                 timeout=_timeout_sec,
             )

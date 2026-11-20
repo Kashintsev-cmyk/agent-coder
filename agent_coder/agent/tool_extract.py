@@ -137,7 +137,7 @@ def _fmt_run_command(result: str, args: dict[str, Any], limit: int) -> str:
     cmd = str(args.get("command") or "").strip()
     is_listing = bool(cmd) and _LISTING_RE.match(cmd) is not None
     ok_exit = exit_idx is not None and lines[exit_idx].strip() == "exit code: 0"
-    if is_listing and ok_exit:
+    if is_listing and ok_exit and exit_idx is not None:
         body_start = exit_idx + 1
         # Пропускаем маркеры --- stdout ---/--- stderr --- при подсчёте.
         body = [

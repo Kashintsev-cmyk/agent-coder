@@ -325,6 +325,7 @@ async def run_patch(
                     model=model,
                     tools=schemas,
                     reasoning_effort=config.PATCH_REASONING_EFFORT,
+                    session_id=session.id,
                 ),
                 timeout=config.PATCH_CHAT_TIMEOUT,
             )

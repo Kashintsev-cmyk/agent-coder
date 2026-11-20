@@ -44,6 +44,7 @@ def _build_request_kwargs(
     web_search: bool = False,
     service_tier: str | None = None,
     verbosity: str | None = None,
+    session_id: str = "",
 ) -> dict[str, Any]:
     """Собрать kwargs для chat.completions.create.
 
@@ -100,6 +101,13 @@ def _build_request_kwargs(
         kwargs["service_tier"] = service_tier
     if verbosity:
         kwargs["verbosity"] = verbosity
+    if session_id:
+        # Sticky-роутинг RouterAI: один и тот же x-session-id держит запросы
+        # сессии на одном upstream. Без него балансировщик может увести
+        # следующий запрос на другую машину и убить prefix-кэш (cache_read
+        # падает до 0, input дорожает). Заголовок есть в сигнатуре
+        # AsyncCompletions.create — см. tests/test_client_kwargs_compat.py.
+        kwargs["extra_headers"] = {"x-session-id": session_id}
     return kwargs
 
 
@@ -147,6 +155,7 @@ class LLMClient:
         web_search: bool = False,
         service_tier: str | None = None,
         verbosity: str | None = None,
+        session_id: str = "",
     ) -> ChatResponse:
         """Один вызов LLM с retry.
 
@@ -164,6 +173,7 @@ class LLMClient:
             web_search=web_search,
             service_tier=service_tier,
             verbosity=verbosity,
+            session_id=session_id,
         )
 
         # B9.2g cache 2026-10-23: Anthropic кэширует только с явным

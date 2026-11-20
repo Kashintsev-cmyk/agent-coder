@@ -138,3 +138,23 @@ def test_temperature_default_passed_by_loop():
     kw = _build_request_kwargs("m", [], temperature=config.TEMPERATURE)
     assert kw["temperature"] == config.TEMPERATURE
     assert 0.0 <= kw["temperature"] <= 2.0
+
+
+def test_session_id_sets_extra_headers():
+    """Sticky-роутинг: session_id -> extra_headers['x-session-id']."""
+    kw = _build_request_kwargs("m", [], session_id="sess-42")
+    assert kw["extra_headers"] == {"x-session-id": "sess-42"}
+
+
+def test_session_id_empty_skips_headers():
+    kw = _build_request_kwargs("m", [])
+    assert "extra_headers" not in kw
+    kw2 = _build_request_kwargs("m", [], session_id="")
+    assert "extra_headers" not in kw2
+
+
+def test_session_id_keeps_extra_body():
+    """extra_headers и extra_body (top_k у qwen) не перетирают друг друга."""
+    kw = _build_request_kwargs("qwen/qwen3.7-flash", [], session_id="s1")
+    assert kw["extra_body"]["top_k"] == 20
+    assert kw["extra_headers"] == {"x-session-id": "s1"}

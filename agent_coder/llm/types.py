@@ -47,6 +47,8 @@ class Usage:
         parts = [f"in {self.input_tokens} / out {self.output_tokens}"]
         if self.cache_read_tokens:
             parts.append(f"cache {self.cache_read_tokens}")
+        if self.cache_write_tokens:
+            parts.append(f"write {self.cache_write_tokens}")
         parts.append(format_cost(self.cost))
         return " · ".join(parts)
 
