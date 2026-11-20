@@ -239,7 +239,21 @@ class AgentLoop:
                 )
                 ratio = min(max(ratio, RATIO_FLOOR), RATIO_CEIL)
             delta_tokens = round(delta_estimate * ratio)
-            effective_tokens = self.session.last_input_tokens + delta_tokens
+            # Первая итерация нового прогона: last_llm_messages_len=0, поэтому
+            # new_msgs — ВСЯ история, которую last_input_tokens уже измерил.
+            # Прибавлять её эвристику к факту нельзя — двойной счёт: при
+            # ratio 1.85 effective удваивался и compress срабатывал вдвое
+            # раньше порога (сессия 5c0c230d: last=65667 + delta 66420 =
+            # 132087 при soft=90000, реальный контекст ~66k).
+            # Берём max(факт, оценка всей истории в шкале провайдера):
+            # оценка покрывает хвост, добавившийся после прошлого запроса.
+            if last_llm_messages_len == 0 and self.session.last_input_tokens > 0:
+                whole = compression.estimate_tokens(self.session.messages)
+                effective_tokens = max(
+                    self.session.last_input_tokens, round(whole * ratio)
+                )
+            else:
+                effective_tokens = self.session.last_input_tokens + delta_tokens
             if effective_tokens > soft or self.session.last_input_tokens > soft:
                 logger.debug(
                     "compress check: last=%d delta=%d (est=%d ratio=%.2f) "

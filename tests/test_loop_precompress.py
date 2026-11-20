@@ -286,3 +286,56 @@ async def test_estimate_tokens_recorded_after_request(monkeypatch) -> None:
     # Эвристика не нулевая и не равна факту случайно: она посчитана по
     # реальной истории (короткая, поэтому меньше usage провайдера).
     assert s.last_estimate_tokens > 0
+
+
+@pytest.mark.asyncio
+async def test_resume_does_not_double_count_history(monkeypatch) -> None:
+    """Возобновлённая сессия не сжимается на старте по двойному счёту.
+
+    Баг: last_llm_messages_len=0 в начале run(), поэтому new_msgs — ВСЯ
+    история. Дельта = estimate(вся история) × ratio прибавлялась к
+    last_input_tokens, который эту же историю уже измерил → effective
+    удваивался и compress срабатывал на первой итерации, хотя реальный
+    контекст вдвое ниже порога.
+
+    Сценарий: история на 40000 эвристических токенов, факт провайдера
+    80000 (занижение 2x), порог 100000. Без фикса effective ≈ 160000.
+    """
+    monkeypatch.setattr(loop_mod.compression, "soft_limit", lambda s: 100_000)
+    compressed = {"count": 0}
+
+    async def fake_compress(session, client):
+        compressed["count"] += 1
+
+    monkeypatch.setattr(loop_mod.compression, "compress", fake_compress)
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_TASK", 10_000.0)
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_SESSION", 10_000.0)
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 50)
+
+    class _FinalClient:
+        async def chat(self, messages, **kwargs):
+            return ChatResponse(
+                message=AssistantMessage(content="готово", tool_calls=[]),
+                usage=Usage(input_tokens=80_000, output_tokens=5, cost=0.0),
+            )
+
+    # 160000 символов латиницы → 40000 эвристических токенов.
+    big = "x" * 80_000
+    s = Session.new(workspace="/tmp", model="m", mode=Mode.ACT)
+    s.messages = [
+        {"role": "system", "content": "S"},
+        {"role": "user", "content": big},
+        {"role": "assistant", "content": big},
+    ]
+    # Факт провайдера по этой же истории: занижение ровно вдвое.
+    s.last_input_tokens = 80_000
+    s.last_estimate_tokens = 40_000
+
+    await AgentLoop(
+        client=_FinalClient(), registry=_Registry(), session=s, events=_events()
+    ).run("задача")
+
+    assert compressed["count"] == 0, (
+        "compress сработал на старте: last_input_tokens уже покрывает историю, "
+        "прибавлять к нему её же эвристику нельзя"
+    )

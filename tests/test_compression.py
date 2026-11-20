@@ -695,3 +695,93 @@ async def test_compression_cost_zero_for_unpriced_model(monkeypatch):
     comp = await compression.compress(s, _ZeroCostClient(reply="СЖАТО"))
     assert comp is not None
     assert comp.cost == 0.0
+
+
+# --- калибровка эвристики в шкалу провайдера ---
+
+
+def test_provider_ratio_no_fact_defaults_to_one():
+    """Нет факта провайдера (новая сессия, сразу после сжатия) → 1.0."""
+    from agent_coder.agent.compression import provider_ratio
+
+    s = _mk_session()
+    assert s.last_input_tokens == 0
+    assert s.last_estimate_tokens == 0
+    assert provider_ratio(s) == 1.0
+
+
+def test_provider_ratio_uses_last_measured_pair():
+    """ratio = last_input_tokens / last_estimate_tokens с прошлого запроса."""
+    from agent_coder.agent.compression import provider_ratio
+
+    s = _mk_session()
+    s.last_input_tokens = 79_000
+    s.last_estimate_tokens = 41_660
+    assert provider_ratio(s) == pytest.approx(1.896, rel=1e-3)
+
+
+def test_provider_ratio_clamped():
+    """Вырожденные отношения отсекаются: эвристика не может врать в 10 раз."""
+    from agent_coder.agent.compression import provider_ratio
+
+    s = _mk_session()
+    s.last_input_tokens = 100_000
+    s.last_estimate_tokens = 1_000
+    assert provider_ratio(s) == pytest.approx(2.0)
+
+    s.last_input_tokens = 1_000
+    s.last_estimate_tokens = 100_000
+    assert provider_ratio(s) == pytest.approx(0.5)
+
+
+def test_provider_ratio_ignores_half_measured_pair():
+    """Ноль в одной половине пары → 1.0, а не деление на ноль."""
+    from agent_coder.agent.compression import provider_ratio
+
+    s = _mk_session()
+    s.last_input_tokens = 50_000
+    s.last_estimate_tokens = 0
+    assert provider_ratio(s) == 1.0
+
+    s.last_input_tokens = 0
+    s.last_estimate_tokens = 50_000
+    assert provider_ratio(s) == 1.0
+
+
+@pytest.mark.asyncio
+async def test_compress_reports_provider_scale():
+    """В сообщение идёт калиброванная оценка, а не сырая (заниженная) эвристика.
+
+    Регресс: сессия 5c0c230d показывала «~41k», тогда как провайдер видел ~79k.
+    """
+    from agent_coder.agent import compression
+
+    s = _session_for_compress()
+    raw = compression.estimate_tokens(s.messages)
+    s.last_input_tokens = raw * 2  # факт вдвое больше эвристики
+    s.last_estimate_tokens = raw
+
+    comp = await compression.compress(s, _ZeroCostClient(reply="СЖАТО"))
+    assert comp is not None
+    # ratio == 2.0 → tokens_before вдвое больше сырой эвристики
+    assert comp.tokens_before == pytest.approx(raw * 2, rel=0.01)
+    assert comp.tokens_before > raw
+
+
+@pytest.mark.asyncio
+async def test_compress_calibration_taken_before_reset():
+    """ratio снимается ДО обнуления last_input_tokens — иначе tokens_after шёл бы по 1.0."""
+    from agent_coder.agent import compression
+
+    s = _session_for_compress()
+    raw = compression.estimate_tokens(s.messages)
+    s.last_input_tokens = raw * 2
+    s.last_estimate_tokens = raw
+
+    comp = await compression.compress(s, _ZeroCostClient(reply="СЖАТО"))
+    assert comp is not None
+    # после сжатия факт сброшен, но масштаб в результате сохранён
+    assert s.last_input_tokens == 0
+    raw_after = compression.estimate_tokens(s.messages)
+    assert comp.tokens_after == pytest.approx(raw_after * 2, rel=0.01)
+    assert comp.tokens_after < comp.tokens_before

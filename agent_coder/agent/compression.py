@@ -129,10 +129,13 @@ SUMMARY_MIN_CONTEXT_RATIO = 1.25
 class CompressionResult:
     """Итог сжатия — для лога в UI.
 
-    tokens_before/tokens_after — оценка (см. estimate_tokens): точной
-    токенизации у нас нет, а после сжатия реальный usage ещё не измерен
-    (следующий запрос к LLM только предстоит). Для сообщения в Telegram
-    такой точности достаточно.
+    tokens_before/tokens_after — оценка в шкале провайдера: estimate_tokens
+    (кириллица/2 + латиница/4) умножается на последний измеренный коэффициент
+    last_input_tokens / last_estimate_tokens. Без факта (новая сессия, сразу
+    после сжатия) — коэффициент 1.0. Сырая эвристика систематически занижает
+    в ~1.9 раза (сессия 5c0c230d: «41k» при факте ~79k), поэтому в сообщение
+    в Telegram идёт калиброванное значение. Точной токенизации всё равно нет,
+    а реальный usage после сжатия ещё не измерен (следующий запрос впереди).
     """
 
     messages_before: int
@@ -229,6 +232,18 @@ def soft_limit(session) -> int:
     if m and m.context:
         return min(int(m.context * 0.6), config.MAX_HISTORY_TOKENS)
     return config.MAX_HISTORY_TOKENS
+
+
+def provider_ratio(session) -> float:
+    """Коэффициент эвристики → шкала провайдера: last_input / last_estimate.
+
+    Тот же клэмп, что в loop.py (RATIO_FLOOR/CEIL). Без факта — 1.0.
+    """
+    li = getattr(session, "last_input_tokens", 0) or 0
+    le = getattr(session, "last_estimate_tokens", 0) or 0
+    if li <= 0 or le <= 0:
+        return 1.0
+    return min(max(li / le, 0.5), 2.0)
 
 
 def find_cut(
@@ -631,7 +646,11 @@ async def compress(session, client) -> CompressionResult | None:
         text = text + "\n\n" + ws_block
 
     # Оценку «до» снимаем, пока в messages ещё лежит несжатая история.
-    tokens_before = estimate_tokens(messages)
+    # В сообщение пользователю — шкала провайдера: эвристика занижает в ~1.9 раза
+    # (сессия 5c0c230d: «41k» при факте ~79k). Коэффициент снимаем ДО сброса
+    # last_input_tokens ниже.
+    ratio = provider_ratio(session)
+    tokens_before = round(estimate_tokens(messages) * ratio)
 
     # Реальная цена summary-вызова. resp.usage.cost приходит от провайдера и
     # уже учитывает тир, но бывает 0.0 (не все прокси отдают cost) — тогда
@@ -680,7 +699,7 @@ async def compress(session, client) -> CompressionResult | None:
     session.messages = [system_msg, summary_msg] + recent
     session.last_input_tokens = 0
 
-    tokens_after = estimate_tokens(session.messages)
+    tokens_after = round(estimate_tokens(session.messages) * ratio)
     logger.info(
         "compress: %d сообщений → %d, ~%d → ~%d токенов (summary_count=%d, %.4f₽)",
         len(messages),
