@@ -34,6 +34,13 @@ jobs:
       - name: Ruff
         run: ruff check .
 
+      - name: Ruff format check
+        run: ruff format --check .
+
+      - name: Mypy
+        if: matrix.python-version == '3.12'
+        run: mypy
+
       - name: Bandit security scan
         if: matrix.python-version == '3.12'
         run: python3 -m bandit -r agent_coder -c bandit.yaml

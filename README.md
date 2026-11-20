@@ -61,7 +61,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 - Сессии на диске + sidecar-индекс метаданных (быстрый `/sessions`)
 - Медиа-retention: файлы старше 30 дней удаляются фоновой задачей
 - Retry с jitter и уважением `Retry-After`
-- CI: pytest + ruff + mypy на Python 3.10–3.12
+- CI: pytest + ruff (check и format) + mypy на Python 3.12–3.13
 
 ## Быстрый старт
 
@@ -494,10 +494,10 @@ ID сессии — 8 hex-символов.
     ruff check .
 
     # типы
-    mypy agent_coder tests
+    mypy
 
-CI (GitHub Actions) прогоняет `ruff check .`, `mypy agent_coder tests` и
-`pytest -q -n auto` на Python 3.10 / 3.11 / 3.12 при каждом push в `master`
+CI (GitHub Actions) прогоняет `ruff check .`, `ruff format --check .`,
+`mypy` и `pytest -q -n auto` на Python 3.12 / 3.13 при каждом push в `master`
 и в PR.
 
 ## Известные ограничения
