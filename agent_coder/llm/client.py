@@ -176,10 +176,16 @@ class LLMClient:
             session_id=session_id,
         )
 
-        # B9.2g cache 2026-10-23: Anthropic кэширует только с явным
-        # cache_control в extra_body (RouterAI пропускает, проверено:
-        # второй запрос 3627 cached из 3643 input, cost в 4× ниже).
-        # GPT-6 и DeepSeek кэшируют автоматически — им ничего не нужно.
+        # Кэш провайдера (проверено probe'ами RouterAI):
+        # - Anthropic кэширует только с явным cache_control в extra_body.
+        #   Второй запрос: 3627 cached из 3643 input, cost в 4× ниже (B9.2g).
+        # - OpenAI (GPT-6/5.x) и DeepSeek кэшируют АВТОМАТИЧЕСКИ, но только
+        #   при стабильном ПРЕФИКСЕ запроса. Любой волатильный блок в начале
+        #   (system, раньше истории) сбивает кэш на всём контексте — поэтому
+        #   system стабилен, а [WORK_STATE]/[ПРОЧИТАННЫЕ ФАЙЛЫ] уходят в хвост.
+        # - prompt_cache_key НЕ используем: он партиционирует кэш, и первый
+        #   запрос с новым ключом всегда промахивается (контроль: 0 vs 12618).
+        #   Стабильность держит x-session-id (см. выше).
         if model.startswith("anthropic/"):
             kwargs.setdefault("extra_body", {})["cache_control"] = {"type": "ephemeral"}
 
