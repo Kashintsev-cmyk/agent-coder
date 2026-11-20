@@ -193,7 +193,6 @@ sudo systemctl daemon-reload && sudo systemctl restart agent-coder-bot
 `~/.cache/agent-coder/tmp`, 1217 passed.
 
 ## ВАЖНО: TMPDIR не должен указывать в репозиторий
-
 Первый вариант фикса (v1) уводил tempfile в `~/bots/agent-coder/tmp` —
 внутри дерева репозитория. Это ломает `_workspace_allowed()`
 (`agent_coder/telegram/handlers/project_utils.py:42`): любой путь под
@@ -299,37 +298,26 @@ read-only (`ReadOnlyPaths=` в `deploy/agent-coder-bot.service`, M7). Это н�
 
 ## Реестр патчей
 
-| Патч | Статус | Находка |
+Кодовые патчи (`0001`–`0005`, `AGENTS.md.diff`) — **все применены/устарели
+и удалены из каталога** (проверено `git apply --reverse --check`, 2026-11-20).
+История — в git (`e1fe8f5`, `7bf3708` и последующие коммиты качества).
+
+| Патч | Что делал | Судьба |
 |---|---|---|
-| `0001-run-command-mutating-flags.patch` | **применён** `e1fe8f5`, в дереве | мутирующие флаги у read-only команд проходили whitelist |
-| `0002-docs-actualize.patch` | не применён, ложится на `f612309` | `README.md` + `docs/` расходились с кодом (тесты 311 vs 1217, CI 3.10–3.12 vs 3.12–3.13, ложный mypy в CI, RO-статус `AUDIT_REPORT.md`) |
-| `AGENTS.md.diff` | не применён — **файл вне git** | раздел «Известные расхождения» описывал баг `--model`, закрытый в `7bf3708` |
+| `0001-run-command-mutating-flags` | дыры в `_SAFE_PATTERNS` (`run_command.py`): `dmesg -C`, `tree -o`, `nvidia-smi --filename`, `file -C -m`, `git branch -u/-v` | применён `e1fe8f5`, удалён |
+| `0002-docs-actualize` | актуализация `README.md` + `docs/` (тесты 311→1217, CI 3.12–3.13) | устарел — ложился только на `f612309`, актуализацию сделали напрямую, удалён |
+| `0003-quality-audit` | правки `project_standard.md`, `loop.py`, `patch.py` и др. | применён, удалён |
+| `0004-test-failures` | фиксы падающих тестов | применён, удалён |
+| `0005-sticky-session-routing` | sticky-session роутинг | применён, удалён |
+| `AGENTS.md.diff` | закрытие бага `--model` в CLI | применён `7bf3708`, удалён |
 
-`0002` — только документация (4 файла, +38/−10). Проверка: `./patches/export.sh
-check docs-actualize` → `apply --check` чисто, `.py` в патче нет (ruff
-пропущен по дизайну), `pytest` 1217 passed.
+## Что осталось в каталоге
 
-`AGENTS.md.diff` — не git-патч: `AGENTS.md` в `.gitignore:28`. Ручное
-применение с хоста:
+- `agent-coder-bot.service.d/` — drop-in'ы для systemd (см. разделы выше);
+- `apply.sh` — применение/откат/статус PrivateTmp-вариантов A/B;
+- `doctor.sh` — проверка здоровья схемы патчей;
+- `export.sh` — экспорт правок из writable-клона в `patches/*.patch`
+  (см. «Workflow: правки кода только патчем» ниже).
 
-```bash
-cd /home/botuser/bots/agent-coder
-sudo patch -p1 --dry-run < patches/AGENTS.md.diff   # проверить
-sudo patch -p1 < patches/AGENTS.md.diff             # применить
-```
-
-
-`0001` закрывал 5 дыр в `_SAFE_PATTERNS` (`agent_coder/tools/run_command.py`):
-
-| Команда | Что пропускалось | Что делало |
-|---|---|---|
-| `dmesg` | `-C` / `-c` / `-D` / `-E` / `-n` / `--clear` | очистка и правка ring buffer ядра |
-| `tree` | `-o FILE` | запись листинга в файл |
-| `nvidia-smi` | `--filename=`, `-l`, `--loop` | запись в файл, бесконечный цикл |
-| `file` | `-C -m` | запись скомпилированного magic-файла |
-| `git branch` | `-u` / `--set-upstream-to`, `-v` | мутация config репозитория |
-
-Фикс — `_MUTATING_FLAGS` + `_has_mutating_flag()`, вызов в обеих ветках
-(pipe на `:626` и одиночная команда на `:671`); для `git branch` расширен
-`_is_safe_git_metadata`. Регресс — `tests/test_run_command_regex_mutations.py`
-(3 теста: reject мутаций, allow read-only, `git branch`).
+Новые кодовые патчи появляются здесь только через `./patches/export.sh
+export NAME` и живут до применения с хоста.
