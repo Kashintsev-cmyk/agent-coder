@@ -54,7 +54,43 @@
   реализовано; сейчас ошибка контекста уходит в fallback-цепочку/стоп.
 - P2: **streaming SSE** — в `llm/client.py` нет `stream=True`/`astream`;
   ответ приходит целиком.
-- P3: **time-of-day тариф дремлет** — парсинг и расчёт есть
-  (`ModelInfo.tod_windows`, `_tod_factors`), но база окна не совпадает с
-  ценой `/models` ни у одной из 8 моделей, поэтому множитель = 1.0.
-  Нужен учёт фактического провайдера из ответа (см. FINDINGS B7).
+- ~~P3: time-of-day тариф дремлет~~ — **закрыто 2026-11-22**: провайдер
+  берётся из ответа (`ChatResponse.provider`), цены — из
+  `/models/{id}/endpoints` (`ModelInfo.provider_prices`), база окна
+  сверяется с ценой того же провайдера. См. FINDINGS B7.
+
+## B7 — time-of-day тариф (2026-11-22)
+
+**Проблема.** `_tod_factors()` умножал множители окон на `m.input_price`
+из `/models`, но окна принадлежат конкретному провайдеру, а `pricing` —
+другому. На 8 curated-моделях база не совпала ни у одной → множитель
+всегда 1.0, тариф «спал».
+
+**Что сделано.**
+
+- `llm/types.py` — `ChatResponse.provider`; `llm/client.py` —
+  `_extract_provider()` (top-level `provider` ответа chat/completions,
+  **не** в `usage`), прокидывается в `ChatResponse` и в лог.
+- `models.py` — `ModelInfo.provider_prices: dict[str, tuple[float,float,float]]`
+  (in/out/cache_read ₽ за 1M для каждого провайдера).
+- `model_catalog.py` — `_extract_provider_prices()` из
+  `/models/{id}/endpoints`, вызов в `_merge_endpoints`; `_CACHE_VERSION`
+  5→6; нормализация списков в кортежи при чтении кэша.
+- `agent/compression.py` — `_provider_rate()`, `_tod_factors(provider=)`,
+  `model_price(provider=)`; прокинуто в оба вызова при сжатии
+  (`summary_cost` fallback и warning long-context).
+
+**Probe 2026-11-22** (`deepseek/deepseek-v4.1-flash`): в ответе
+`"provider":"BytePlus"` — top-level, `usage.cost` приходит сразу. В
+`/endpoints` 33 провайдера, окна только у BytePlus (6, in=35.26 /
+out=141.04 / cache_read=0.7052 ₽/1M) и Alibaba (2, 10.578/42.31),
+у остальных 31 — пусто.
+
+**Проверено.** `tests/test_provider_pricing.py` — 23 теста (написаны до
+реализации, падали на `ImportError: _extract_provider`); полный pytest
+1450 passed; ruff check/format, mypy (68 файлов), bandit — чисто.
+
+**Диагностика.** `scripts/tod_probe.py` — read-only: печатает ставки всех
+провайдеров, окна и множитель на каждый час текущих суток тем же кодом,
+что в бою (`compression._tod_factors`). Запуск:
+`.venv/bin/python scripts/tod_probe.py deepseek/deepseek-v4.1-flash`.

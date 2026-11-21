@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 # Версию бампаем при несовместимом изменении полей ModelInfo,
 # чтобы старый кэш не подсовывал дефолты вместо новых полей.
-_CACHE_VERSION = 5
+_CACHE_VERSION = 6
 _CACHE_FILENAME = "models.json"
 
 
@@ -59,6 +59,16 @@ def _modelinfo_from_dict(data: dict[str, Any]) -> ModelInfo:
     """
     known = {f.name for f in fields(ModelInfo)}
     filtered = {k: v for k, v in data.items() if k in known}
+    # B7: provider_prices в JSON — объект со списками, а в модели ожидаются
+    # кортежи (внешний код сравнивает и распаковывает). Без нормализации
+    # после перезапуска бота цена провайдера пришла бы списком.
+    raw_prices = filtered.get("provider_prices")
+    if isinstance(raw_prices, dict):
+        filtered["provider_prices"] = {
+            str(name): tuple(float(x) for x in vals)
+            for name, vals in raw_prices.items()
+            if isinstance(vals, (list, tuple)) and len(vals) == 3
+        }
     return ModelInfo(**filtered)
 
 
@@ -462,7 +472,42 @@ class ModelCatalog:
             max_completion_tokens=min(completion_limits) if completion_limits else 0,
             max_prompt_tokens=min(prompt_limits) if prompt_limits else 0,
             tod_windows=self._extract_tod(eps),
+            provider_prices=self._extract_provider_prices(eps),
         )
+
+    @staticmethod
+    def _extract_provider_prices(
+        eps: list[dict[str, Any]],
+    ) -> dict[str, tuple[float, float, float]]:
+        """B7: ставки всех провайдеров модели из endpoints.
+
+        Возвращает ``provider_name -> (вход, выход, кэш-чтение)`` в ₽/1M.
+        Нужно потому, что цена в ``/models`` принадлежит одному провайдеру,
+        а фактический провайдер ответа известен только из тела ответа
+        (top-level ``provider``). Чтобы посчитать по ЕГО ставке, нужна карта.
+
+        Endpoint без ``provider_name`` или без цены входа пропускается:
+        применить такую запись всё равно нельзя.
+        """
+        prices: dict[str, tuple[float, float, float]] = {}
+        for e in eps:
+            name = e.get("provider_name")
+            pricing = e.get("pricing") or {}
+            prompt = pricing.get("prompt")
+            if not isinstance(name, str) or not name.strip() or not prompt:
+                continue
+            try:
+                prompt_rub = float(prompt) * 1_000_000
+                completion_rub = float(pricing.get("completion") or 0.0) * 1_000_000
+                cache_rub = float(pricing.get("input_cache_read") or 0.0) * 1_000_000
+            except (TypeError, ValueError):
+                continue
+            prices[name.strip()] = (
+                round(prompt_rub, 6),
+                round(completion_rub, 6),
+                round(cache_rub, 6),
+            )
+        return prices
 
     @staticmethod
     def _extract_tod(

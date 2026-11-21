@@ -163,6 +163,7 @@ def model_price(
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
     when: Any = None,
+    provider: str = "",
 ) -> float:
     """Оценить стоимость в ₽ с учётом cache, long-context тира и «времени суток».
 
@@ -175,11 +176,26 @@ def model_price(
 
     ``when`` — момент UTC для тарифа «время суток» (по умолчанию текущий).
     Передаётся явно в тестах.
+
+    ``provider`` — фактический провайдер, ответивший на запрос (B7: top-level
+    ``provider`` в теле ответа RouterAI). Если он известен и есть в
+    ``ModelInfo.provider_prices``, считаем по ЕГО ставке и его окнам: цена
+    ``/models`` принадлежит другому провайдеру, и без этого тариф по времени
+    суток не применялся вовсе.
     """
     from agent_coder.model_catalog import catalog
 
     m = catalog.get(model_id)
-    if m is None or m.input_price <= 0:
+    if m is None:
+        return 0.0
+
+    rate = _provider_rate(m, provider)
+    if rate is not None:
+        in_price, out_price, cache_read_price = rate
+    else:
+        in_price, out_price = m.input_price, m.output_price
+        cache_read_price = m.cache_read_price
+    if in_price <= 0 and out_price <= 0:
         return 0.0
 
     # Защищаем остаток prompt от отрицательного значения при неполных или
@@ -187,19 +203,43 @@ def model_price(
     cached_read = min(max(cache_read_tokens, 0), max(tokens, 0))
     cached_write = min(max(cache_write_tokens, 0), max(tokens - cached_read, 0))
     uncached = max(tokens - cached_read - cached_write, 0)
-    read_price = m.cache_read_price or m.input_price
-    write_price = m.cache_write_price or m.input_price
+    read_price = cache_read_price or in_price
+    if rate is not None:
+        # В endpoints нет отдельной ставки записи в кэш — считаем по обычному
+        # входу ЭТОГО провайдера. Брать cache_write_price из /models нельзя:
+        # он принадлежит другому провайдеру (та же причина, что в B7).
+        write_price = in_price
+    else:
+        write_price = m.cache_write_price or in_price
     input_cost = (
-        uncached * m.input_price + cached_read * read_price + cached_write * write_price
+        uncached * in_price + cached_read * read_price + cached_write * write_price
     )
-    output_cost = output_tokens * m.output_price
+    output_cost = output_tokens * out_price
 
     in_factor, out_factor = _tier_factors(m, tokens)
-    tod_in, tod_out = _tod_factors(m, when)
+    tod_in, tod_out = _tod_factors(m, when, provider=provider)
     return (input_cost * in_factor * tod_in + output_cost * out_factor * tod_out) / 1e6
 
 
-def _tod_factors(m: Any, when: Any = None) -> tuple[float, float]:
+def _provider_rate(m: Any, provider: str) -> tuple[float, float, float] | None:
+    """Ставка провайдера ``(вход, выход, кэш-чтение)`` в ₽/1M, либо ``None``.
+
+    ``None`` означает «считать по цене /models»: провайдер не передан, не
+    отвечал (пустая строка) или его нет в карте ставок модели.
+    """
+    if not provider:
+        return None
+    prices = getattr(m, "provider_prices", None) or {}
+    entry = prices.get(provider)
+    if not entry:
+        return None
+    try:
+        return float(entry[0]), float(entry[1]), float(entry[2])
+    except (TypeError, ValueError, IndexError):
+        return None
+
+
+def _tod_factors(m: Any, when: Any = None, provider: str = "") -> tuple[float, float]:
     """Множители тарифа «время суток» для момента ``when`` (UTC).
 
     RouterAI отдаёт у части провайдеров ``variable_pricings``
@@ -207,17 +247,26 @@ def _tod_factors(m: Any, when: Any = None) -> tuple[float, float]:
     выше. Множители (0.5..2.0) считаются от базы ТОГО провайдера, которому
     принадлежит окно.
 
-    Ключевое ограничение: окна есть не у всех провайдеров модели, а цена в
-    ``/models`` приходит от одного конкретного. На 2026-11-21 базы не совпали
-    ни у одной из 8 curated-моделей (deepseek-flash: цена 4.70₽ от Sail,
-    а окна — у BytePlus 35.26₽). Применять чужие множители к чужой ставке
-    нельзя, поэтому при несовпадении базы возвращаем 1.0 — лучше показать
-    плоскую цену, чем выдуманную.
+    ``provider`` — фактический провайдер ответа (B7). Когда он известен и есть
+    в ``ModelInfo.provider_prices``, база окна сверяется с ЕГО ставкой, и
+    множитель наконец применяется. Без провайдера остаётся прежнее поведение:
+    сверка с ценой ``/models``, которая принадлежит одному конкретному
+    провайдеру — на 2026-11-21 она не совпадала с окнами ни у одной из 8
+    curated-моделей, поэтому возвращалось 1.0. Применять чужие множители к
+    чужой ставке нельзя: лучше плоская цена, чем выдуманная.
     """
     if not m.tod_windows:
         return 1.0, 1.0
     if when is None:
         when = datetime.now(UTC)
+    base_price = m.input_price
+    if provider:
+        rate = _provider_rate(m, provider)
+        if rate is None:
+            # Провайдер известен, но его ставки в каталоге нет — сверять окна
+            # не с чем.
+            return 1.0, 1.0
+        base_price = rate[0]
     day = when.strftime("%A").lower()
     hour = when.hour
     for days, h_from, h_to, in_f, out_f, base in m.tod_windows:
@@ -225,7 +274,7 @@ def _tod_factors(m: Any, when: Any = None) -> tuple[float, float]:
             continue
         if not (h_from <= hour < h_to):
             continue
-        if base <= 0 or abs(base - m.input_price) > max(1e-9, m.input_price * 1e-6):
+        if base <= 0 or abs(base - base_price) > max(1e-9, base_price * 1e-6):
             return 1.0, 1.0
         return in_f, out_f
     return 1.0, 1.0
@@ -769,7 +818,11 @@ async def compress(session, client) -> CompressionResult | None:
             summary_input_tokens,
             TIER_THRESHOLD_TOKENS,
             TIER_FACTOR,
-            model_price(config.SUMMARY_MODEL, summary_input_tokens),
+            model_price(
+                config.SUMMARY_MODEL,
+                summary_input_tokens,
+                provider=getattr(resp, "provider", "") or "",
+            ),
         )
     summary_cost = getattr(resp.usage, "cost", 0.0) or 0.0
     if summary_cost <= 0:
@@ -779,6 +832,9 @@ async def compress(session, client) -> CompressionResult | None:
             output_tokens=estimate_tokens([{"role": "assistant", "content": text}]),
             cache_read_tokens=getattr(resp.usage, "cache_read_tokens", 0) or 0,
             cache_write_tokens=getattr(resp.usage, "cache_write_tokens", 0) or 0,
+            # B7: провайдер ответа — иначе fallback-оценка возьмёт цену
+            # /models (чужого провайдера) и не применит тариф по времени.
+            provider=getattr(resp, "provider", "") or "",
         )
 
     # RAG-lite: старая часть не выбрасывается, а уходит в архив —

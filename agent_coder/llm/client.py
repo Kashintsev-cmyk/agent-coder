@@ -333,12 +333,14 @@ class LLMClient:
                 raise
 
         usage = _extract_usage(response)
+        provider = _extract_provider(response)
         logger.info(
-            "LLM ← in=%d out=%d cache=%d cost=%.4f",
+            "LLM ← in=%d out=%d cache=%d cost=%.4f provider=%s",
             usage.input_tokens,
             usage.output_tokens,
             usage.cache_read_tokens,
             usage.cost,
+            provider or "-",
         )
 
         choice = response.choices[0]
@@ -360,7 +362,9 @@ class LLMClient:
             tool_calls=tool_calls,
             reasoning=_extract_reasoning(msg),
         )
-        return ChatResponse(message=assistant, usage=usage, raw=response)
+        return ChatResponse(
+            message=assistant, usage=usage, raw=response, provider=provider
+        )
 
     async def _with_retry(self, factory, op_name: str):
         attempts = max(1, config.MAX_RETRIES)
@@ -482,6 +486,32 @@ def _extract_reasoning(message: Any) -> str:
         value = extra.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
+    return ""
+
+
+def _extract_provider(response: Any) -> str:
+    """Фактический провайдер ответа (B7).
+
+    RouterAI кладёт его в ТЕЛО ответа рядом с ``choices``/``usage`` —
+    ``"provider":"BytePlus"`` (живой probe 2026-11-22,
+    deepseek/deepseek-v4.1-flash). OpenAI-совместимый SDK не знает такого поля
+    и может убрать его в ``model_extra``, а у endpoints то же поле называется
+    ``provider_name`` — поэтому перебираем все три варианта.
+
+    Пустая строка, если провайдер не отдал (другие прокси): это нормальный
+    режим, а не ошибка — тогда цена считается по ``/models``, как раньше.
+    """
+    names = ("provider", "provider_name")
+    for key in names:
+        value = getattr(response, key, None)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    extra = getattr(response, "model_extra", None)
+    if isinstance(extra, dict):
+        for key in names:
+            value = extra.get(key)
+            if isinstance(value, str) and value.strip():
+                return value.strip()
     return ""
 
 

@@ -34,7 +34,7 @@
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 logger = logging.getLogger(__name__)
 
@@ -100,6 +100,14 @@ class ModelInfo:
     tod_windows: tuple[
         tuple[tuple[str, ...] | None, int, int, float, float, float], ...
     ] = ()
+    # B7: ставки ВСЕХ провайдеров модели из /models/{id}/endpoints:
+    # provider_name -> (вход, выход, кэш-чтение) в ₽/1M.
+    # Зачем: `input_price` выше — цена из /models, она принадлежит ОДНОМУ
+    # провайдеру (часто не тому, кто отвечает). RouterAI кладёт фактического
+    # провайдера в тело ответа (`provider`, probe 2026-11-22: BytePlus), и
+    # только по этой карте можно взять ЕГО ставку. Окна `tod_windows`
+    # сопоставляются с провайдером по базе (шестое поле окна).
+    provider_prices: dict[str, tuple[float, float, float]] = field(default_factory=dict)
     tag: str = ""
 
     def __post_init__(self) -> None:

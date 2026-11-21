@@ -95,3 +95,8 @@ class ChatResponse:
     message: AssistantMessage
     usage: Usage
     raw: Any = None
+    # B7: фактический провайдер ответа (top-level `provider` в теле RouterAI,
+    # живой probe 2026-11-22: "BytePlus"). Пусто, если провайдер его не отдал.
+    # Нужен для тарифа «время суток»: окна и ставка принадлежат конкретному
+    # провайдеру, а цена /models — часто другому.
+    provider: str = ""
