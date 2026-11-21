@@ -183,7 +183,12 @@ def _build_request_kwargs(
             kwargs["reasoning_effort"] = profile["reasoning_effort"]
 
     if web_search:
-        kwargs["plugins"] = [
+        # plugins — расширение RouterAI, которого нет в сигнатуре
+        # AsyncCompletions.create. В top-level kwargs SDK падает с
+        # «unexpected keyword argument 'plugins'» (живой прогон 2026-11-21:
+        # сессионный 🌐 Web search не работал вовсе). Провайдерские поля
+        # уходят только через extra_body.
+        kwargs.setdefault("extra_body", {})["plugins"] = [
             {
                 "id": "web",
                 "engine": config.WEB_SEARCH_ENGINE,

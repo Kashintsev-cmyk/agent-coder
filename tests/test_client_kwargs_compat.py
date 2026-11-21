@@ -22,8 +22,13 @@ from agent_coder.llm.client import _build_request_kwargs
 MSG = [{"role": "user", "content": "hi"}]
 
 # Расширения RouterAI, которых SDK не знает, но прокси принимает.
-# plugins — top-level (web_search=True). Проверено на проде до bfff1ca.
-KNOWN_EXTENSIONS = {"plugins"}
+#
+# 2026-11-21: здесь стояло {"plugins"} с комментарием «plugins — top-level,
+# проверено на проде». Это было неверно: plugins уходил в top-level kwargs,
+# AsyncCompletions.create падал с TypeError, и сессионный 🌐 Web search не
+# работал вовсе. Тест не ловил, потому что исключение было внесено в белый
+# список. Провайдерские поля — только через extra_body.
+KNOWN_EXTENSIONS: set[str] = set()
 
 
 def test_async_completions_create_has_no_kwargs() -> None:

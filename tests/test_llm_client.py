@@ -43,8 +43,13 @@ def test_reasoning_effort_empty_skipped():
 
 
 def test_web_search_on():
+    # plugins — расширение RouterAI, SDK его в top-level не принимает
+    # (живой прогон 2026-11-21: TypeError «unexpected keyword argument").
     kw = _build_request_kwargs("m", [], web_search=True)
-    assert kw["plugins"] == [{"id": "web", "engine": "native", "max_results": 5}]
+    assert kw["extra_body"]["plugins"] == [
+        {"id": "web", "engine": "native", "max_results": 5}
+    ]
+    assert "plugins" not in kw
 
 
 def test_web_search_off_no_plugins():
@@ -69,7 +74,7 @@ def test_all_options_together():
     assert kw["tool_choice"] == "required"
     assert kw["temperature"] == 0.2
     assert kw["reasoning_effort"] == "high"
-    assert kw["plugins"][0]["id"] == "web"
+    assert kw["extra_body"]["plugins"][0]["id"] == "web"
 
 
 def test_service_tier_default_skipped():
@@ -106,7 +111,7 @@ def test_all_with_service_tier():
         service_tier="flex",
     )
     assert kw["reasoning_effort"] == "medium"
-    assert kw["plugins"][0]["id"] == "web"
+    assert kw["extra_body"]["plugins"][0]["id"] == "web"
     assert kw["service_tier"] == "flex"
 
 

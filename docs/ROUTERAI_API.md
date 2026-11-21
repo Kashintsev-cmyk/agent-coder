@@ -151,7 +151,48 @@ UI показывал бы уровень reasoning, который ни на ч
 `default_parameters`, `per_request_limits`, `countries`,
 `variable_pricings` (тиры и время суток).
 
-## 5. Как проверить руками
+## 5. Web search: как передавать и сколько стоит
+
+**Передавать только через `extra_body`.** `plugins` — расширение RouterAI,
+которого нет в сигнатуре `AsyncCompletions.create`. В top-level kwargs SDK
+падает:
+
+```
+TypeError: AsyncCompletions.create() got an unexpected keyword argument 'plugins'
+```
+
+Правильно:
+
+```python
+client.chat.completions.create(
+    model="anthropic/claude-haiku-5.5",
+    messages=[...],
+    extra_body={"plugins": [{"id": "web", "engine": "exa", "max_results": 3}]},
+)
+```
+
+Источники приходят в `choices[0].message.annotations` — список объектов
+`Annotation` (pydantic), не dict. У каждого `type == "url_citation"` и поля
+`url_citation.url` / `.title`. Через `.model_dump()` превращается в обычный
+dict.
+
+### Цена: `native` в 16 раз дороже
+
+Замер на haiku-5.5, запрос «последняя версия Python» (2026-11-21), ответ по
+существу одинаковый во всех трёх случаях:
+
+| способ | input-токенов | ≈₽ | источников |
+|---|---|---|---|
+| `plugins` engine=`native` | 20 329 | 0.258 | 3 |
+| `plugins` engine=`exa` | 818 | 0.037 | 3 |
+| `web_search_options={}` | 1 284 | 0.048 | 5 |
+
+`native` тянет полные страницы в контекст — отсюда ×16. Если поиск нужен
+часто, `WEB_SEARCH_ENGINE=exa` дешевле на порядок. Пустой `content` при
+`max_tokens` меньше ~1000 — это reasoning съел бюджет, а не отсутствие
+ответа: ставьте лимит с запасом.
+
+## 6. Как проверить руками
 
 ```bash
 set -a && . ./.env && set +a
