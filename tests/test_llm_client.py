@@ -60,14 +60,26 @@ def test_reasoning_effort_empty_skipped():
     assert "reasoning_effort" not in kw
 
 
-def test_web_search_on():
+def test_web_search_on(monkeypatch):
     # plugins — расширение RouterAI, SDK его в top-level не принимает
     # (живой прогон 2026-11-21: TypeError «unexpected keyword argument").
+    # Значения фиксируем явно: дефолт WEB_SEARCH_ENGINE в config.py — "exa"
+    # (native тянет ×16 input-токенов), а .env/CI дают разное. Хардкод
+    # "native" ронял CI, где .env нет — коммит 31f90c8 сменил дефолт.
+    monkeypatch.setattr(config, "WEB_SEARCH_ENGINE", "native")
+    monkeypatch.setattr(config, "WEB_SEARCH_MAX_RESULTS", 5)
     kw = _build_request_kwargs("m", [], web_search=True)
     assert kw["extra_body"]["plugins"] == [
         {"id": "web", "engine": "native", "max_results": 5}
     ]
     assert "plugins" not in kw
+
+
+def test_web_search_engine_comes_from_config(monkeypatch):
+    """Движок не захардкожен: exa из конфига уходит в запрос как exa."""
+    monkeypatch.setattr(config, "WEB_SEARCH_ENGINE", "exa")
+    kw = _build_request_kwargs("m", [], web_search=True)
+    assert kw["extra_body"]["plugins"][0]["engine"] == "exa"
 
 
 def test_web_search_off_no_plugins():

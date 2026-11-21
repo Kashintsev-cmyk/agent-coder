@@ -94,3 +94,24 @@ out=141.04 / cache_read=0.7052 ₽/1M) и Alibaba (2, 10.578/42.31),
 провайдеров, окна и множитель на каждый час текущих суток тем же кодом,
 что в бою (`compression._tod_factors`). Запуск:
 `.venv/bin/python scripts/tod_probe.py deepseek/deepseek-v4.1-flash`.
+
+## CI-фикс: env-зависимый тест web-search (2026-11-22)
+
+**Симптом.** GitHub CI (`pytest -q -n auto`) красный на
+`tests/test_llm_client.py::test_web_search_on`:
+`engine: 'exa' != 'native'`. Локально зелено.
+
+**Причина.** Тест хардкодил `engine="native"`, а `config.py:280` после
+`31f90c8` («Unify on-demand web search») по умолчанию отдаёт `"exa"`
+(native тянет ×16 input-токенов). Локально значение перекрывал `.env`
+(`WEB_SEARCH_ENGINE=native`), в CI `.env` нет — брался дефолт. К B7
+отношения не имеет, просто всплыло на следующем прогоне.
+
+**Фикс.** `monkeypatch.setattr(config, "WEB_SEARCH_ENGINE"/"WEB_SEARCH_MAX_RESULTS", ...)`
+в тесте — он больше не зависит от `.env`/окружения; добавлен
+`test_web_search_engine_comes_from_config` (exa из конфига → exa в
+запросе), чтобы «движок захардкожен» ловилось тестом, а не CI.
+
+**Проверено.** `WEB_SEARCH_ENGINE=exa pytest tests/test_llm_client.py` —
+32 passed; `env -u WEB_SEARCH_ENGINE pytest -q -n auto` (эмуляция CI) —
+1451 passed.
