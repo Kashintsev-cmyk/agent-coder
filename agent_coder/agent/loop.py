@@ -320,7 +320,6 @@ class AgentLoop:
                     model=self.session.model,
                     tools=self.registry.openai_schemas(self.session.mode),
                     reasoning_effort=self.session.reasoning_effort,
-                    web_search=self.session.web_search,
                     service_tier=self.session.service_tier or config.SERVICE_TIER,
                     verbosity=self.session.verbosity or None,
                     temperature=config.TEMPERATURE,
@@ -556,6 +555,11 @@ class AgentLoop:
             work_state_updates=work_state_updates,
         )
 
+    async def _report_nested_usage(self, usage: Usage) -> None:
+        """Учесть usage LLM-вызова, выполненного внутри инструмента."""
+        self.session.add_usage(usage)
+        await _maybe_await(self.events.on_usage, usage)
+
     async def _handle_tool_call(self, tc: ToolCall) -> None:
         await _maybe_await(self.events.on_tool_call, tc)
 
@@ -593,6 +597,8 @@ class AgentLoop:
             session_id=self.session.id,
             work_state=self._work_state_handle(),
             read_paths=self.session.read_paths,
+            model=self.session.model,
+            on_usage=self._report_nested_usage,
         )
         try:
             result = await tool.executor(tc.arguments, ctx)
@@ -720,7 +726,6 @@ class AgentLoop:
                 model=self.session.model,
                 tools=self.registry.openai_schemas(self.session.mode),
                 reasoning_effort=self.session.reasoning_effort,
-                web_search=self.session.web_search,
                 service_tier=self.session.service_tier or config.SERVICE_TIER,
                 verbosity=self.session.verbosity or None,
                 temperature=config.TEMPERATURE,

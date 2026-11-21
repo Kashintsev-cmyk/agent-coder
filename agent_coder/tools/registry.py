@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from agent_coder.agent.prompts import Mode
+from agent_coder.llm.types import Usage
 
 ToolExecutor = Callable[[dict[str, Any], "ToolContext"], Awaitable[str]]
 SafeCheck = Callable[[dict[str, Any]], bool]
@@ -33,6 +34,10 @@ class ToolContext:
     # B11.3: область аудита (относительные пути от workspace). Только AUDIT;
     # None/[] — без ограничений (ACT/PLAN/PATCH/VERIFY).
     audit_scopes: list[str] | None = None
+    # Модель активной сессии — web_search использует её для поиска.
+    model: str = ""
+    # Учёт usage вложенных вызовов LLM (например, web_search).
+    on_usage: Callable[[Usage], Any] | None = None
 
 
 @dataclass

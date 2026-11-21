@@ -7,6 +7,7 @@ from typing import Any
 
 import pytest
 
+from agent_coder.llm.types import Usage
 from agent_coder.tools import web_search as ws
 
 
@@ -33,6 +34,7 @@ class _FakeResponse:
     def __init__(self, content: str | None, annotations: Any = None) -> None:
         self.message = SimpleNamespace(content=content)
         self.raw = _FakeRaw(_FakeMessage(content, annotations))
+        self.usage = Usage(input_tokens=123, output_tokens=7, cost=0.02)
 
 
 # --- _extract_annotations -------------------------------------------------
@@ -122,18 +124,15 @@ async def test_execute_rejects_empty_query():
 @pytest.mark.asyncio
 async def test_execute_requires_api_key(monkeypatch):
     monkeypatch.setattr(ws.config, "ROUTERAI_API_KEY", "")
-    ctx = ws.ToolContext(workspace="/tmp", mode=None)  # type: ignore[arg-type]
+    ctx = ws.ToolContext(workspace="/tmp", mode=None, model="active/model")  # type: ignore[arg-type]
     result = await ws._execute({"query": "python"}, ctx)
     assert "ROUTERAI_API_KEY" in result
 
 
 @pytest.mark.asyncio
 async def test_execute_formats_search_result(monkeypatch):
-    """Инструмент открывает клиент, шлёт web_search=True и собирает источники."""
+    """Поиск запускается активной моделью, а tool возвращает факты и ссылки."""
     monkeypatch.setattr(ws.config, "ROUTERAI_API_KEY", "test-key")
-    monkeypatch.setattr(
-        ws.config, "WEB_SEARCH_TOOL_MODEL", "anthropic/claude-haiku-5.5"
-    )
 
     seen: dict[str, Any] = {}
 
@@ -156,16 +155,36 @@ async def test_execute_formats_search_result(monkeypatch):
             return _FakeResponse("свежие данные", annotations)
 
     monkeypatch.setattr(ws, "LLMClient", _Client)
-    ctx = ws.ToolContext(workspace="/tmp", mode=None)  # type: ignore[arg-type]
+    reported_usage: list[Usage] = []
+
+    async def on_usage(usage: Usage) -> None:
+        reported_usage.append(usage)
+
+    ctx = ws.ToolContext(
+        workspace="/tmp",
+        mode=None,
+        model="active/model",
+        on_usage=on_usage,
+    )  # type: ignore[arg-type]
 
     out = await ws._execute({"query": "версия python"}, ctx)
 
     assert seen["started"] and seen["closed"]
     assert seen["kwargs"]["web_search"] is True
-    assert seen["kwargs"]["model"] == "anthropic/claude-haiku-5.5"
+    assert seen["kwargs"]["model"] == "active/model"
     assert "версия python" in seen["messages"][0]["content"]
+    assert (
+        "итоговый ответ сформирует вызывающая модель" in seen["messages"][0]["content"]
+    )
     assert "свежие данные" in out
     assert "https://a.example" in out
+    assert reported_usage == [Usage(input_tokens=123, output_tokens=7, cost=0.02)]
+
+
+@pytest.mark.asyncio
+async def test_execute_requires_active_model():
+    ctx = ws.ToolContext(workspace="/tmp", mode=None)  # type: ignore[arg-type]
+    assert "активную модель" in await ws._execute({"query": "python"}, ctx)
 
 
 @pytest.mark.asyncio
@@ -184,7 +203,7 @@ async def test_execute_reports_chat_failure(monkeypatch):
             raise RuntimeError("network down")
 
     monkeypatch.setattr(ws, "LLMClient", _Client)
-    ctx = ws.ToolContext(workspace="/tmp", mode=None)  # type: ignore[arg-type]
+    ctx = ws.ToolContext(workspace="/tmp", mode=None, model="active/model")  # type: ignore[arg-type]
 
     out = await ws._execute({"query": "x"}, ctx)
     assert "Ошибка поиска" in out

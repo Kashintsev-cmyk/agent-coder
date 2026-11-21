@@ -279,12 +279,6 @@ class Config:
     # одинаковом ответе — native тянет полные страницы в контекст (×16).
     WEB_SEARCH_ENGINE: str = os.getenv("WEB_SEARCH_ENGINE", "exa").strip().lower()
     WEB_SEARCH_MAX_RESULTS: int = _env_int("WEB_SEARCH_MAX_RESULTS", "5")
-    # Модель для инструмента web_search. Поиск — вспомогательная задача: нужен
-    # дешёвый и быстрый провайдер, а не флагман. Haiku 5.5 держит web_search
-    # на 5/5 своих endpoints (см. docs/ROUTERAI_API.md).
-    WEB_SEARCH_TOOL_MODEL: str = os.getenv(
-        "WEB_SEARCH_TOOL_MODEL", "anthropic/claude-haiku-5.5"
-    )
 
     # Сжатие истории сессии
     # Верхняя граница input-токенов на один запрос (жёсткий потолок).
@@ -510,16 +504,6 @@ class Config:
             errors.append(
                 f"WEB_SEARCH_MAX_RESULTS={cls.WEB_SEARCH_MAX_RESULTS} должен быть >= 1"
             )
-        if cls.WEB_SEARCH_TOOL_MODEL not in cls.MODEL_IDS:
-            # Инструмент может использовать и не-curated модель, но это должно
-            # быть осознанным решением, а не опечаткой в имени.
-            from agent_coder.models import _FALLBACK_CATALOG
-
-            if cls.WEB_SEARCH_TOOL_MODEL not in _FALLBACK_CATALOG:
-                errors.append(
-                    f"WEB_SEARCH_TOOL_MODEL={cls.WEB_SEARCH_TOOL_MODEL!r} "
-                    f"не входит в MODEL_IDS и неизвестна каталогу"
-                )
 
         if cls.SERVICE_TIER not in ("default", "flex", "priority"):
             errors.append(

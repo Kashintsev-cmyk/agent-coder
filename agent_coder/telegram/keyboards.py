@@ -280,14 +280,6 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
                 callback_data="menu_reasoning",
             )
         )
-    if m and m.web_search_builtin:
-        ws = "вкл" if session.web_search else "выкл"
-        quick.append(
-            InlineKeyboardButton(
-                text=f"🌐 {ws}",
-                callback_data="web_toggle",
-            )
-        )
     from agent_coder.config import config as _cfg
 
     cur_tier = session.service_tier or _cfg.SERVICE_TIER

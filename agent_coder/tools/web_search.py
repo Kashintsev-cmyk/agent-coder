@@ -1,21 +1,13 @@
 """Инструмент: поиск в интернете через встроенный web search RouterAI.
 
-Как работает: RouterAI принимает ``plugins=[{"id": "web", "engine": ...}]``
-в ``chat/completions`` — провайдер сам делает поиск, подмешивает результаты в
-контекст и отвечает текстом. Источники приходят в ``message.annotations``
-(``type="url_citation"``) — из них собираем список ссылок.
+Активная модель вызывает этот инструмент по необходимости. Tool делает отдельный
+вызов той же модели с RouterAI web plugin и возвращает краткие факты со ссылками;
+агент продолжает диалог и формирует итоговый ответ пользователю сам.
+Источники приходят в ``message.annotations`` (``type="url_citation"``).
 
 Это НЕ наш инструмент ``search`` (ripgrep по проекту): тому нужен локальный
-файл, этому — сеть. Отдельный инструмент, потому что у них разная цена,
-разные ошибки и разный смысл в промте.
-
-Чего инструмент не делает: не ходит по ссылкам и не парсит HTML. За нас это
-делает провайдер; мы только формулируем запрос и приводим ответ к виду
-«текст + источники».
-
-Стоимость: один вызов LLM с поиском. Модель — ``WEB_SEARCH_TOOL_MODEL``
-(по умолчанию дешёвая haiku), лимит источников —
-``WEB_SEARCH_MAX_RESULTS``.
+файл, этому — сеть. Инструмент не ходит по ссылкам и не парсит HTML: поиск
+выполняет RouterAI через выбранный engine.
 
 Замер на haiku-5.5 (запрос «последняя версия Python», 2026-11-21):
 engine=``native`` → 20 329 input-токенов (~0.26₽), ``exa`` → 818 (~0.04₽),
@@ -113,7 +105,9 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     if not query:
         return "Ошибка: пустой query"
 
-    model = config.WEB_SEARCH_TOOL_MODEL
+    model = ctx.model
+    if not model:
+        return "Ошибка: web_search требует активную модель сессии"
     if not config.ROUTERAI_API_KEY:
         return "Ошибка: ROUTERAI_API_KEY не задан — поиск недоступен"
 
@@ -126,8 +120,9 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
                     "role": "user",
                     "content": (
                         f"{query}\n\n"
-                        "Найди актуальную информацию в интернете и ответь по существу. "
-                        "Приведи ссылки на источники."
+                        "Найди актуальные источники в интернете. Верни краткие факты "
+                        "и ссылки, без длинного пользовательского ответа — итоговый "
+                        "ответ сформирует вызывающая модель."
                     ),
                 }
             ],
@@ -145,6 +140,8 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
 
     answer = response.message.content or ""
     sources = _extract_annotations(response)
+    if ctx.on_usage is not None:
+        await ctx.on_usage(response.usage)
     return _format(query, answer, sources)
 
 

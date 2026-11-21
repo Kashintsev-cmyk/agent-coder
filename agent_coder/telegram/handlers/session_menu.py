@@ -211,34 +211,6 @@ async def cb_tier_toggle(query: CallbackQuery) -> None:
     await query.answer(f"Service tier: {nxt}")
 
 
-@router.callback_query(F.data == "web_toggle")
-async def cb_web_toggle(query: CallbackQuery) -> None:
-    """Переключает per-session флаг web_search.
-
-    Пока только сохраняет флаг — реальное влияние на API RouterAI
-    (передача plugins=[{id:web}]) будет отдельным шагом.
-    """
-    session = _get_active_session(query.message.chat.id)
-    if not session:
-        await query.answer("Нет сессии", show_alert=True)
-        return
-    m = catalog.get(session.model)
-    if not (m and m.web_search_builtin):
-        await query.answer(
-            "Модель не поддерживает встроенный web search", show_alert=True
-        )
-        return
-    session.web_search = not session.web_search
-    session.save()
-    try:
-        await query.message.edit_reply_markup(
-            reply_markup=keyboards.session_menu_keyboard(session)
-        )
-    except Exception:  # nosec B110
-        pass
-    await query.answer(f"Web search: {'вкл' if session.web_search else 'выкл'}")
-
-
 @router.callback_query(F.data == "session_back")
 async def cb_session_back(query: CallbackQuery) -> None:
     session = _get_active_session(query.message.chat.id)
