@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 # Версию бампаем при несовместимом изменении полей ModelInfo,
 # чтобы старый кэш не подсовывал дефолты вместо новых полей.
-_CACHE_VERSION = 4
+_CACHE_VERSION = 5
 _CACHE_FILENAME = "models.json"
 
 
@@ -442,6 +442,12 @@ class ModelCatalog:
             if isinstance(e.get("max_completion_tokens"), int)
             and e["max_completion_tokens"] > 0
         ]
+        prompt_limits = [
+            e["max_prompt_tokens"]
+            for e in eps
+            if isinstance(e.get("max_prompt_tokens"), int)
+            and e["max_prompt_tokens"] > 0
+        ]
 
         return replace(
             info,
@@ -454,7 +460,63 @@ class ModelCatalog:
             tier_input_factor=tier_in,
             tier_output_factor=tier_out,
             max_completion_tokens=min(completion_limits) if completion_limits else 0,
+            max_prompt_tokens=min(prompt_limits) if prompt_limits else 0,
+            tod_windows=self._extract_tod(eps),
         )
+
+    @staticmethod
+    def _extract_tod(
+        eps: list[dict[str, Any]],
+    ) -> tuple[tuple[tuple[str, ...] | None, int, int, float, float, float], ...]:
+        """Окна тарифа «время суток» (``variable_pricings``, type=time-of-day).
+
+        Формат окна: ``(дни_utc|None, час_от, час_до, вход_f, выход_f, база_₽/1M)``.
+
+        ``utc_start``/``utc_end`` приходят в сотнях часов (0, 100, 1400 → 0:00,
+        1:00, 14:00 UTC); ``utc_end == 0`` означает «до конца суток» (24:00).
+        ``utc_days`` — список дней недели или ``None`` (= все дни).
+
+        Множители считаются от базы ТОГО провайдера, которому принадлежит
+        окно, поэтому база едет вместе с окном: применить её к чужой ставке
+        нельзя (см. ``ModelInfo.tod_windows``).
+        """
+        windows: list[tuple[tuple[str, ...] | None, int, int, float, float, float]] = []
+        for e in eps:
+            pricing = e.get("pricing") or {}
+            base_prompt = pricing.get("prompt")
+            base_completion = pricing.get("completion")
+            if not base_prompt:
+                continue
+            for vp in e.get("variable_pricings") or []:
+                if not isinstance(vp, dict) or vp.get("type") != "time-of-day":
+                    continue
+                start = vp.get("utc_start")
+                end = vp.get("utc_end")
+                price = vp.get("prompt")
+                if not isinstance(start, int) or not isinstance(end, int) or not price:
+                    continue
+                in_factor = float(price) / float(base_prompt)
+                out_factor = in_factor
+                completion = vp.get("completion")
+                if completion and base_completion:
+                    out_factor = float(completion) / float(base_completion)
+                days_raw = vp.get("utc_days")
+                days = (
+                    tuple(str(d).lower() for d in days_raw)
+                    if isinstance(days_raw, list) and days_raw
+                    else None
+                )
+                windows.append(
+                    (
+                        days,
+                        start // 100,
+                        (end // 100) if end else 24,
+                        round(in_factor, 6),
+                        round(out_factor, 6),
+                        round(float(base_prompt) * 1_000_000, 6),
+                    )
+                )
+        return tuple(windows)
 
     @staticmethod
     def _extract_tier(

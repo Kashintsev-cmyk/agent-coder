@@ -70,6 +70,50 @@ def test_max_input_tokens_respects_fill_ratio(fresh_router):
     )
 
 
+def test_max_input_tokens_respects_provider_prompt_limit(monkeypatch, fresh_router):
+    """max_prompt_tokens провайдера — жёстче, чем context*fill_ratio.
+
+    У gpt-6* context=1_050_000 (×0.8 = 840 000), но провайдер принимает вход
+    только до 922 000, который тут не мешает; а вот при context 1_050_000 и
+    max_prompt 500 000 — побеждает 500 000. Без этого запрос на 800K токенов
+    получил бы 400 уже после оплаты промпта.
+    """
+    from dataclasses import replace
+
+    from agent_coder.model_catalog import catalog
+
+    model_id = config.MODEL_IDS[0]
+    info = catalog.get(model_id)
+    assert info is not None
+
+    capped = replace(info, context=1_050_000, max_prompt_tokens=500_000)
+    monkeypatch.setattr(catalog, "get", lambda mid: capped)
+    assert fresh_router.max_input_tokens(model_id) == 500_000
+
+    # Провайдерский лимит шире context*fill_ratio → действует context-правило.
+    high = replace(info, context=1_050_000, max_prompt_tokens=922_000)
+    monkeypatch.setattr(catalog, "get", lambda mid: high)
+    assert fresh_router.max_input_tokens(model_id) == int(
+        1_050_000 * config.CONTEXT_FILL_RATIO
+    )
+
+
+def test_max_input_tokens_ignores_unknown_prompt_limit(monkeypatch, fresh_router):
+    """0 в max_prompt_tokens = данных нет → только context-правило."""
+    from dataclasses import replace
+
+    from agent_coder.model_catalog import catalog
+
+    model_id = config.MODEL_IDS[0]
+    info = catalog.get(model_id)
+    assert info is not None
+    unknown = replace(info, context=1_000_000, max_prompt_tokens=0)
+    monkeypatch.setattr(catalog, "get", lambda mid: unknown)
+    assert fresh_router.max_input_tokens(model_id) == int(
+        1_000_000 * config.CONTEXT_FILL_RATIO
+    )
+
+
 def test_fits_context_small_task_fits_r1(fresh_router):
     assert fresh_router.fits_context("mistralai/mistral-nemo", 10_000) is True
 

@@ -73,13 +73,19 @@ class ModelRouter:
     def max_input_tokens(self, model_id: str) -> int | None:
         """Сколько входных токенов модель принимает с учётом запаса.
 
-        ``context_limit * CONTEXT_FILL_RATIO`` (запас на ответ и на
-        неточность оценки токенов). None — метаданных о модели нет.
+        База — ``context_limit * CONTEXT_FILL_RATIO`` (запас на ответ и на
+        неточность оценки токенов). Если провайдер отдельно ограничивает вход
+        (``max_prompt_tokens``), берём минимум: у gpt-6* context=1_050_000, но
+        max_prompt=922_000, и запрос на 1M токенов получил бы 400 уже после
+        оплаты промпта. None — метаданных о модели нет.
         """
         info = self.info(model_id)
         if info is None or not info.context:
             return None
-        return int(info.context * config.CONTEXT_FILL_RATIO)
+        by_context = int(info.context * config.CONTEXT_FILL_RATIO)
+        if info.max_prompt_tokens > 0:
+            return min(by_context, info.max_prompt_tokens)
+        return by_context
 
     def fits_context(self, model_id: str, input_tokens: int = 0) -> bool:
         """Влезает ли задача (input_tokens) в контекст модели.

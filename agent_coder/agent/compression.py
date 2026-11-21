@@ -21,6 +21,7 @@ import logging
 import re
 import time
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from typing import Any
 
 from agent_coder.agent import tool_extract
@@ -161,8 +162,9 @@ def model_price(
     output_tokens: int = 0,
     cache_read_tokens: int = 0,
     cache_write_tokens: int = 0,
+    when: Any = None,
 ) -> float:
-    """Оценить стоимость в ₽ с учётом cache-тарифов и long-context тира.
+    """Оценить стоимость в ₽ с учётом cache, long-context тира и «времени суток».
 
     ``cache_read_tokens`` и ``cache_write_tokens`` — части ``tokens``, а не
     дополнительные токены. Порог long-context проверяется по полному input;
@@ -170,6 +172,9 @@ def model_price(
     (у gpt-6* вход ×2, а выход только ×1.5 — поэтому множители раздельные).
     Если отдельный cache-тариф неизвестен, для этой части используется
     обычная input-цена. Модель без input-цены даёт 0.0.
+
+    ``when`` — момент UTC для тарифа «время суток» (по умолчанию текущий).
+    Передаётся явно в тестах.
     """
     from agent_coder.model_catalog import catalog
 
@@ -190,7 +195,40 @@ def model_price(
     output_cost = output_tokens * m.output_price
 
     in_factor, out_factor = _tier_factors(m, tokens)
-    return (input_cost * in_factor + output_cost * out_factor) / 1e6
+    tod_in, tod_out = _tod_factors(m, when)
+    return (input_cost * in_factor * tod_in + output_cost * out_factor * tod_out) / 1e6
+
+
+def _tod_factors(m: Any, when: Any = None) -> tuple[float, float]:
+    """Множители тарифа «время суток» для момента ``when`` (UTC).
+
+    RouterAI отдаёт у части провайдеров ``variable_pricings``
+    type=``time-of-day``: ночью и в выходные ставка ниже, в пиковые часы —
+    выше. Множители (0.5..2.0) считаются от базы ТОГО провайдера, которому
+    принадлежит окно.
+
+    Ключевое ограничение: окна есть не у всех провайдеров модели, а цена в
+    ``/models`` приходит от одного конкретного. На 2026-11-21 базы не совпали
+    ни у одной из 8 curated-моделей (deepseek-flash: цена 4.70₽ от Sail,
+    а окна — у BytePlus 35.26₽). Применять чужие множители к чужой ставке
+    нельзя, поэтому при несовпадении базы возвращаем 1.0 — лучше показать
+    плоскую цену, чем выдуманную.
+    """
+    if not m.tod_windows:
+        return 1.0, 1.0
+    if when is None:
+        when = datetime.now(UTC)
+    day = when.strftime("%A").lower()
+    hour = when.hour
+    for days, h_from, h_to, in_f, out_f, base in m.tod_windows:
+        if days is not None and day not in days:
+            continue
+        if not (h_from <= hour < h_to):
+            continue
+        if base <= 0 or abs(base - m.input_price) > max(1e-9, m.input_price * 1e-6):
+            return 1.0, 1.0
+        return in_f, out_f
+    return 1.0, 1.0
 
 
 def _tier_factors(m: Any, tokens: int) -> tuple[float, float]:

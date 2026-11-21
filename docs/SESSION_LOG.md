@@ -28,10 +28,33 @@
 - DeepSeek v4: полный sampling, v4-pro = text-only (без vision/file).
 - deepseek-r1: 503 No available providers.
 
-## Открыто (следующая сессия)
+## Открыто (сверено с кодом 2026-11-21)
 
-- P1: PTL-retry, fallback-цепочка моделей (Opus→Sonnet→Haiku),
-  суточный ₽-лимит на пользователя.
-- P1: model_catalog.py (API+TTL) — сейчас models.py статический.
-- P2: streaming SSE, web_search tool-loop.
-- agent-coder: mypy pre-existing 24 errors (loop.py, __main__.py).
+Список перепроверен по факту — часть пунктов уже закрыта, и держать их
+в «открытых» значит вводить следующую сессию в заблуждение.
+
+**Закрыто (проверено, не переоткрывать):**
+
+- ~~`mypy` pre-existing 24 errors~~ — `mypy`: `Success: no issues found in
+  67 source files`.
+- ~~`model_catalog.py` (API+TTL), «сейчас models.py статический»~~ —
+  `async refresh()` + `_cache_ttl_hours` + дисковый кэш (`_CACHE_VERSION=5`).
+- ~~fallback-цепочка моделей (Opus→Sonnet→Haiku)~~ — `router.next_on_error`
+  + `RouterState.chain_index` + `FALLBACK_ERRORS` (A9: ротация при 429
+  убрана осознанно, вместо неё стоп и продолжение кнопкой).
+- ~~`web_search` tool-loop~~ — инструмент `web_search` есть (один вызов +
+  источники из `url_citation`); многошаговый цикл уточнений — нет, и не
+  планировался.
+
+**Реально открыто:**
+
+- P1: **суточный ₽-лимит на пользователя** — нет `MAX_COST_PER_DAY`;
+  есть только `MAX_COST_PER_TASK` / `MAX_COST_PER_SESSION`.
+- P1: **PTL-retry** (повтор при prompt-too-long после обрезки) — не
+  реализовано; сейчас ошибка контекста уходит в fallback-цепочку/стоп.
+- P2: **streaming SSE** — в `llm/client.py` нет `stream=True`/`astream`;
+  ответ приходит целиком.
+- P3: **time-of-day тариф дремлет** — парсинг и расчёт есть
+  (`ModelInfo.tod_windows`, `_tod_factors`), но база окна не совпадает с
+  ценой `/models` ни у одной из 8 моделей, поэтому множитель = 1.0.
+  Нужен учёт фактического провайдера из ответа (см. FINDINGS B7).

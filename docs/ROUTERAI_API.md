@@ -76,7 +76,7 @@
 | `context_length` | int | Контекст **этого** endpoint (может отличаться от `/models`) |
 | `quantization` | str | `fp4`, `fp8`, `mxfp4`, `unknown`, иногда `null` |
 | `max_completion_tokens` | int | Лимит выхода (разброс 131072..1048576) |
-| `max_prompt_tokens` | int | Лимит входа (922000 у gpt-6*) |
+| `max_prompt_tokens` | int | Лимит входа; может быть **меньше** `context_length` (922000 при 1050000 у gpt-6*) — остальное зарезервировано под ответ |
 | `supported_parameters` | list[str] | **Параметры, которые принимает этот endpoint** |
 | `status` | int | `0` — доступен |
 | `pricing` | obj | Та же схема, что в `/models` |
@@ -98,13 +98,44 @@
 | gpt-6.1-sol-pro | 272 000 | ×2.00 | ×1.50 |
 | deepseek-*, claude-sonnet-5.5, claude-opus-5.5 | — | тиров нет | — |
 
-**`time-of-day`** — цена зависит от часа UTC (у deepseek через
-BytePlus/DeepSeek/Alibaba): ночная ставка ровно ×0.5 от дневной.
+**`time-of-day`** — цена зависит от часа UTC. Встречается у deepseek через
+BytePlus/DeepSeek/Alibaba: ночь и выходные ×0.5, пиковые часы ×2.0.
+
+```json
+{"type": "time-of-day", "utc_start": 100, "utc_end": 400,
+ "utc_days": ["monday", "tuesday", "wednesday", "thursday", "friday"],
+ "prompt": 0.00019745589864, "completion": 0.00059236769592}
+```
+
+Три ловушки формата:
+
+1. **`utc_start`/`utc_end` — в сотнях часов**: `100` → 01:00 UTC, `1400` →
+   14:00 UTC. Читать их как часы напрямую — сдвиг в 100 раз.
+2. **`utc_end == 0`** означает «до конца суток» (24:00), а не нулевой
+   интервал.
+3. **`utc_days` может отсутствовать** — тогда окно действует все дни.
 
 ```json
 {"type": "prompt-threshold", "threshold": 272000,
  "prompt": 0.00021369686, "completion": 0.0010684843}
 ```
+
+### Важно: `time-of-day` не применяется к цене `/models`
+
+Окна принадлежат **конкретному провайдеру**, а `pricing` в `/models` —
+одному, часто другому. Замер 2026-11-21: база окон не совпала с ценой
+`/models` ни у одной из 8 curated-моделей.
+
+| модель | цена `/models` | провайдеры с окнами (их база) |
+|---|---|---|
+| deepseek-v4.1-flash-1017 | 4.70 ₽ (Sail Research) | BytePlus 35.26, DeepSeek 17.63, Alibaba 21.16 |
+| deepseek-v4-pro-0813 | 19.75 ₽ (Baidu) | DeepSeek 98.73, Alibaba 167.84 |
+
+Поэтому `_tod_factors()` применяет окно, только если база окна совпадает с
+`input_price` модели; иначе возвращает `1.0`. Это осознанно: умножить 4.70 ₽
+на 0.5 «по мотивам BytePlus» — выдуманная цифра. Фича реализована и покрыта
+тестами (`tests/test_tod_pricing.py`), но на текущих данных дремлет: чтобы
+она заработала, нужно знать, на какой именно endpoint ушёл запрос.
 
 ## 3. Матрица curated-моделей (2026-11-21)
 

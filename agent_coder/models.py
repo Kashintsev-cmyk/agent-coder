@@ -86,6 +86,20 @@ class ModelInfo:
     tier_output_factor: float = 1.0
     # Лимит выхода провайдера (endpoints.max_completion_tokens). 0 — неизвестен.
     max_completion_tokens: int = 0
+    # Лимит ВХОДА провайдера (endpoints.max_prompt_tokens). 0 — неизвестен.
+    # Может быть меньше context_length: у gpt-6* context=1_050_000, а
+    # max_prompt=922_000 — 128K зарезервировано под ответ.
+    max_prompt_tokens: int = 0
+    # Тариф «время суток» (RouterAI: variable_pricings, type="time-of-day").
+    # Окно: (дни_utc | None, час_от, час_до, вход_множитель, выход_множитель,
+    #        база_провайдера_₽/1M). None в днях = все дни; час_до=24 = до конца
+    # суток. База нужна потому, что окна принадлежат КОНКРЕТНОМУ провайдеру
+    # (BytePlus/DeepSeek/Alibaba), а цена в /models — часто другого
+    # (в 2026-11-21 базы не совпали ни у одной из 8 моделей). Множитель
+    # применяется только к своей базе, иначе получилась бы выдуманная цифра.
+    tod_windows: tuple[
+        tuple[tuple[str, ...] | None, int, int, float, float, float], ...
+    ] = ()
     tag: str = ""
 
     def __post_init__(self) -> None:
