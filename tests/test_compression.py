@@ -67,7 +67,14 @@ def test_soft_limit_context_wins_when_smaller_than_cap(monkeypatch):
     assert soft_limit(s) == 6_000
 
 
-def test_soft_limit_uses_per_model_override_and_context_cap(monkeypatch):
+def test_soft_limit_per_model_override_is_not_capped(monkeypatch):
+    """Явный override — готовое решение: ни MAX_HISTORY_TOKENS, ни 0.6*ctx.
+
+    Override учитывает long-context тир провайдера, поэтому повторно
+    зажимать его через context*0.6 нельзя (иначе 400K для deepseek при
+    context=1M превращался бы в 300K, а 180K для модели с 200K контекста —
+    в 120K).
+    """
     s = _mk_session("openai/gpt-5.6-luna")
     monkeypatch.setattr(config, "MAX_HISTORY_TOKENS", 90_000)
     monkeypatch.setattr(config, "MODEL_HISTORY_TOKEN_LIMITS", {s.model: 180_000})
@@ -81,7 +88,7 @@ def test_soft_limit_uses_per_model_override_and_context_cap(monkeypatch):
         name = "Small"
 
     monkeypatch.setattr(catalog, "get", lambda mid: _SmallModel())
-    assert soft_limit(s) == 120_000
+    assert soft_limit(s) == 180_000
 
 
 def test_soft_limit_unknown_model_uses_global_fallback(monkeypatch):

@@ -196,14 +196,21 @@ def test_no_jump_at_soft_limit_boundary(model):
 
 @pytest.mark.parametrize("model", config.CURATED_MODEL_IDS)
 def test_soft_limit_formula(model):
-    """Где заканчивается линейный участок: min(0.6 * context, MAX_HISTORY_TOKENS).
+    """Порог: явный per-model лимит не зажимается, иначе min(0.6*ctx, MAX).
 
-    Выше этой границы рост стоимости всё ещё линейный, но запрос
-    начинает платить ещё и за сжатие — поэтому порог фиксируем тестом.
+    Per-model override из MODEL_HISTORY_TOKEN_LIMITS — готовое решение
+    (учитывает long-context тир), поэтому возвращается как есть.
+    Для моделей без override — fallback min(0.6 * context, MAX_HISTORY_TOKENS).
     """
     info = catalog.get(model)
     assert info is not None
-    expected = min(int(info.context * 0.6), config.MAX_HISTORY_TOKENS)
+    configured = config.MODEL_HISTORY_TOKEN_LIMITS.get(model)
+    if configured is not None:
+        expected = configured
+    elif info.context:
+        expected = min(int(info.context * 0.6), config.MAX_HISTORY_TOKENS)
+    else:
+        expected = config.MAX_HISTORY_TOKENS
     assert soft_limit(type("S", (), {"model": model})()) == expected
 
 

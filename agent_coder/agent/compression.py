@@ -245,16 +245,22 @@ def estimate_tokens(messages: list[dict[str, Any]]) -> int:
 
 
 def soft_limit(session) -> int:
-    """Порог модели: per-model override или MAX_HISTORY_TOKENS, с cap по context."""
+    """Порог модели.
+
+    Явный per-model лимит из MODEL_HISTORY_TOKEN_LIMITS — это уже
+    готовое решение (учитывает long-context тир провайдера), не зажимаем
+    его повторно через context * ratio. Для моделей без override —
+    fallback: min(0.6 * context, MAX_HISTORY_TOKENS).
+    """
     from agent_coder.model_catalog import catalog
 
-    configured = config.MODEL_HISTORY_TOKEN_LIMITS.get(
-        session.model, config.MAX_HISTORY_TOKENS
-    )
+    configured = config.MODEL_HISTORY_TOKEN_LIMITS.get(session.model)
+    if configured is not None:
+        return configured
     m = catalog.get(session.model)
     if m and m.context:
-        return min(int(m.context * 0.6), configured)
-    return configured
+        return min(int(m.context * 0.6), config.MAX_HISTORY_TOKENS)
+    return config.MAX_HISTORY_TOKENS
 
 
 def would_exceed_soft_limit(session, text: str) -> bool:

@@ -279,7 +279,7 @@ class Config:
 
     # Сжатие истории сессии
     # Верхняя граница input-токенов на один запрос (жёсткий потолок).
-    # Итоговый порог = min(model.context * 0.6, MAX_HISTORY_TOKENS).
+    # Без per-model override порог = min(model.context * 0.6, MAX_HISTORY_TOKENS).
     # B11.0: 60K при context=1M deepseek — 6% использования, compress
     # каждые ~7 итераций. 150K: 2.5x больше контекста, цена ~2.5x,
     # compress в 2.5x реже. env MAX_HISTORY_TOKENS для override.
@@ -287,7 +287,19 @@ class Config:
     # Опциональные per-model пороги: model_id=tokens,model_id=tokens.
     # Пусто — использовать MAX_HISTORY_TOKENS для всех моделей.
     MODEL_HISTORY_TOKEN_LIMITS: ClassVar[dict[str, int]] = (
-        _parse_model_history_token_limits(os.getenv("MODEL_HISTORY_TOKEN_LIMITS", ""))
+        _parse_model_history_token_limits(
+            os.getenv(
+                "MODEL_HISTORY_TOKEN_LIMITS",
+                "deepseek/deepseek-v4.1-flash-1017=400000,"
+                "deepseek/deepseek-v4-pro-0813=400000,"
+                "anthropic/claude-haiku-5.5=80000,"
+                "openai/gpt-6-luna-pro=250000,"
+                "openai/gpt-6.1-terra-pro=250000,"
+                "openai/gpt-6.1-sol-pro=250000,"
+                "anthropic/claude-sonnet-5.5=400000,"
+                "anthropic/claude-opus-5.5=400000",
+            )
+        )
     )
 
     # Дефолтная температура генерации (0.0–2.0). Для кода — 0.2.

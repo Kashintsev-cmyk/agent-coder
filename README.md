@@ -346,7 +346,7 @@ Haiku как победителя и DeepSeek Flash как fallback.
 | Переменная | По умолчанию | Описание |
 |---|---|---|
 | `MAX_HISTORY_TOKENS` | `90000` | Порог по умолчанию; используется, если для модели нет override |
-| `MODEL_HISTORY_TOKEN_LIMITS` | пусто | Необязательные overrides `model_id=tokens,...`; effective threshold = `min(override или MAX_HISTORY_TOKENS, 60% context)` для известной модели. Пример: `anthropic/claude-haiku-5.5=120000,openai/gpt-5.6-luna=180000`; каждый лимит >= 1000 и модель должна быть в `MODEL_IDS` |
+| `MODEL_HISTORY_TOKEN_LIMITS` | curated-набор (см. `.env.example`) | Необязательные overrides `model_id=tokens,...`. Явный override — готовое решение и не зажимается через `60% context`; для модели без override порог = `min(60% context, MAX_HISTORY_TOKENS)`, для неизвестной — `MAX_HISTORY_TOKENS`. Пустое значение = `MAX_HISTORY_TOKENS` для всех. Модель должна быть в `MODEL_IDS` |
 | `SUMMARY_MODEL` | `anthropic/claude-haiku-5.5` | Модель для резюме старых сообщений |
 | `VERIFY_MODEL_ID` | `anthropic/claude-haiku-5.5` | Модель для `/verify` |
 | `PATCH_MODEL_ID` | `deepseek/deepseek-v4.1-flash-1017` | Модель для `/patch` |
