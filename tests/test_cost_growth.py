@@ -294,6 +294,85 @@ def test_model_price_unknown_or_free_is_zero():
     assert model_price("нет/такой-модели", 50_000) == 0.0
 
 
+def test_model_price_applies_cache_rates_to_input_partitions(monkeypatch):
+    """Cache read/write are priced separately, not added to full prompt."""
+    from dataclasses import replace
+
+    info = catalog.get(PRICED[0])
+    assert info is not None
+    priced = replace(
+        info,
+        input_price=10.0,
+        output_price=20.0,
+        cache_read_price=1.0,
+        cache_write_price=15.0,
+    )
+    monkeypatch.setattr(catalog, "get", lambda model_id: priced)
+
+    actual = model_price(
+        PRICED[0],
+        100_000,
+        output_tokens=2_000,
+        cache_read_tokens=60_000,
+        cache_write_tokens=10_000,
+    )
+    expected = (30_000 * 10.0 + 60_000 * 1.0 + 10_000 * 15.0 + 2_000 * 20.0) / 1e6
+    assert actual == pytest.approx(expected)
+
+
+def test_model_price_cache_rates_fall_back_to_prompt_rate(monkeypatch):
+    """Missing cache prices don't make cache tokens appear free."""
+    from dataclasses import replace
+
+    info = catalog.get(PRICED[0])
+    assert info is not None
+    priced = replace(
+        info, input_price=10.0, cache_read_price=0.0, cache_write_price=0.0
+    )
+    monkeypatch.setattr(catalog, "get", lambda model_id: priced)
+
+    assert model_price(
+        PRICED[0], 100, cache_read_tokens=40, cache_write_tokens=20
+    ) == pytest.approx(100 * 10.0 / 1e6)
+
+
+def test_model_price_cache_cost_gets_long_context_factor(monkeypatch):
+    """The >100K factor applies to the cache-aware total, based on full input."""
+    from dataclasses import replace
+
+    info = catalog.get(PRICED[0])
+    assert info is not None
+    priced = replace(
+        info, input_price=10.0, cache_read_price=1.0, cache_write_price=15.0
+    )
+    monkeypatch.setattr(catalog, "get", lambda model_id: priced)
+
+    actual = model_price(
+        PRICED[0],
+        TIER_THRESHOLD_TOKENS + 1,
+        cache_read_tokens=80_000,
+        cache_write_tokens=10_000,
+    )
+    expected = (10_001 * 10.0 + 80_000 * 1.0 + 10_000 * 15.0) / 1e6 * 5.0
+    assert actual == pytest.approx(expected)
+
+
+def test_model_price_clamps_cache_counts_to_input(monkeypatch):
+    """Overlapping/out-of-range cache metrics cannot create negative input."""
+    from dataclasses import replace
+
+    info = catalog.get(PRICED[0])
+    assert info is not None
+    priced = replace(
+        info, input_price=10.0, cache_read_price=1.0, cache_write_price=15.0
+    )
+    monkeypatch.setattr(catalog, "get", lambda model_id: priced)
+
+    actual = model_price(PRICED[0], 100, cache_read_tokens=80, cache_write_tokens=80)
+    expected = (80 * 1.0 + 20 * 15.0) / 1e6
+    assert actual == pytest.approx(expected)
+
+
 @pytest.mark.parametrize("model", PRICED)
 def test_summary_cost_at_soft_limit_stays_in_cheap_tier(model):
     """Сжатие при штатном MAX_HISTORY_TOKENS не должно попадать в тир.

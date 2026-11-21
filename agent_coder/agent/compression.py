@@ -148,20 +148,40 @@ class CompressionResult:
     cost: float = 0.0
 
 
-def model_price(model_id: str, tokens: int, *, output_tokens: int = 0) -> float:
-    """Стоимость запроса в ₽ с учётом long-context тира.
+def model_price(
+    model_id: str,
+    tokens: int,
+    *,
+    output_tokens: int = 0,
+    cache_read_tokens: int = 0,
+    cache_write_tokens: int = 0,
+) -> float:
+    """Оценить стоимость в ₽ с учётом cache-тарифов и long-context тира.
 
-    Порог — по СУММАРНОМУ input запроса, ставка пересчитывается ЦЕЛИКОМ
-    (не только превышение). Модели без записи в каталоге или с нулевой
-    ценой дают 0.0 — вызывающий не может вычислить, а не «бесплатно».
+    ``cache_read_tokens`` и ``cache_write_tokens`` — части ``tokens``, а не
+    дополнительные токены. Порог long-context проверяется по полному input;
+    при превышении вся оценка умножается на TIER_FACTOR. Если отдельный
+    cache-тариф неизвестен, для этой части используется обычная input-цена.
+    Модель без input-цены даёт 0.0: оценить стоимость невозможно.
     """
     from agent_coder.model_catalog import catalog
 
     m = catalog.get(model_id)
     if m is None or m.input_price <= 0:
         return 0.0
+
+    # Защищаем остаток prompt от отрицательного значения при неполных или
+    # неконсистентных usage-метаданных провайдера.
+    cached_read = min(max(cache_read_tokens, 0), max(tokens, 0))
+    cached_write = min(max(cache_write_tokens, 0), max(tokens - cached_read, 0))
+    uncached = max(tokens - cached_read - cached_write, 0)
+    read_price = m.cache_read_price or m.input_price
+    write_price = m.cache_write_price or m.input_price
+    input_cost = (
+        uncached * m.input_price + cached_read * read_price + cached_write * write_price
+    )
     factor = TIER_FACTOR if tokens > TIER_THRESHOLD_TOKENS else 1.0
-    return (tokens * m.input_price + output_tokens * m.output_price) / 1e6 * factor
+    return (input_cost + output_tokens * m.output_price) / 1e6 * factor
 
 
 def summary_model_problem(
@@ -225,13 +245,22 @@ def estimate_tokens(messages: list[dict[str, Any]]) -> int:
 
 
 def soft_limit(session) -> int:
-    """Порог input-токенов: min(model.context * 0.6, MAX_HISTORY_TOKENS)."""
+    """Порог модели: per-model override или MAX_HISTORY_TOKENS, с cap по context."""
     from agent_coder.model_catalog import catalog
 
+    configured = config.MODEL_HISTORY_TOKEN_LIMITS.get(
+        session.model, config.MAX_HISTORY_TOKENS
+    )
     m = catalog.get(session.model)
     if m and m.context:
-        return min(int(m.context * 0.6), config.MAX_HISTORY_TOKENS)
-    return config.MAX_HISTORY_TOKENS
+        return min(int(m.context * 0.6), configured)
+    return configured
+
+
+def would_exceed_soft_limit(session, text: str) -> bool:
+    """Оценить session history + новый текст до запуска запроса."""
+    messages = [*session.messages, {"role": "user", "content": text}]
+    return estimate_tokens(messages) > soft_limit(session)
 
 
 def provider_ratio(session) -> float:
@@ -676,6 +705,8 @@ async def compress(session, client) -> CompressionResult | None:
             config.SUMMARY_MODEL,
             summary_input_tokens,
             output_tokens=estimate_tokens([{"role": "assistant", "content": text}]),
+            cache_read_tokens=getattr(resp.usage, "cache_read_tokens", 0) or 0,
+            cache_write_tokens=getattr(resp.usage, "cache_write_tokens", 0) or 0,
         )
 
     # RAG-lite: старая часть не выбрасывается, а уходит в архив —

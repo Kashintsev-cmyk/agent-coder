@@ -80,6 +80,30 @@ def _env_float(name: str, default: str) -> float:
         raise ValueError(f"{name}={raw!r} должен быть числом (env {name})") from exc
 
 
+def _parse_model_history_token_limits(raw: str) -> dict[str, int]:
+    """Разобрать ``model_id=tokens,...`` с понятной ошибкой конфигурации."""
+    limits: dict[str, int] = {}
+    for item in raw.split(","):
+        item = item.strip()
+        if not item:
+            continue
+        model_id, separator, value = item.partition("=")
+        model_id = model_id.strip()
+        if not separator or not model_id:
+            raise ValueError(
+                "MODEL_HISTORY_TOKEN_LIMITS должен иметь формат model_id=tokens,..."
+            )
+        if model_id in limits:
+            raise ValueError(f"MODEL_HISTORY_TOKEN_LIMITS: повтор модели {model_id!r}")
+        try:
+            limits[model_id] = int(value.strip())
+        except ValueError as exc:
+            raise ValueError(
+                f"MODEL_HISTORY_TOKEN_LIMITS[{model_id!r}]={value!r} должен быть целым числом"
+            ) from exc
+    return limits
+
+
 def _recommended_from_fit(
     model_ids: list[str],
     fit: dict[str, list[str]],
@@ -114,30 +138,24 @@ class Config:
     ROUTERAI_TIMEOUT: float = float(os.getenv("ROUTERAI_TIMEOUT", "300.0"))
 
     # Модели
-    MODEL_MAIN: str = os.getenv("MODEL_MAIN", "deepseek/deepseek-v4.1-flash")
+    MODEL_MAIN: str = os.getenv("MODEL_MAIN", "deepseek/deepseek-v4.1-flash-1017")
     # Fallback для RECOMMENDED_MODEL_BY_MODE (см. telegram/handlers/project_utils.py).
 
     # Единый список моделей (B1): UI, роутер, дефолты.
-    # Порядок = приоритет авто-выбора. Метаданные — в
-    # `agent_coder.models._FALLBACK_CATALOG`.
+    # Порядок и ID синхронизированы с chat_bot/chat_bot/models.py.
+    # Метаданные — в `agent_coder.models._FALLBACK_CATALOG`.
     _curated_raw: str = os.getenv("CURATED_MODEL_IDS", "")
     CURATED_MODEL_IDS: ClassVar[list[str]] = [
         mid.strip() for mid in _curated_raw.split(",") if mid.strip()
     ] or [
-        # 2026-11-03: v4-flash убран — v4.1-flash дешевле и по входу, и по
-        # выходу (3.82/15.28 vs 10.00/20.00), тот же ctx, те же caps.
-        # kimi/r1/grok → _FALLBACK_CATALOG (ручной /model, не дефолт).
-        # sonnet/flash — провал в audit (coverage/timeout), не оставляем.
-        "deepseek/deepseek-v4.1-flash",  # DEFAULT + PATCH winner
-        "anthropic/claude-haiku-5.5",  # AUDIT/VERIFY/SUMMARY winner
-        # 2026-11-03: дешёвые fallback'и (probe OK, ≤ Haiku + 10%).
-        # В конце списка = не переопределяют RECOMMENDED (winner'ы выше).
-        "qwen/qwen3.7-flash",  # 1M ctx; reasoning (515 hidden tokens на probe)
-        "z-ai/glm-5.3-flash",  # лучший score/₽, 1M ctx, чистый output
-        "mistralai/mistral-nemo",  # кандидат в SUMMARY_MODEL (ctx 131072, вых. 2.27₽)
-        "openai/gpt-6-luna",  # 10.53/52.63 = Haiku price, Intelligence 38.1, 1.05M ctx
-        # drop-in замена Haiku при 429/timeout (цена байт-в-байт, +2.1 intelligence).
-        # НЕ -pro: reasoning-оверхед (1402 prompt-токена на "ping" против 7 у базы) — 17× дороже.
+        "deepseek/deepseek-v4.1-flash-1017",
+        "anthropic/claude-haiku-5.5",
+        "openai/gpt-6-luna-pro",
+        "deepseek/deepseek-v4-pro-0813",
+        "openai/gpt-6.1-terra-pro",
+        "anthropic/claude-sonnet-5.5",
+        "openai/gpt-6.1-sol-pro",
+        "anthropic/claude-opus-5.5",
     ]
 
     # Единый список моделей (B1): все модели, доступные в UI и роутере.
@@ -159,7 +177,7 @@ class Config:
 
     # Модель по умолчанию (должна входить в MODEL_IDS)
     DEFAULT_MODEL_ID: str = os.getenv(
-        "DEFAULT_MODEL_ID", "deepseek/deepseek-v4.1-flash"
+        "DEFAULT_MODEL_ID", "deepseek/deepseek-v4.1-flash-1017"
     )
 
     # B1: соответствие «модель → режимы, для которых подходит».
@@ -169,16 +187,16 @@ class Config:
     # не блокирует добавление новых моделей).
     # Порядок MODEL_IDS = приоритет авто-выбора (не порядок этого dict).
     MODEL_MODE_FIT: ClassVar[dict[str, list[str]]] = {
-        # v4.1-flash — default, patch winner, audit fallback (B9.2g-2026-10-23
-        # + 2026-11-03: оставлен как альтернатива haiku в audit).
-        "deepseek/deepseek-v4.1-flash": ["act", "plan", "audit"],
+        # chat_bot fast-tier models. Keep the established mode winners while
+        # exposing the same exact IDs as its runtime selector.
+        "deepseek/deepseek-v4.1-flash-1017": ["act", "plan", "audit"],
         "anthropic/claude-haiku-5.5": ["act", "audit"],
-        # 2026-11-03: дешёвые fallback'и. plan/act — при 429/timeout у winner'ов;
-        # RECOMMENDED берёт первую подходящую в MODEL_IDS, эти в хвосте — не сдвинут.
-        "qwen/qwen3.7-flash": ["plan", "act"],
-        "z-ai/glm-5.3-flash": ["plan", "act"],
-        "mistralai/mistral-nemo": [],  # ручной /model; summary — через SUMMARY_MODEL
-        "openai/gpt-6-luna": ["plan", "act"],  # fallback при 429/timeout у Haiku
+        "openai/gpt-6-luna-pro": ["plan", "act"],
+        "deepseek/deepseek-v4-pro-0813": ["plan", "act"],
+        "openai/gpt-6.1-terra-pro": ["plan", "act"],
+        "anthropic/claude-sonnet-5.5": [],
+        "openai/gpt-6.1-sol-pro": ["plan", "act"],
+        "anthropic/claude-opus-5.5": [],
     }
 
     # Рекомендованная модель по режиму: ПЕРВАЯ в MODEL_IDS, для которой
@@ -233,7 +251,9 @@ class Config:
     # (patch-01 na_shtile: 1.88₽/50 строк/20 iter/108s). kimi не гонять
     # (50₽/патч), mimo удаляет код, qwen 0 files. env PATCH_MODEL_ID
     # для override (в .env не задан — дефолт из этой строки).
-    PATCH_MODEL_ID: str = os.getenv("PATCH_MODEL_ID", "deepseek/deepseek-v4.1-flash")
+    PATCH_MODEL_ID: str = os.getenv(
+        "PATCH_MODEL_ID", "deepseek/deepseek-v4.1-flash-1017"
+    )
     MAX_COST_PATCH: float = _env_float("MAX_COST_PATCH", "50.0")
     # Потолок итераций /patch: обычно 5-15 на 10-15 findings. 30 — с запасом.
     MAX_PATCH_ITERATIONS: int = _env_int("MAX_PATCH_ITERATIONS", "60")
@@ -264,6 +284,11 @@ class Config:
     # каждые ~7 итераций. 150K: 2.5x больше контекста, цена ~2.5x,
     # compress в 2.5x реже. env MAX_HISTORY_TOKENS для override.
     MAX_HISTORY_TOKENS: int = _env_int("MAX_HISTORY_TOKENS", "90000")
+    # Опциональные per-model пороги: model_id=tokens,model_id=tokens.
+    # Пусто — использовать MAX_HISTORY_TOKENS для всех моделей.
+    MODEL_HISTORY_TOKEN_LIMITS: ClassVar[dict[str, int]] = (
+        _parse_model_history_token_limits(os.getenv("MODEL_HISTORY_TOKEN_LIMITS", ""))
+    )
 
     # Дефолтная температура генерации (0.0–2.0). Для кода — 0.2.
     TEMPERATURE: float = _env_float("TEMPERATURE", "0.2")
@@ -457,12 +482,44 @@ class Config:
             errors.append(
                 f"MAX_HISTORY_TOKENS={cls.MAX_HISTORY_TOKENS} должен быть >= 1000"
             )
+        invalid_limits = {
+            mid: limit
+            for mid, limit in cls.MODEL_HISTORY_TOKEN_LIMITS.items()
+            if limit < 1000
+        }
+        if invalid_limits:
+            errors.append(
+                "MODEL_HISTORY_TOKEN_LIMITS значения должны быть >= 1000: "
+                + ", ".join(f"{mid}={limit}" for mid, limit in invalid_limits.items())
+            )
+        unknown_limit_models = sorted(
+            set(cls.MODEL_HISTORY_TOKEN_LIMITS) - set(cls.MODEL_IDS)
+        )
+        if unknown_limit_models:
+            errors.append(
+                "MODEL_HISTORY_TOKEN_LIMITS содержит модели вне MODEL_IDS: "
+                + ", ".join(unknown_limit_models)
+            )
+        # Проверяем максимум реально достижимых порогов активных моделей:
+        # для известной модели учитываем 60% окна, иначе остаётся её cap.
+        from agent_coder.model_catalog import catalog
+
+        effective_limits = []
+        for mid in cls.MODEL_IDS:
+            configured = cls.MODEL_HISTORY_TOKEN_LIMITS.get(mid, cls.MAX_HISTORY_TOKENS)
+            model = catalog.get(mid)
+            effective_limits.append(
+                min(int(model.context * 0.6), configured)
+                if model and model.context
+                else configured
+            )
+        summary_limit = max(effective_limits, default=cls.MAX_HISTORY_TOKENS)
         # Суммаризатор обязан влезать в собственный порог сжатия: old-блок
         # доходит до всего soft_limit, и если context модели меньше — сжатие
         # падает на 400 context-length уже в рантайме (после старта).
         from agent_coder.agent.compression import summary_model_problem
 
-        problem = summary_model_problem(cls.SUMMARY_MODEL)
+        problem = summary_model_problem(cls.SUMMARY_MODEL, soft=summary_limit)
         if problem:
             errors.append(problem)
 

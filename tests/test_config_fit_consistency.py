@@ -15,10 +15,10 @@ def test_recommended_models_fit_their_mode():
 
 
 def test_v4_1_flash_fits_audit():
-    """Регресс B9.2g: v4.1-flash — стабильный winner audit (48/58 findings)."""
+    """Регресс B9.2g: актуальный ID v4.1-flash подходит для audit."""
     from agent_coder.config import Config
 
-    assert "audit" in Config.MODEL_MODE_FIT["deepseek/deepseek-v4.1-flash"]
+    assert "audit" in Config.MODEL_MODE_FIT["deepseek/deepseek-v4.1-flash-1017"]
 
 
 def test_haiku_in_audit_fit():

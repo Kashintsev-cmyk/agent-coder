@@ -53,6 +53,19 @@ def test_catalog_all_matches_config_ids():
     assert [m.id for m in catalog.all()] == config.CURATED_MODEL_IDS
 
 
+def test_curated_ids_match_chat_bot_runtime_order():
+    assert config.CURATED_MODEL_IDS == [
+        "deepseek/deepseek-v4.1-flash-1017",
+        "anthropic/claude-haiku-5.5",
+        "openai/gpt-6-luna-pro",
+        "deepseek/deepseek-v4-pro-0813",
+        "openai/gpt-6.1-terra-pro",
+        "anthropic/claude-sonnet-5.5",
+        "openai/gpt-6.1-sol-pro",
+        "anthropic/claude-opus-5.5",
+    ]
+
+
 def test_curated_ids_are_unique():
     ids = config.CURATED_MODEL_IDS
     assert len(ids) == len(set(ids))

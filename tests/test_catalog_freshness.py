@@ -10,6 +10,12 @@ from agent_coder.models import _FALLBACK_CATALOG
 # Осознанно оставлены для обратной совместимости сессий.
 # Добавлять сюда только с комментарием почему.
 LEGACY_IDS: set[str] = {
+    # IDs previously exposed in the curated selector; retain for saved sessions.
+    "deepseek/deepseek-v4.1-flash",
+    "qwen/qwen3.7-flash",
+    "z-ai/glm-5.3-flash",
+    "mistralai/mistral-nemo",
+    "openai/gpt-6-luna",
     "anthropic/claude-haiku-4.5",
     "anthropic/claude-sonnet-4.6",
     "anthropic/claude-sonnet-5.5",

@@ -168,6 +168,11 @@ async def handle_task_document(message: Message, bot: Bot) -> None:
     if doc is None:
         return
 
+    session = _get_active_session(message.chat.id)
+    if session is None:
+        await message.answer("Сначала выбери проект: /projects")
+        return
+
     name = doc.file_name or "prompt.txt"
     ext = Path(name).suffix.lower()
     if ext not in _PROMPT_FILE_EXT and ext != "":
@@ -209,6 +214,17 @@ async def handle_task_document(message: Message, bot: Bot) -> None:
 
     caption = (message.caption or "").strip()
     task_text = f"{caption}\n\n{content}" if caption else content
+
+    from agent_coder.agent.compression import would_exceed_soft_limit
+
+    if would_exceed_soft_limit(session, task_text):
+        await message.answer(
+            "⚠️ Документ вместе с историей сессии превышает безопасный порог "
+            "контекста для выбранной модели. Раздели файл на несколько частей "
+            "или сократи/суммируй его и отправь нужный фрагмент. Автоматическая "
+            "суммаризация файла не запускается."
+        )
+        return
 
     await _start_task(
         bot, message, task_text, source_note=f"файл <code>{html_escape(name)}</code>"

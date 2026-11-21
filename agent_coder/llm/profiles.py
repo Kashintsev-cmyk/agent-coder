@@ -12,34 +12,34 @@ from __future__ import annotations
 from typing import Any
 
 MODEL_PROFILES: dict[str, dict[str, Any]] = {
-    # DeepSeek: в thinking mode temperature/penalties игнорируются,
-    # top_p зажат в 0.95-1.0. https://api-docs.deepseek.com/guides/thinking_mode
+    "deepseek/deepseek-v4.1-flash-1017": {
+        "reasoning_effort": "high",
+    },
+    # Claude 4.7+ / API 2026-10-21: temperature/top_p/top_k не поддерживаются,
+    # не-дефолтное значение = 400. Для GPT-6 действует тот же контракт.
+    "anthropic/claude-haiku-5.5": {},
+    "openai/gpt-6-luna-pro": {},
+    "deepseek/deepseek-v4-pro-0813": {
+        "reasoning_effort": "high",
+    },
+    "openai/gpt-6.1-terra-pro": {},
+    "anthropic/claude-sonnet-5.5": {},
+    "openai/gpt-6.1-sol-pro": {},
+    "anthropic/claude-opus-5.5": {},
+    # Legacy IDs retained for existing sessions and manual /model choices.
     "deepseek/deepseek-v4.1-flash": {
         "reasoning_effort": "high",
     },
-    # Qwen3: официальные значения для thinking-режима.
-    # Non-thinking: temperature 0.7, top_p 0.8, top_k 20.
     "qwen/qwen3.7-flash": {
         "temperature": 0.6,
         "top_p": 0.95,
         "top_k": 20,
     },
-    # GLM-5.3-Flash: thinking.type поддерживает только enabled (не отключить).
-    # https://docs.z.ai/guides/vlm/glm-5.3-flash  (Recommended Settings)
-    # Probe 2026-11-04: RouterAI принимает reasoning_effort="max"
-    # (13 in / 263 out, 0.0156₽). Предупреждение "может отклонить" —
-    # не подтвердилось; менять на "high" без нового probe не нужно.
     "z-ai/glm-5.3-flash": {
         "temperature": 1.0,
         "top_p": 0.95,
         "reasoning_effort": "max",
     },
-    # Claude 4.7+ / API 2026-10-21: temperature/top_p/top_k не поддерживаются,
-    # не-дефолтное значение = 400. Детерминизм - промптом и structured output.
-    # https://platform.claude.com/docs/en/build-with-claude/working-with-messages
-    "anthropic/claude-haiku-5.5": {},
-    # GPT-5/6: temperature/top_p не поддерживаются; управление через
-    # reasoning_effort. https://developers.openai.com/api/docs/guides/latest-model
     "openai/gpt-6-luna": {},
     "mistralai/mistral-nemo": {
         "temperature": 0.35,

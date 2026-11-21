@@ -237,24 +237,20 @@ RouterAI и кэшируются на диск.
 
 Дефолтный набор:
 
-| Модель | ID | Роль | Контекст | ₽ in / out (за 1M) | Бейджи |
-|---|---|---|---|---|---|
-| **DeepSeek V4.1 Flash** *(default)* | `deepseek/deepseek-v4.1-flash` | default, patch, audit fallback | 1 048 576 | 3.82 / 15.28 | 👁⚙🔧 |
-| Claude Haiku 5.5 | `anthropic/claude-haiku-5.5` | verify, summary, act, audit | 1 000 000 | 10.53 / 52.63 | 👁⚙🔧📏 |
-| Qwen 3.7 Flash | `qwen/qwen3.7-flash` | plan / act fallback | 1 000 000 | 3.16 / 13.68 | ⚙🔧 |
-| GLM 5.3 Flash | `z-ai/glm-5.3-flash` | plan / act fallback | 1 048 576 | 3.62 / 9.80 | 👁⚙🔧 |
-| Mistral Nemo | `mistralai/mistral-nemo` | ручной `/model` (дешёвый выход) | 131 072 | 1.74 / 2.27 | — |
-| GPT-6 Luna | `openai/gpt-6-luna` | plan / act fallback (drop-in Haiku) | 1 050 000 | 10.53 / 52.63 | 🔧 |
+| Модель | ID | Роль | Контекст | ₽ in / out (за 1M) |
+|---|---|---|---|---|
+| **DeepSeek V4.1 Flash** *(default)* | `deepseek/deepseek-v4.1-flash-1017` | default, patch, plan, audit fallback | 1 048 576 | 5.288997 / 29.383318 |
+| Claude Haiku 5.5 | `anthropic/claude-haiku-5.5` | verify, summary, act, audit | 1 000 000 | 10.684843 / 53.424215 |
+| GPT-6 Luna Pro | `openai/gpt-6-luna-pro` | plan / act fallback | 1 050 000 | 10.684843 / 53.424215 |
+| DeepSeek V4 Pro | `deepseek/deepseek-v4-pro-0813` | plan / act fallback | 1 048 576 | 19.745590 / 59.236770 |
+| GPT-6.1 Terra Pro | `openai/gpt-6.1-terra-pro` | plan / act fallback | 1 050 000 | 106.848430 / 534.242150 |
+| Claude Sonnet 5.5 | `anthropic/claude-sonnet-5.5` | premium, manual `/model` | 1 000 000 | 213.696860 / 1068.484300 |
+| GPT-6.1 Sol Pro | `openai/gpt-6.1-sol-pro` | premium, manual `/model` | 1 050 000 | 213.696860 / 1068.484300 |
+| Claude Opus 5.5 | `anthropic/claude-opus-5.5` | premium, manual `/model` | 1 000 000 | 427.393720 / 2136.968600 |
 
-**Бейджи:** 👁 vision · 🌐 встроенный web search · 🧠 reasoning · ⚙ reasoning
-с градацией · 🔧 tools · 📏 verbosity.
+Порядок и ID по умолчанию синхронизированы с `chat_bot` runtime list. Цены и capability-флаги fallback — offline snapshot из соседнего проекта; живые цены и метаданные при наличии обновляются из API RouterAI. `tests/test_fallback_prices.py` гарантирует ненулевые цены и context для всего активного списка.
 
-Цены — снимок 2026-11-03 (синхронизированы с `/api/v1/models`). Живые цены всегда подтягиваются из API и кэшируются; `tests/test_fallback_prices.py` следит, что у моделей из `MODEL_IDS` в fallback ненулевые цены и context.
-
-Модели из `MODEL_IDS` доступны в UI (`/model`). Модели вне `MODEL_IDS`
-(например, `google/gemini-4-argon`, `anthropic/claude-sonnet-5.5`) остаются
-в `_FALLBACK_CATALOG` и доступны через `/model` вручную — удобно для
-разовых задач (security second-pass и т.п.).
+Модели из `MODEL_IDS` доступны в UI (`/model`). Ранее опубликованные модели сохранены в `_FALLBACK_CATALOG` для совместимости старых сессий и ручного `/model`, но не входят в активный selector.
 
 ### Sampling-параметры (per-model)
 
@@ -284,13 +280,15 @@ RouterAI и кэшируются на диск.
 
 | Режим | Рекомендованная модель | Почему |
 |---|---|---|
-| `plan` | `deepseek/deepseek-v4.1-flash` | дешёвый универсал, 1M ctx |
+| `plan` | `deepseek/deepseek-v4.1-flash-1017` | дешёвый универсал, 1M ctx |
 | `act` | `anthropic/claude-haiku-5.5` | benchmark 6×3 (2026-10-24): best bootstrap signal |
 | `audit` | `anthropic/claude-haiku-5.5` | weather-bot benchmark (2026-11-03): находит BLOCKER, ×2.6 дешевле v4.1 |
 
-Fallback-цепочка при 429/timeout — модели из `MODEL_IDS`, у которых
+Fallback-цепочка при 429/timeout — модели из нового runtime списка, у которых
 `mode ∈ MODEL_MODE_FIT[mid]` (порядок в `MODEL_IDS` = приоритет):
-`v4.1-flash` → `qwen3.7-flash` / `glm-5.3-flash` / `gpt-6-luna`.
+`deepseek-v4.1-flash-1017` → `gpt-6-luna-pro` / `deepseek-v4-pro-0813` /
+`gpt-6.1-terra-pro` / `gpt-6.1-sol-pro` для plan/act; audit использует
+Haiku как победителя и DeepSeek Flash как fallback.
 
 Логика (вариант «б» — ручной выбор приоритетен):
 
@@ -329,9 +327,9 @@ Fallback-цепочка при 429/timeout — модели из `MODEL_IDS`, у
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
-| `MODEL_MAIN` | `deepseek/deepseek-v4.1-flash` | Модель для новых сессий |
-| `DEFAULT_MODEL_ID` | `deepseek/deepseek-v4.1-flash` | Должна входить в `MODEL_IDS` |
-| `CURATED_MODEL_IDS` | пусто (= 6 моделей из `config.py`) | Список для UI; пусто — использовать дефолт `MODEL_IDS` |
+| `MODEL_MAIN` | `deepseek/deepseek-v4.1-flash-1017` | Модель для новых сессий |
+| `DEFAULT_MODEL_ID` | `deepseek/deepseek-v4.1-flash-1017` | Должна входить в `MODEL_IDS` |
+| `CURATED_MODEL_IDS` | пусто (= 8 моделей из `config.py`, в порядке chat_bot) | Список для UI; пусто — использовать дефолт `MODEL_IDS` |
 | `MODEL_ROUTER_ENABLED` | `1` | Подставлять recommended-модель по режиму, если не выбрана вручную |
 | `CONTEXT_FILL_RATIO` | `0.8` | Доля `context_limit` под входные токены (0.1–1.0) |
 
@@ -347,10 +345,11 @@ Fallback-цепочка при 429/timeout — модели из `MODEL_IDS`, у
 
 | Переменная | По умолчанию | Описание |
 |---|---|---|
-| `MAX_HISTORY_TOKENS` | `90000` | Порог = `min(model.context * 0.6, MAX_HISTORY_TOKENS)` |
+| `MAX_HISTORY_TOKENS` | `90000` | Порог по умолчанию; используется, если для модели нет override |
+| `MODEL_HISTORY_TOKEN_LIMITS` | пусто | Необязательные overrides `model_id=tokens,...`; effective threshold = `min(override или MAX_HISTORY_TOKENS, 60% context)` для известной модели. Пример: `anthropic/claude-haiku-5.5=120000,openai/gpt-5.6-luna=180000`; каждый лимит >= 1000 и модель должна быть в `MODEL_IDS` |
 | `SUMMARY_MODEL` | `anthropic/claude-haiku-5.5` | Модель для резюме старых сообщений |
 | `VERIFY_MODEL_ID` | `anthropic/claude-haiku-5.5` | Модель для `/verify` |
-| `PATCH_MODEL_ID` | `deepseek/deepseek-v4.1-flash` | Модель для `/patch` |
+| `PATCH_MODEL_ID` | `deepseek/deepseek-v4.1-flash-1017` | Модель для `/patch` |
 | `MAX_COST_VERIFY` | `50.0` | Отдельный бюджет verify, ₽ |
 | `MEDIA_RETENTION_DAYS` | `30` | Retention медиа-вложений, дней |
 

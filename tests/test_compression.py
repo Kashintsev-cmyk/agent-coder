@@ -6,6 +6,7 @@ from agent_coder.agent.compression import (
     find_cut,
     format_for_summary,
     soft_limit,
+    would_exceed_soft_limit,
 )
 from agent_coder.config import config
 
@@ -64,6 +65,47 @@ def test_soft_limit_context_wins_when_smaller_than_cap(monkeypatch):
     monkeypatch.setattr(catalog, "get", lambda mid: _TinyModel())
     s = _mk_session("test/tiny")
     assert soft_limit(s) == 6_000
+
+
+def test_soft_limit_uses_per_model_override_and_context_cap(monkeypatch):
+    s = _mk_session("openai/gpt-5.6-luna")
+    monkeypatch.setattr(config, "MAX_HISTORY_TOKENS", 90_000)
+    monkeypatch.setattr(config, "MODEL_HISTORY_TOKEN_LIMITS", {s.model: 180_000})
+    assert soft_limit(s) == 180_000
+
+    from agent_coder.model_catalog import catalog
+
+    class _SmallModel:
+        id = s.model
+        context = 200_000
+        name = "Small"
+
+    monkeypatch.setattr(catalog, "get", lambda mid: _SmallModel())
+    assert soft_limit(s) == 120_000
+
+
+def test_soft_limit_unknown_model_uses_global_fallback(monkeypatch):
+    s = _mk_session("no/such-model-xyz")
+    monkeypatch.setattr(
+        config, "MODEL_HISTORY_TOKEN_LIMITS", {"some/other-model": 120_000}
+    )
+    assert soft_limit(s) == config.MAX_HISTORY_TOKENS
+
+
+def test_document_preflight_estimates_session_and_text(monkeypatch):
+    from agent_coder.model_catalog import catalog
+
+    class _TinyModel:
+        id = "test/tiny"
+        context = 10_000
+        name = "Tiny"
+
+    monkeypatch.setattr(catalog, "get", lambda mid: _TinyModel())
+    session = _mk_session("test/tiny")
+    session.messages = [{"role": "user", "content": "x" * 30_000}]
+    assert would_exceed_soft_limit(session, "short")
+    session.messages = []
+    assert not would_exceed_soft_limit(session, "short")
 
 
 # --- find_cut ---

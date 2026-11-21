@@ -16,13 +16,17 @@ MSG = [{"role": "user", "content": "hi"}]
 
 
 class TestRegistry:
-    def test_all_profile_keys_in_model_ids(self) -> None:
-        """Нет мёртвых профилей: каждый ключ MODEL_PROFILES ∈ MODEL_IDS."""
-        unknown = set(MODEL_PROFILES) - set(config.MODEL_IDS)
-        assert not unknown, (
-            f"Профили вне MODEL_IDS: {sorted(unknown)}. "
-            f"Либо добавь модель в MODEL_IDS, либо удали профиль."
-        )
+    def test_all_profile_keys_in_model_ids_or_legacy(self) -> None:
+        """Profiles belong to a current curated model or a retained legacy ID."""
+        legacy_ids = {
+            "deepseek/deepseek-v4.1-flash",
+            "qwen/qwen3.7-flash",
+            "z-ai/glm-5.3-flash",
+            "openai/gpt-6-luna",
+            "mistralai/mistral-nemo",
+        }
+        unknown = set(MODEL_PROFILES) - set(config.MODEL_IDS) - legacy_ids
+        assert not unknown, f"Профили без curated/legacy модели: {sorted(unknown)}"
 
     def test_every_model_id_has_profile(self) -> None:
         """Каждая модель из MODEL_IDS имеет профиль (возможно пустой)."""
