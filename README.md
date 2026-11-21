@@ -321,7 +321,8 @@ Haiku как победителя и DeepSeek Flash как fallback.
 | `RETRY_BACKOFF` | `2.0` | База экспоненциального backoff |
 | `TEMPERATURE` | `0.2` | Для моделей **вне** `MODEL_PROFILES` (ручной `/model` из `_FALLBACK_CATALOG`). Для `MODEL_IDS` — per-model, см. `agent_coder/llm/profiles.py` |
 | `SERVICE_TIER` | `default` | `default` / `flex` / `priority` |
-| `WEB_SEARCH_ENGINE` | `native` | `native` / `exa` |
+| `MAX_OUTPUT_TOKENS` | `32768` | Лимит токенов ответа на запрос (страховка от «улетевшей» генерации; провайдер разрешает до 128K–1M). `0` — не отправлять |
+| `WEB_SEARCH_ENGINE` | `exa` | `exa` / `native`. `native` в ~16 раз дороже (тянет полные страницы в контекст) |
 | `WEB_SEARCH_MAX_RESULTS` | `5` | Сколько результатов запрашивать |
 | `WEB_SEARCH_TOOL_MODEL` | `anthropic/claude-haiku-5.5` | Модель для инструмента `web_search` |
 

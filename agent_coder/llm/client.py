@@ -130,6 +130,7 @@ def _build_request_kwargs(
     service_tier: str | None = None,
     verbosity: str | None = None,
     session_id: str = "",
+    max_tokens: int | None = None,
 ) -> dict[str, Any]:
     """Собрать kwargs для chat.completions.create.
 
@@ -206,6 +207,16 @@ def _build_request_kwargs(
         # падает до 0, input дорожает). Заголовок есть в сигнатуре
         # AsyncCompletions.create — см. tests/test_client_kwargs_compat.py.
         kwargs["extra_headers"] = {"x-session-id": session_id}
+
+    # Лимит выхода. None → берём config.MAX_OUTPUT_TOKENS (единый источник);
+    # 0 → не отправляем вовсе (доверяем дефолту провайдера).
+    # max_tokens, а не max_completion_tokens: по endpoints он поддержан у
+    # 5/5, 6/6, 49/49, 20/20, тогда как max_completion_tokens — у 1–2 из N
+    # (docs/ROUTERAI_API.md). Живой probe 2026-11-21: все 8 curated-моделей
+    # приняли max_tokens без ошибки.
+    limit = config.MAX_OUTPUT_TOKENS if max_tokens is None else max_tokens
+    if limit and limit > 0:
+        kwargs["max_tokens"] = limit
     return kwargs
 
 
@@ -255,12 +266,16 @@ class LLMClient:
         verbosity: str | None = None,
         session_id: str = "",
         stable_count: int | None = None,
+        max_tokens: int | None = None,
     ) -> ChatResponse:
         """Один вызов LLM с retry.
 
         `reasoning_effort` — none | minimal | low | medium | high | xhigh |
         max | ultra | None. При "none" или None параметр не передаётся
         (модель работает без reasoning).
+
+        `max_tokens` — лимит выхода. None → config.MAX_OUTPUT_TOKENS,
+        0 → не отправлять.
         """
         kwargs = _build_request_kwargs(
             model,
@@ -273,6 +288,7 @@ class LLMClient:
             service_tier=service_tier,
             verbosity=verbosity,
             session_id=session_id,
+            max_tokens=max_tokens,
         )
 
         # Кэш провайдера (проверено probe'ами RouterAI 2026-11-20):

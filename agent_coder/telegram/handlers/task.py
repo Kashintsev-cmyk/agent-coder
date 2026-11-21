@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from aiogram import Bot, F
@@ -37,9 +38,150 @@ logger = logging.getLogger(__name__)
 _PHOTO_MAX_BYTES = 5 * 1024 * 1024
 
 
+# ---------- Пакетная обработка (альбомы) ----------
+#
+# Telegram присылает альбом (media_group) как НЕСКОЛЬКО отдельных Message с
+# общим `media_group_id` — по одному на элемент. Без склейки первое фото
+# стартовало задачу, а остальные получали «Другая задача уже выполняется»:
+# юзер отправлял 5 скриншотов и модель видела один.
+#
+# Склейка: копим элементы по media_group_id и запускаем ОДНУ задачу через
+# _ALBUM_DEBOUNCE_SEC после последнего пришедшего. Задержка нужна потому, что
+# Telegram не сообщает «альбом закончился» — только отдельные сообщения.
+_ALBUM_DEBOUNCE_SEC = 1.2
+# Больше в один запрос не влезет по контексту: 10 изображений ≈ 10 × ~1.5K
+# токенов только на картинки, плюс история сессии.
+_ALBUM_MAX_ITEMS = 10
+
+
+@dataclass
+class _AlbumBuffer:
+    """Накопитель элементов одного альбома.
+
+    Изображения и текстовые документы копятся раздельно, но уезжают в одной
+    задаче: юзер прислал пачку скриншотов/логов — это одна проблема, а не N.
+    """
+
+    chat_id: int
+    session_id: str
+    items: list[Path] = field(default_factory=list)  # изображения (пути)
+    texts: list[tuple[str, str]] = field(default_factory=list)  # (имя, содержимое)
+    caption: str = ""
+    timer: asyncio.Task | None = None
+
+    @property
+    def total(self) -> int:
+        return len(self.items) + len(self.texts)
+
+
+_albums: dict[str, _AlbumBuffer] = {}
+
+
+def _album_key(message: Message) -> str | None:
+    """Ключ альбома: ``chat_id:media_group_id``. None — не альбом."""
+    gid = getattr(message, "media_group_id", None)
+    if not gid:
+        return None
+    return f"{message.chat.id}:{gid}"
+
+
+def _album_task_text(buf: _AlbumBuffer) -> str:
+    """Текст задачи для альбома: подпись юзера + все текстовые файлы."""
+    parts: list[str] = []
+    if buf.caption.strip():
+        parts.append(buf.caption.strip())
+    if buf.texts:
+        # Заголовок на каждый файл: модель должна понимать, где чей кусок.
+        for name, content in buf.texts:
+            parts.append(f"=== {name} ===\n{content}")
+    if parts:
+        return "\n\n".join(parts)
+    n = len(buf.items)
+    return (
+        f"Посмотри на {n} изображений и учти их все в задаче. "
+        f"Если они относятся к одной проблеме — опиши общее и различия."
+    )
+
+
+def _album_source_note(buf: _AlbumBuffer) -> str:
+    """Короткое описание вложения для статус-сообщения."""
+    bits: list[str] = []
+    if buf.items:
+        bits.append(f"{len(buf.items)} изображений")
+    if buf.texts:
+        bits.append(f"{len(buf.texts)} файлов")
+    return " + ".join(bits) if bits else "альбом"
+
+
+async def _flush_album(key: str, bot: Bot, message: Message) -> None:
+    """Запустить задачу по накопленному альбому и очистить буфер."""
+    buf = _albums.pop(key, None)
+    if buf is None or buf.total == 0:
+        return
+    session = _get_active_session(buf.chat_id)
+    if session is None or session.id != buf.session_id:
+        # Сессию успели сменить/закрыть, пока копился альбом.
+        return
+    await _start_task(
+        bot,
+        message,
+        _album_task_text(buf),
+        source_note=_album_source_note(buf),
+        images=list(buf.items) or None,
+    )
+
+
+async def _collect_album_item(
+    key: str,
+    message: Message,
+    bot: Bot,
+    session: Session,
+    path: Path,
+    *,
+    text: tuple[str, str] | None = None,
+) -> bool:
+    """Добавить элемент в альбом и (пере)запустить дебаунс.
+
+    ``path`` — сохранённое изображение (для фото). Для документов передаётся
+    ``text=(имя, содержимое)``, а ``path`` игнорируется.
+
+    Возвращает True, если элемент ушёл в альбом (задачу запустит таймер),
+    False — альбом переполнен, элемент отброшен.
+    """
+    buf = _albums.get(key)
+    if buf is None:
+        buf = _AlbumBuffer(chat_id=message.chat.id, session_id=session.id)
+        _albums[key] = buf
+    if buf.total >= _ALBUM_MAX_ITEMS:
+        return False
+    if text is not None:
+        buf.texts.append(text)
+    else:
+        buf.items.append(path)
+    caption = (message.caption or "").strip()
+    if caption and not buf.caption:
+        buf.caption = caption
+    if buf.timer is not None:
+        buf.timer.cancel()
+
+    async def _debounced() -> None:
+        # Отмена таймера (пришёл следующий элемент альбома) — штатный путь:
+        # CancelledError пробрасывается из sleep, и flush не выполняется.
+        await asyncio.sleep(_ALBUM_DEBOUNCE_SEC)
+        try:
+            await _flush_album(key, bot, message)
+        except Exception:
+            # Фоновая задача: исключение здесь никто не увидит (task-объект
+            # теряется), а юзер остался бы без ответа — логируем.
+            logger.exception("album flush failed (key=%s)", key)
+
+    buf.timer = asyncio.create_task(_debounced())
+    return True
+
+
 @router.message(F.photo)
 async def handle_task_photo(message: Message, bot: Bot) -> None:
-    """Приём фото: сохраняем, прикладываем к задаче как image_url."""
+    """Приём фото: одиночное — сразу задача, альбом — склейка."""
     session = _get_active_session(message.chat.id)
     if session is None:
         await message.answer("Сначала выбери проект: /projects")
@@ -87,6 +229,17 @@ async def handle_task_photo(message: Message, bot: Bot) -> None:
         return
 
     path = session.save_media(data, ext="jpg")
+
+    key = _album_key(message)
+    if key is not None:
+        if await _collect_album_item(key, message, bot, session, path):
+            return  # запустит дебаунс-таймер
+        await message.answer(
+            f"⚠️ В альбоме больше {_ALBUM_MAX_ITEMS} файлов — "
+            f"лишние пропущены. Отправь остальные отдельным сообщением."
+        )
+        return
+
     caption = (message.caption or "").strip()
     task_text = caption or "Посмотри на изображение и учти его в задаче."
 
@@ -213,6 +366,21 @@ async def handle_task_document(message: Message, bot: Bot) -> None:
         return
 
     caption = (message.caption or "").strip()
+
+    # Альбом документов: копим и запускаем ОДНУ задачу со всеми файлами —
+    # юзер прислал пачку логов/конфигов, это одна проблема, а не N задач.
+    album_key = _album_key(message)
+    if album_key is not None:
+        if await _collect_album_item(
+            album_key, message, bot, session, Path(), text=(name, content)
+        ):
+            return  # задачу запустит дебаунс-таймер
+        await message.answer(
+            f"⚠️ В альбоме больше {_ALBUM_MAX_ITEMS} файлов — "
+            f"лишние пропущены. Отправь остальные отдельным сообщением."
+        )
+        return
+
     task_text = f"{caption}\n\n{content}" if caption else content
 
     from agent_coder.agent.compression import would_exceed_soft_limit

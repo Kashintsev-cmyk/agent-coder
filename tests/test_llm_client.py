@@ -2,12 +2,30 @@
 
 from __future__ import annotations
 
+from agent_coder.config import config
 from agent_coder.llm.client import _apply_cache_anchor, _build_request_kwargs
 
 
 def test_minimal():
+    # max_tokens есть всегда: лимит выхода — страховка от «улетевшей»
+    # генерации, без него провайдер разрешает до 128K токенов.
     kw = _build_request_kwargs("m", [{"role": "user", "content": "x"}])
-    assert kw == {"model": "m", "messages": [{"role": "user", "content": "x"}]}
+    assert kw == {
+        "model": "m",
+        "messages": [{"role": "user", "content": "x"}],
+        "max_tokens": config.MAX_OUTPUT_TOKENS,
+    }
+
+
+def test_max_tokens_explicit_overrides_default():
+    kw = _build_request_kwargs("m", [], max_tokens=1234)
+    assert kw["max_tokens"] == 1234
+
+
+def test_max_tokens_zero_disables_limit():
+    """0 — осознанно не отправлять (доверяем дефолту провайдера)."""
+    kw = _build_request_kwargs("m", [], max_tokens=0)
+    assert "max_tokens" not in kw
 
 
 def test_with_tools_and_tool_choice():

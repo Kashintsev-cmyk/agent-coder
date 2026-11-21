@@ -26,6 +26,10 @@ dev = [
     "pytest-xdist>=3.5",
     "mypy>=1.8",
     "ruff>=0.6",
+    # CI гоняет `python3 -m bandit` (шаг "Bandit security scan"). Без этой
+    # строки `pip install -e ".[dev]"` не ставит bandit и шаг CI падает с
+    # "No module named bandit" — проверка была прописана, но не выполнялась.
+    "bandit>=1.7",
 ]
 
 [build-system]
