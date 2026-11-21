@@ -97,6 +97,27 @@ def _apply_cache_anchor(
     return out
 
 
+def _supports(model: str, capability: str) -> bool | None:
+    """Принимает ли модель параметр ``capability`` (по каталогу).
+
+    ``None`` — модель неизвестна каталогу: вызывающая сторона ведёт себя
+    legacy-образом (отправляет параметр как раньше). Так новые модели не
+    теряют возможность до того, как попадут в каталог.
+
+    Импорт ленивый: ``model_catalog`` тянет ``config`` и ``models``, а
+    ``client`` импортируется из ``agent``-слоя — модульная зависимость на
+    уровне импорта не нужна.
+    """
+    try:
+        from agent_coder.model_catalog import catalog
+    except Exception:  # pragma: no cover — каталог обязан импортироваться
+        return None
+    info = catalog.get(model)
+    if info is None:
+        return None
+    return bool(getattr(info, capability, True))
+
+
 def _build_request_kwargs(
     model: str,
     messages: list[dict[str, Any]],
@@ -148,10 +169,18 @@ def _build_request_kwargs(
         # Модель вне реестра: legacy-поведение.
         kwargs["temperature"] = temperature
 
-    if reasoning_effort and reasoning_effort not in ("none", ""):
-        kwargs["reasoning_effort"] = reasoning_effort
-    elif profile is not None and "reasoning_effort" in profile:
-        kwargs["reasoning_effort"] = profile["reasoning_effort"]
+    # Гейт по capability модели. /models отдаёт АГРЕГАТ supported_parameters
+    # по всем провайдерам, и он может обещать параметр, которого нет ни у
+    # одного endpoint: `reasoning_effort` заявлен у всех 8 curated-моделей, а
+    # фактически поддерживается у 2 (deepseek) — у haiku/gpt-6*/sonnet/opus
+    # 0/N endpoints. RouterAI такой параметр молча игнорирует (probe
+    # 2026-11-21: HTTP 200 с параметром и без), но отправлять его бессмысленно:
+    # UI показывал бы уровень reasoning, который ни на что не влияет.
+    if _supports(model, "reasoning_effort") is not False:
+        if reasoning_effort and reasoning_effort not in ("none", ""):
+            kwargs["reasoning_effort"] = reasoning_effort
+        elif profile is not None and "reasoning_effort" in profile:
+            kwargs["reasoning_effort"] = profile["reasoning_effort"]
 
     if web_search:
         kwargs["plugins"] = [
@@ -163,7 +192,7 @@ def _build_request_kwargs(
         ]
     if service_tier and service_tier not in ("default", ""):
         kwargs["service_tier"] = service_tier
-    if verbosity:
+    if verbosity and _supports(model, "verbosity") is not False:
         kwargs["verbosity"] = verbosity
     if session_id:
         # Sticky-роутинг RouterAI: один и тот же x-session-id держит запросы

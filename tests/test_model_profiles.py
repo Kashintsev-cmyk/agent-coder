@@ -65,11 +65,14 @@ class TestHaiku5_5:
         assert "top_p" not in kwargs
         assert "top_k" not in kwargs
 
-    def test_reasoning_effort_passes_through(self) -> None:
+    def test_reasoning_effort_gated_by_capability(self) -> None:
+        # 2026-11-21: /endpoints показал reasoning_effort 0/5 у haiku, хотя
+        # агрегат /models его обещает. Параметр не отправляем — иначе UI
+        # показывал бы уровень reasoning, который провайдер игнорирует.
         kwargs = _build_request_kwargs(
             "anthropic/claude-haiku-5.5", MSG, reasoning_effort="medium"
         )
-        assert kwargs["reasoning_effort"] == "medium"
+        assert "reasoning_effort" not in kwargs
 
     def test_reasoning_effort_none_omitted(self) -> None:
         # verify.py передаёт session.reasoning_effort; при "none" — не уходит.

@@ -25,7 +25,7 @@ import json
 import logging
 import os
 import time
-from dataclasses import asdict, fields
+from dataclasses import asdict, fields, replace
 from pathlib import Path
 from typing import Any
 
@@ -42,7 +42,7 @@ logger = logging.getLogger(__name__)
 
 # Версию бампаем при несовместимом изменении полей ModelInfo,
 # чтобы старый кэш не подсовывал дефолты вместо новых полей.
-_CACHE_VERSION = 3
+_CACHE_VERSION = 4
 _CACHE_FILENAME = "models.json"
 
 
@@ -333,32 +333,168 @@ class ModelCatalog:
 
         url = f"{self._api_base_url.rstrip('/')}/models"
         headers = {"Authorization": f"Bearer {self._api_key}"} if self._api_key else {}
+
         try:
-            resp = await client.get(url, headers=headers)
-            resp.raise_for_status()
-            data = resp.json()
-        except Exception as exc:
-            logger.warning("Не удалось получить /models: %s", exc)
-            return False
+            try:
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                data = resp.json()
+            except Exception as exc:
+                logger.warning("Не удалось получить /models: %s", exc)
+                return False
+
+            try:
+                models = self._parse_api_response(data)
+            except Exception as exc:
+                logger.warning("Не удалось разобрать ответ /models: %s", exc)
+                return False
+
+            if not models:
+                logger.warning("Ответ /models не дал ни одной известной модели")
+                return False
+
+            # Точные capability-флаги, long-context тиры и лимит выхода есть
+            # только в /models/{id}/endpoints. Ошибки по отдельной модели не
+            # фатальны: остаются данные из /models (tier_threshold=None →
+            # legacy-поведение в compression.model_price).
+            await self._refresh_endpoints(client, headers, models)
         finally:
-            if owns_client and client is not None:
+            if owns_client:
                 await client.aclose()
-
-        try:
-            models = self._parse_api_response(data)
-        except Exception as exc:
-            logger.warning("Не удалось разобрать ответ /models: %s", exc)
-            return False
-
-        if not models:
-            logger.warning("Ответ /models не дал ни одной известной модели")
-            return False
 
         self._models = models
         self._source = "api"
         self._write_cache()
         logger.info("Каталог моделей обновлён из API (%d шт.)", len(models))
         return True
+
+    async def _refresh_endpoints(
+        self,
+        client: httpx.AsyncClient,
+        headers: dict[str, str],
+        models: dict[str, ModelInfo],
+    ) -> None:
+        """Дополнить модели данными из ``/models/{id}/endpoints``.
+
+        Зачем: ``/models`` отдаёт АГРЕГАТ ``supported_parameters`` по всем
+        провайдерам, и он может обещать параметр, которого нет ни у одного
+        endpoint (реальный случай: ``reasoning_effort`` у 6 моделей из 8 —
+        ``agg ⊃ union``). Плюс long-context тиры (``variable_pricings``
+        type=``prompt-threshold``) в ``/models`` отсутствуют вовсе.
+
+        Каждый запрос обёрнут в try/except: недоступность endpoints не должна
+        ронять обновление каталога — останутся значения из ``/models``.
+        """
+        base = self._api_base_url.rstrip("/")
+        for mid, info in models.items():
+            url = f"{base}/models/{mid}/endpoints"
+            try:
+                resp = await client.get(url, headers=headers)
+                resp.raise_for_status()
+                payload = resp.json()
+            except Exception as exc:
+                logger.info("Не удалось получить endpoints для %r: %s", mid, exc)
+                continue
+            try:
+                models[mid] = self._merge_endpoints(info, payload)
+            except Exception as exc:
+                logger.warning("Не удалось разобрать endpoints %r: %s", mid, exc)
+
+    @staticmethod
+    def _endpoint_list(payload: Any) -> list[dict[str, Any]]:
+        """``data`` в ответе endpoints — объект с массивом ``endpoints``."""
+        if not isinstance(payload, dict):
+            return []
+        data = payload.get("data")
+        if not isinstance(data, dict):
+            return []
+        eps = data.get("endpoints")
+        return [e for e in eps if isinstance(e, dict)] if isinstance(eps, list) else []
+
+    def _merge_endpoints(self, info: ModelInfo, payload: Any) -> ModelInfo:
+        """Наложить данные endpoints на модель из ``/models``.
+
+        Capability-флаги считаем по ПЕРЕСЕЧЕНИЮ: балансировщик может увести
+        запрос на любой endpoint, поэтому «параметр поддерживается моделью»
+        означает «его принимают все провайдеры». Иначе мы отправляем параметр,
+        который часть провайдеров молча игнорирует (а часть — отвергает).
+        """
+        eps = self._endpoint_list(payload)
+        if not eps:
+            return info
+
+        param_sets = [set(e.get("supported_parameters") or []) for e in eps]
+        universal = set.intersection(*param_sets) if param_sets else set()
+
+        # web_search — берём ОБЪЕДИНЕНИЕ: важно, есть ли поиск хоть где-то,
+        # а конкретный провайдер выбирается роутером.
+        web_search = any(
+            "web_search" in (e.get("pricing") or {})
+            or "web_search_options" in (e.get("supported_parameters") or [])
+            for e in eps
+        )
+
+        tier_threshold, tier_in, tier_out = self._extract_tier(eps)
+
+        completion_limits = [
+            e["max_completion_tokens"]
+            for e in eps
+            if isinstance(e.get("max_completion_tokens"), int)
+            and e["max_completion_tokens"] > 0
+        ]
+
+        return replace(
+            info,
+            tools="tools" in universal,
+            reasoning=("reasoning" in universal or "include_reasoning" in universal),
+            reasoning_effort="reasoning_effort" in universal,
+            verbosity="verbosity" in universal,
+            web_search_builtin=web_search,
+            tier_threshold=tier_threshold,
+            tier_input_factor=tier_in,
+            tier_output_factor=tier_out,
+            max_completion_tokens=min(completion_limits) if completion_limits else 0,
+        )
+
+    @staticmethod
+    def _extract_tier(
+        eps: list[dict[str, Any]],
+    ) -> tuple[int | None, float, float]:
+        """Long-context тир из ``variable_pricings``.
+
+        Возвращает ``(threshold, input_factor, output_factor)``:
+        ``(0, 1.0, 1.0)`` — endpoints получены, тира нет;
+        ``(None, 1.0, 1.0)`` — данных нет (не смогли посчитать).
+        """
+        rows: list[tuple[int, float, float]] = []
+        for e in eps:
+            pricing = e.get("pricing") or {}
+            base_prompt = pricing.get("prompt")
+            base_completion = pricing.get("completion")
+            for vp in e.get("variable_pricings") or []:
+                if not isinstance(vp, dict) or vp.get("type") != "prompt-threshold":
+                    continue
+                threshold = vp.get("threshold")
+                if not isinstance(threshold, int) or threshold <= 0:
+                    continue
+                in_f = 1.0
+                out_f = 1.0
+                if base_prompt and vp.get("prompt"):
+                    in_f = float(vp["prompt"]) / float(base_prompt)
+                if base_completion and vp.get("completion"):
+                    out_f = float(vp["completion"]) / float(base_completion)
+                rows.append((threshold, in_f, out_f))
+
+        if not rows:
+            return 0, 1.0, 1.0
+
+        # Порог одинаков у всех провайдеров модели; берём самый частый на случай
+        # расхождения, чтобы не занизить оценку стоимости.
+        threshold = min(r[0] for r in rows)
+        same_thr = [r for r in rows if r[0] == threshold]
+        in_factor = max(r[1] for r in same_thr)
+        out_factor = max(r[2] for r in same_thr)
+        return threshold, in_factor, out_factor
 
     # ------------------------------------------------------------------
     # Парсинг

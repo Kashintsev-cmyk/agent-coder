@@ -118,8 +118,12 @@ async def cb_menu_reasoning(query: CallbackQuery) -> None:
         await query.answer("Нет сессии", show_alert=True)
         return
     m = catalog.get(session.model)
-    if not m or not m.reasoning:
-        await query.answer("Модель не поддерживает reasoning", show_alert=True)
+    # reasoning_effort, а не reasoning: у claude/gpt-6* reasoning есть, а
+    # градации усилий нет (0/N endpoints) — уровни в меню ни на что не влияют.
+    if not m or not m.reasoning_effort:
+        await query.answer(
+            "Модель не поддерживает настройку уровня reasoning", show_alert=True
+        )
         return
     await query.message.edit_text(
         f"💭 <b>Уровень reasoning</b>\n\nТекущий: <b>{session.reasoning_effort}</b>",

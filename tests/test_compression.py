@@ -705,11 +705,13 @@ async def test_compression_cost_fallback_when_provider_silent(monkeypatch):
 
 @pytest.mark.asyncio
 async def test_compression_cost_uses_tier_above_threshold(monkeypatch):
-    """Fallback-расчёт учитывает long-context тир: ×5 выше порога.
+    """Fallback-расчёт учитывает long-context тир модели: выше порога ×N.
 
-    Порог опускаем до 10 токенов, чтобы попасть в тир на короткой истории,
-    и сравниваем два прогона: под порогом (1000) и над ним (5) — при
-    одинаковых messages цена должна отличаться ровно в TIER_FACTOR.
+    Тир задаём на модели явно (``tier_threshold``), а не глобальной
+    константой: с 2026-11-21 порог и множители приходят из
+    ``/models/{id}/endpoints`` и у разных моделей разные (haiku ×5,
+    gpt-6* вход ×2 / выход ×1.5). Порог опускаем до 10 токенов, чтобы
+    попасть в тир на короткой истории.
     """
     from dataclasses import replace
 
@@ -718,20 +720,30 @@ async def test_compression_cost_uses_tier_above_threshold(monkeypatch):
 
     base = catalog.get(compression.config.SUMMARY_MODEL)
     assert base is not None
-    priced = replace(base, input_price=1000.0, output_price=0.0, context=10**9)
+    priced = replace(
+        base,
+        input_price=1000.0,
+        output_price=0.0,
+        context=10**9,
+        tier_threshold=10,
+        tier_input_factor=5.0,
+        tier_output_factor=5.0,
+    )
     monkeypatch.setattr(catalog, "get", lambda mid: priced)
 
     s1 = _session_for_compress()
-    monkeypatch.setattr(compression, "TIER_THRESHOLD_TOKENS", 10_000)
     low = await compression.compress(s1, _ZeroCostClient(reply="СЖАТО"))
     assert low is not None and low.cost > 0
 
+    # Тот же вход, но тир отключён (tier_threshold=0) — цена должна быть
+    # ровно в 5 раз меньше, чем у прогона выше порога.
+    no_tier = replace(priced, tier_threshold=0)
+    monkeypatch.setattr(catalog, "get", lambda mid: no_tier)
     s2 = _session_for_compress()
-    monkeypatch.setattr(compression, "TIER_THRESHOLD_TOKENS", 10)
-    high = await compression.compress(s2, _ZeroCostClient(reply="СЖАТО"))
-    assert high is not None
+    cheap = await compression.compress(s2, _ZeroCostClient(reply="СЖАТО"))
+    assert cheap is not None
 
-    assert high.cost / low.cost == pytest.approx(compression.TIER_FACTOR, rel=0.01)
+    assert low.cost / cheap.cost == pytest.approx(5.0, rel=0.01)
 
 
 @pytest.mark.asyncio

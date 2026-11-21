@@ -578,9 +578,13 @@ async def cmd_reasoning(message: Message) -> None:
     from agent_coder.model_catalog import catalog
 
     m = catalog.get(session.model)
-    if not m or not m.reasoning:
+    # reasoning_effort, а не reasoning: градация усилий есть не у всех
+    # reasoning-моделей (2026-11-21: haiku/gpt-6*/sonnet/opus — 0/N endpoints).
+    if not m or not m.reasoning_effort:
         name = m.name if m else session.model
-        await message.answer(f"Модель {name} не поддерживает reasoning.")
+        await message.answer(
+            f"Модель {name} не поддерживает настройку уровня reasoning."
+        )
         return
     await message.answer(
         f"💭 <b>Reasoning</b>\n\nТекущий: <b>{session.reasoning_effort}</b>",

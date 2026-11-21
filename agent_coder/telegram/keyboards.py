@@ -269,8 +269,11 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
 
     # Компактный блок быстрых настроек: reasoning | web | tier | verbosity.
     # Адаптивно — только применимые к модели; раскладка 1/2/3/2+2.
+    # reasoning гейтим по reasoning_effort, а не по reasoning: у haiku/gpt-6*
+    # reasoning есть, а градации усилий нет — уровни в /reasoning не на что
+    # не влияют (probe 2026-11-21: параметр молча игнорируется).
     quick: list[InlineKeyboardButton] = []
-    if m and m.reasoning:
+    if m and m.reasoning_effort:
         quick.append(
             InlineKeyboardButton(
                 text=f"💭 {session.reasoning_effort}",

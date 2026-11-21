@@ -75,6 +75,17 @@ class ModelInfo:
     # тарифицируется (или RouterAI не отдал цену).
     cache_read_price: float = 0.0
     cache_write_price: float = 0.0
+    # Long-context тир провайдера (RouterAI: variable_pricings,
+    # type="prompt-threshold"). Выше порога пересчитывается ВСЯ ставка, а не
+    # только превышение. Источник — /models/{id}/endpoints, в /models тиров нет.
+    #   None  — данных нет (endpoints недоступны) → legacy-константы;
+    #   0     — тира у модели нет (перепроверено по API);
+    #   >0    — порог в токенах + множители для входа и выхода.
+    tier_threshold: int | None = None
+    tier_input_factor: float = 1.0
+    tier_output_factor: float = 1.0
+    # Лимит выхода провайдера (endpoints.max_completion_tokens). 0 — неизвестен.
+    max_completion_tokens: int = 0
     tag: str = ""
 
     def __post_init__(self) -> None:
@@ -196,11 +207,16 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         reasoning=True,
         vision=True,
         tools=True,
+        # 2026-11-21: /endpoints — reasoning_effort 11/49. Частичная поддержка:
+        # профиль (profiles.py) намеренно шлёт "high", часть провайдеров его
+        # применяет. Флаг не трогаем, чтобы не сломать калибровку B9.2e.
         reasoning_effort=True,
         web_search_builtin=False,
         input_price=5.288997,
         output_price=29.383318,
         cache_read_price=0.293833,
+        # 0 = тиров нет (проверено по 49 endpoints). Legacy ×5 неприменим.
+        tier_threshold=0,
         tag="chat_bot fast-tier",
     ),
     "anthropic/claude-haiku-5.5": ModelInfo(
@@ -210,12 +226,17 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         reasoning=True,
         vision=True,
         tools=True,
-        reasoning_effort=True,
+        # 2026-11-21: /endpoints — reasoning_effort 0/5. Агрегат /models врёт.
+        reasoning_effort=False,
         web_search_builtin=True,
         verbosity=True,
         input_price=10.684843,
         output_price=53.424215,
         cache_read_price=1.068484,
+        # prompt-threshold >100K: вход и выход ×5.
+        tier_threshold=100_000,
+        tier_input_factor=5.0,
+        tier_output_factor=5.0,
         tag="chat_bot fast-tier; audit/verify/summary",
     ),
     "openai/gpt-6-luna-pro": ModelInfo(
@@ -225,12 +246,17 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         reasoning=True,
         vision=True,
         tools=True,
-        reasoning_effort=True,
+        # 2026-11-21: /endpoints — reasoning_effort 0/4. Агрегат /models врёт.
+        reasoning_effort=False,
         web_search_builtin=True,
         verbosity=True,
         input_price=10.684843,
         output_price=53.424215,
         cache_read_price=1.068484,
+        # prompt-threshold >272K: вход ×2, выход ×1.5.
+        tier_threshold=272_000,
+        tier_input_factor=2.0,
+        tier_output_factor=1.5,
         tag="chat_bot fast-tier",
     ),
     "deepseek/deepseek-v4-pro-0813": ModelInfo(
@@ -240,11 +266,15 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         reasoning=True,
         vision=False,
         tools=True,
+        # 2026-11-21: /endpoints — reasoning_effort 1/20. Оставляем True ради
+        # профиля, но фактически применим лишь на единичных провайдерах.
         reasoning_effort=True,
         web_search_builtin=False,
         input_price=19.74559,
         output_price=59.23677,
         cache_read_price=0.628269,
+        # 0 = тиров нет (проверено по 20 endpoints).
+        tier_threshold=0,
         tag="chat_bot balanced-tier",
     ),
     "openai/gpt-6.1-terra-pro": ModelInfo(
@@ -254,12 +284,17 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         reasoning=True,
         vision=True,
         tools=True,
-        reasoning_effort=True,
+        # 2026-11-21: /endpoints — reasoning_effort 0/4. Агрегат /models врёт.
+        reasoning_effort=False,
         web_search_builtin=True,
         verbosity=True,
         input_price=106.84843,
         output_price=534.24215,
         cache_read_price=5.342422,
+        # prompt-threshold >272K: вход ×2, выход ×1.5.
+        tier_threshold=272_000,
+        tier_input_factor=2.0,
+        tier_output_factor=1.5,
         tag="chat_bot balanced-tier",
     ),
     "anthropic/claude-sonnet-5.5": ModelInfo(
@@ -269,12 +304,15 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         reasoning=True,
         vision=True,
         tools=True,
-        reasoning_effort=True,
+        # 2026-11-21: /endpoints — reasoning_effort 0/5. Агрегат /models врёт.
+        reasoning_effort=False,
         web_search_builtin=True,
         verbosity=True,
         input_price=213.69686,
         output_price=1068.4843,
         cache_read_price=10.684843,
+        # 0 = тиров нет (проверено по 5 endpoints).
+        tier_threshold=0,
         tag="chat_bot balanced-tier",
     ),
     "openai/gpt-6.1-sol-pro": ModelInfo(
@@ -284,12 +322,17 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         reasoning=True,
         vision=True,
         tools=True,
-        reasoning_effort=True,
+        # 2026-11-21: /endpoints — reasoning_effort 0/4. Агрегат /models врёт.
+        reasoning_effort=False,
         web_search_builtin=True,
         verbosity=True,
         input_price=213.69686,
         output_price=1068.4843,
         cache_read_price=10.684843,
+        # prompt-threshold >272K: вход ×2, выход ×1.5.
+        tier_threshold=272_000,
+        tier_input_factor=2.0,
+        tier_output_factor=1.5,
         tag="chat_bot balanced-tier",
     ),
     "anthropic/claude-opus-5.5": ModelInfo(
@@ -299,12 +342,15 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         reasoning=True,
         vision=True,
         tools=True,
-        reasoning_effort=True,
+        # 2026-11-21: /endpoints — reasoning_effort 0/6. Агрегат /models врёт.
+        reasoning_effort=False,
         web_search_builtin=True,
         verbosity=True,
         input_price=427.39372,
         output_price=2136.9686,
         cache_read_price=21.369686,
+        # 0 = тиров нет (проверено по 6 endpoints).
+        tier_threshold=0,
         tag="chat_bot premium-tier",
     ),
     "google/gemini-4-argon": ModelInfo(

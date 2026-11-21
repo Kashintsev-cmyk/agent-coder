@@ -214,6 +214,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 | `read_file` | Чтение файла с нумерацией строк (`offset`/`limit`, до 2000 строк) | нет |
 | `list_files` | Рекурсивный список (glob-шаблон, до 500 записей) | нет |
 | `search` | Поиск через `ripgrep` (до 200 совпадений, таймаут 60 с) | нет |
+| `web_search` | Поиск в интернете через встроенный web search RouterAI: ответ + источники (`url_citation`) | нет |
 | `write_file` | Создать / перезаписать файл | нет |
 | `edit_file` | Точечная замена `old_string` → `new_string` | нет |
 | `run_command` | Shell в workspace. Whitelist read-only + pipe — без вопросов; safe `sed -n`/`awk`/`rg`/`diff` в pipe — тоже; read-only группы: контрольные суммы (`md5sum`/`sha1/224/256/384/512sum`/`b2sum`/`cksum`), система (`lscpu`/`lsmem`/`lsmod`/`lspci`/`lsusb`), процессы (`pidof`), текст (`strings`/`paste`/`fold`), утилиты (`whereis`/`type`/`basename`/`dirname`); `git diff`/`blame` — **заблокированы** (выводят содержимое, для diff есть tool `git_diff`); остальное (`rm`, `kill`, `sudo`, `env`, `;`) — через approval. В AUDIT c `--scope` пути чтения ограничены областью аудита. Таймаут 300 с | по команде |
@@ -322,6 +323,7 @@ Haiku как победителя и DeepSeek Flash как fallback.
 | `SERVICE_TIER` | `default` | `default` / `flex` / `priority` |
 | `WEB_SEARCH_ENGINE` | `native` | `native` / `exa` |
 | `WEB_SEARCH_MAX_RESULTS` | `5` | Сколько результатов запрашивать |
+| `WEB_SEARCH_TOOL_MODEL` | `anthropic/claude-haiku-5.5` | Модель для инструмента `web_search` |
 
 **Модели**
 

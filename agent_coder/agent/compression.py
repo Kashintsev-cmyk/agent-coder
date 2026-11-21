@@ -112,10 +112,16 @@ _fail_streak: dict[str, int] = {}
 _fail_until: dict[str, float] = {}
 
 # Long-context тир: выше порога провайдер пересчитывает ВСЮ ставку за 1M
-# (не только превышение). Haiku 5.5: >100K input → 52.63/263 ₽/1M (×5 к
-# 10.53/52.63). В каталоге тиров нет (pricing — скаляры), поэтому порог
-# держим здесь. 90K = 0.9 × TIER_THRESHOLD — запас под эвристику
-# estimate_tokens (ratio провайдер/эвристика 0.31..1.85). См. 43ce75b.
+# (не только превышение). Реальные значения теперь приходят из
+# /models/{id}/endpoints → ModelInfo.tier_* (см. docs/ROUTERAI_API.md):
+# haiku-5.5 >100K ×5, gpt-6* >272K вход ×2 / выход ×1.5, у deepseek и
+# claude-sonnet/opus тиров нет вовсе.
+#
+# Эти две константы — legacy-fallback ТОЛЬКО для моделей, по которым
+# endpoints получить не удалось (tier_threshold is None). Значения
+# откалиброваны под haiku — самый частый случай (SUMMARY_MODEL). 90K =
+# 0.9 × TIER_THRESHOLD — запас под эвристику estimate_tokens (ratio
+# провайдер/эвристика 0.31..1.85). См. 43ce75b.
 TIER_THRESHOLD_TOKENS = 100_000
 TIER_FACTOR = 5.0
 
@@ -160,9 +166,10 @@ def model_price(
 
     ``cache_read_tokens`` и ``cache_write_tokens`` — части ``tokens``, а не
     дополнительные токены. Порог long-context проверяется по полному input;
-    при превышении вся оценка умножается на TIER_FACTOR. Если отдельный
-    cache-тариф неизвестен, для этой части используется обычная input-цена.
-    Модель без input-цены даёт 0.0: оценить стоимость невозможно.
+    при превышении вход и выход умножаются на свои множители тира
+    (у gpt-6* вход ×2, а выход только ×1.5 — поэтому множители раздельные).
+    Если отдельный cache-тариф неизвестен, для этой части используется
+    обычная input-цена. Модель без input-цены даёт 0.0.
     """
     from agent_coder.model_catalog import catalog
 
@@ -180,8 +187,29 @@ def model_price(
     input_cost = (
         uncached * m.input_price + cached_read * read_price + cached_write * write_price
     )
-    factor = TIER_FACTOR if tokens > TIER_THRESHOLD_TOKENS else 1.0
-    return (input_cost + output_tokens * m.output_price) / 1e6 * factor
+    output_cost = output_tokens * m.output_price
+
+    in_factor, out_factor = _tier_factors(m, tokens)
+    return (input_cost * in_factor + output_cost * out_factor) / 1e6
+
+
+def _tier_factors(m: Any, tokens: int) -> tuple[float, float]:
+    """Множители long-context тира для ``tokens`` входа.
+
+    ``tier_threshold`` — три состояния (см. ``ModelInfo``):
+      * ``None`` — endpoints не получены, данных нет → legacy-пара
+        ``TIER_THRESHOLD_TOKENS``/``TIER_FACTOR`` (откалибрована под haiku).
+      * ``0`` — проверено по API: тира у модели нет.
+      * ``>0`` — порог; выше него вход ×``tier_input_factor``,
+        выход ×``tier_output_factor``.
+    """
+    if m.tier_threshold is None:
+        if tokens > TIER_THRESHOLD_TOKENS:
+            return TIER_FACTOR, TIER_FACTOR
+        return 1.0, 1.0
+    if m.tier_threshold and tokens > m.tier_threshold:
+        return m.tier_input_factor, m.tier_output_factor
+    return 1.0, 1.0
 
 
 def summary_model_problem(

@@ -71,6 +71,20 @@ def _priced_models() -> list[str]:
 PRICED = _priced_models()
 
 
+def _expected_tier(model: str) -> tuple[int | None, float, float]:
+    """Тир модели: ``(порог, множитель входа, множитель выхода)``.
+
+    ``None`` в пороге — endpoints не получены, действует legacy-пара
+    ``TIER_THRESHOLD_TOKENS``/``TIER_FACTOR`` (откалибрована под haiku).
+    ``0`` — проверено по API: тира у модели нет.
+    """
+    info = catalog.get(model)
+    assert info is not None
+    if info.tier_threshold is None:
+        return TIER_THRESHOLD_TOKENS, TIER_FACTOR, TIER_FACTOR
+    return info.tier_threshold, info.tier_input_factor, info.tier_output_factor
+
+
 def _cost(tokens: int, model: str) -> float:
     value = _estimate_cost_rub(_messages(tokens), model)
     assert value is not None, f"{model}: pre-check отключён (цена 0?)"
@@ -248,16 +262,23 @@ def test_no_tier_cliff_inside_history_limit(model):
 
 
 @pytest.mark.parametrize("model", PRICED)
-def test_tier_cliff_is_x5_at_threshold(model):
-    """Выше порога цена скачет ×5 сразу — пересчёт всей ставки.
+def test_tier_cliff_matches_model_tier(model):
+    """Скачок цены ровно на множителе ЭТОЙ модели; у моделей без тира его нет.
 
-    Множитель здесь — литерал, а не TIER_FACTOR из модуля: иначе подмена
-    константы на 1.0 проходила бы незамеченной (обе стороны сравнения
-    менялись бы одинаково).
+    Множитель берём из каталога (источник — ``/endpoints``), а множители
+    в сравнении пишем литералами: иначе подмена данных каталога проходила бы
+    незамеченной (обе стороны сравнения менялись бы одинаково).
     """
-    below = model_price(model, TIER_THRESHOLD_TOKENS)
-    above = model_price(model, TIER_THRESHOLD_TOKENS + 1)
-    assert above / below == pytest.approx(5.0, rel=0.01)
+    threshold, in_factor, _ = _expected_tier(model)
+    if not threshold:
+        # Проверено по API: тира нет — цена линейна и за прежним порогом.
+        below = model_price(model, TIER_THRESHOLD_TOKENS)
+        above = model_price(model, TIER_THRESHOLD_TOKENS + 1)
+        assert above / below == pytest.approx(1.0, rel=0.01)
+        return
+    below = model_price(model, threshold)
+    above = model_price(model, threshold + 1)
+    assert above / below == pytest.approx(in_factor, rel=0.01)
 
 
 def test_tier_threshold_is_strictly_greater():
@@ -281,19 +302,23 @@ def test_model_price_is_linear_below_threshold(model):
 
 @pytest.mark.parametrize("model", PRICED)
 def test_model_price_counts_output(model):
-    """Выход входит в ту же ставку и в тот же множитель тира."""
+    """Выход входит в ту же ставку и в свой множитель тира."""
     info = catalog.get(model)
     assert info is not None
+    threshold, _, out_factor = _expected_tier(model)
     out = 2000
     with_out = model_price(model, 50_000, output_tokens=out)
     without = model_price(model, 50_000)
     assert with_out - without == pytest.approx(out * info.output_price / 1e6)
-    # Выше порога оба компонента тоже ×TIER_FACTOR.
-    with_out_hi = model_price(model, TIER_THRESHOLD_TOKENS + 1000, output_tokens=out)
-    without_hi = model_price(model, TIER_THRESHOLD_TOKENS + 1000)
-    assert with_out_hi - without_hi == pytest.approx(
-        out * info.output_price / 1e6 * 5.0
-    )
+    if threshold:
+        # Выше порога выход умножается на СВОЙ множитель модели: у gpt-6*
+        # вход ×2, а выход только ×1.5 — поэтому их нельзя считать одним.
+        above = threshold + 1000
+        with_out_hi = model_price(model, above, output_tokens=out)
+        without_hi = model_price(model, above)
+        assert with_out_hi - without_hi == pytest.approx(
+            out * info.output_price / 1e6 * out_factor
+        )
 
 
 def test_model_price_unknown_or_free_is_zero():
@@ -344,13 +369,23 @@ def test_model_price_cache_rates_fall_back_to_prompt_rate(monkeypatch):
 
 
 def test_model_price_cache_cost_gets_long_context_factor(monkeypatch):
-    """The >100K factor applies to the cache-aware total, based on full input."""
+    """Множитель тира применяется к cache-aware итогу по полному входу.
+
+    Тир задаём на модели явно: у PRICED[0] (deepseek) тира в API нет, и
+    тест проверял бы мёртвую ветку.
+    """
     from dataclasses import replace
 
     info = catalog.get(PRICED[0])
     assert info is not None
     priced = replace(
-        info, input_price=10.0, cache_read_price=1.0, cache_write_price=15.0
+        info,
+        input_price=10.0,
+        cache_read_price=1.0,
+        cache_write_price=15.0,
+        tier_threshold=TIER_THRESHOLD_TOKENS,
+        tier_input_factor=5.0,
+        tier_output_factor=5.0,
     )
     monkeypatch.setattr(catalog, "get", lambda model_id: priced)
 
