@@ -28,6 +28,9 @@ class Usage:
     output_tokens: int = 0
     cache_read_tokens: int = 0
     cache_write_tokens: int = 0
+    # Токены рассуждений (completion_tokens_details.reasoning_tokens).
+    # Claude через RouterAI всегда отдаёт 0 — тогда метрика не показывается.
+    reasoning_tokens: int = 0
     # cost — float (не Decimal). Для UI и сумм до ~1e9 ₽ ошибка
     # < 1 копейки. Если однажды понадобится точная бухгалтерия
     # (биллинг, платёжка) — переходить на Decimal осознанно,
@@ -40,6 +43,7 @@ class Usage:
             output_tokens=self.output_tokens + other.output_tokens,
             cache_read_tokens=self.cache_read_tokens + other.cache_read_tokens,
             cache_write_tokens=self.cache_write_tokens + other.cache_write_tokens,
+            reasoning_tokens=self.reasoning_tokens + other.reasoning_tokens,
             cost=self.cost + other.cost,
         )
 
@@ -81,6 +85,9 @@ class ToolCall:
 class AssistantMessage:
     content: str | None
     tool_calls: list[ToolCall] = field(default_factory=list)
+    # Текст рассуждений (chain-of-thought). В SDK такого поля нет: RouterAI
+    # кладёт его в message.model_extra["reasoning"] (probe 2026-11-22).
+    reasoning: str = ""
 
 
 @dataclass

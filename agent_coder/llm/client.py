@@ -358,6 +358,7 @@ class LLMClient:
         assistant = AssistantMessage(
             content=strip_dsml(msg.content or ""),
             tool_calls=tool_calls,
+            reasoning=_extract_reasoning(msg),
         )
         return ChatResponse(message=assistant, usage=usage, raw=response)
 
@@ -464,6 +465,26 @@ def _parse_retry_after(exc: Exception) -> float | None:
         return None
 
 
+def _extract_reasoning(message: Any) -> str:
+    """Текст рассуждений модели (chain-of-thought) из сообщения RouterAI.
+
+    В SDK `ChatCompletionMessage` такого поля нет — RouterAI кладёт его в
+    `model_extra["reasoning"]`. Живой probe 2026-11-22 (deepseek-v4.1-flash,
+    reasoning_effort=high) вернул именно там: «We need answer one number.
+    17*23=391…». Пробуем также `reasoning_content` — так поле называют
+    OpenAI-совместимые прокси вроде vLLM.
+
+    Пустая строка, если провайдер рассуждения не отдал: у Claude через
+    RouterAI поля нет, и это нормальный режим, а не ошибка.
+    """
+    extra = getattr(message, "model_extra", None) or {}
+    for key in ("reasoning", "reasoning_content"):
+        value = extra.get(key)
+        if isinstance(value, str) and value.strip():
+            return value.strip()
+    return ""
+
+
 def _extract_usage(response: Any) -> Usage:
     raw = getattr(response, "usage", None)
     if raw is None:
@@ -475,6 +496,14 @@ def _extract_usage(response: Any) -> Usage:
 
     input_tokens = _get("prompt_tokens") or _get("input_tokens")
     output_tokens = _get("completion_tokens") or _get("output_tokens")
+    # Токены рассуждений. Claude через RouterAI отдаёт 0, DeepSeek — реальное
+    # число; метрика нужна, чтобы видеть, сколько «съел» reasoning.
+    completion_details = getattr(raw, "completion_tokens_details", None)
+    reasoning_tokens = (
+        int(getattr(completion_details, "reasoning_tokens", 0) or 0)
+        if completion_details is not None
+        else 0
+    )
 
     details = getattr(raw, "prompt_tokens_details", None)
     cache_read = 0
@@ -507,5 +536,6 @@ def _extract_usage(response: Any) -> Usage:
         output_tokens=output_tokens,
         cache_read_tokens=cache_read,
         cache_write_tokens=cache_write,
+        reasoning_tokens=reasoning_tokens,
         cost=cost,
     )

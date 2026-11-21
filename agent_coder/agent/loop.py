@@ -35,6 +35,10 @@ class LoopEvents:
     on_usage: Callable[[Usage], Any]
     on_error: Callable[[str], Any]
     request_approval: Callable[[ToolCall], Awaitable[bool]]
+    # Необязательный: текст рассуждений модели (chain-of-thought).
+    # None — UI рассуждения не показывает (CLI). В Telegram блок свёрнутый,
+    # поэтому показываем всегда, когда провайдер их отдал.
+    on_reasoning: Callable[[str], Any] | None = None
     # Необязательный: вызывается после успешного сжатия истории.
     # None — UI про сжатие не уведомляем (например, CLI-режим).
     on_compression: Callable[[Any], Any] | None = None
@@ -408,6 +412,7 @@ class AgentLoop:
                 )
 
             assistant_msg = response.message
+            await self._emit_reasoning(assistant_msg)
             if assistant_msg.content:
                 await _maybe_await(self.events.on_assistant_text, assistant_msg.content)
 
@@ -752,6 +757,7 @@ class AgentLoop:
             )
 
         assistant_msg = response.message
+        await self._emit_reasoning(assistant_msg)
         if assistant_msg.content:
             await _maybe_await(self.events.on_assistant_text, assistant_msg.content)
 
@@ -783,6 +789,23 @@ class AgentLoop:
         )
         inc = 0 if ws_final == ws_before else 1
         return inc, None
+
+    async def _emit_reasoning(self, msg: Any) -> None:
+        """Показать рассуждения модели, если провайдер их отдал.
+
+        RouterAI кладёт chain-of-thought в message.model_extra["reasoning"]
+        (probe 2026-11-22); client.py уже переносит их в
+        AssistantMessage.reasoning. Колбэк необязательный: в CLI рассуждения
+        не нужны, в Telegram рендерятся свёрнутым <blockquote expandable>.
+        """
+        # getattr: on_reasoning появился позже остальных колбэков, а внешние
+        # реализации LoopEvents (тестовые _NullEvents) его не знают.
+        callback = getattr(self.events, "on_reasoning", None)
+        if callback is None:
+            return
+        reasoning = getattr(msg, "reasoning", "") or ""
+        if reasoning.strip():
+            await _maybe_await(callback, reasoning)
 
     def _work_state_handle(self) -> WorkStateHandle:
         """Узкий handle над живым session.work_state (не копия).

@@ -5,6 +5,7 @@ from __future__ import annotations
 import html
 
 from agent_coder.llm.types import ToolCall, Usage, format_cost
+from agent_coder.telegram.formatting import to_telegram_html
 
 TOOL_ICONS = {
     "read_file": "📖",
@@ -44,19 +45,53 @@ def render_tool_result(tc: ToolCall, result: str) -> str:
     return f"   {mark} <i>{html_escape(preview)}</i>"
 
 
-def render_usage(usage: Usage) -> str:
-    """Строка с токенами и стоимостью — в blockquote для визуального выделения."""
+def render_usage(usage: Usage, *, max_chars: int = 0) -> str:
+    """Строка с токенами и стоимостью — в blockquote для визуального выделения.
+
+    `write` показывается наравне с `cache`: прогрев префикса — такая же
+    метрика, и без неё непонятно, почему следующий ход дешевле (раньше поле
+    собиралось в `Usage`, но в футер не попадало).
+
+    `🧠` — токены рассуждений, только если провайдер их отдал (Claude через
+    RouterAI всегда 0, DeepSeek — реальное число).
+    """
     parts = [f"in {usage.input_tokens}", f"out {usage.output_tokens}"]
+    if usage.reasoning_tokens:
+        parts.append(f"🧠 {usage.reasoning_tokens}")
     if usage.cache_read_tokens:
         parts.append(f"cache {usage.cache_read_tokens}")
+    if usage.cache_write_tokens:
+        parts.append(f"write {usage.cache_write_tokens}")
     return (
         f"<blockquote>💰 {' / '.join(parts)} · {format_cost(usage.cost)}</blockquote>"
     )
 
 
 def render_assistant_text(text: str) -> str:
-    """Текст от ассистента — с префиксом, экранированный."""
-    return f"⏺ {html_escape(text)}"
+    """Текст от ассистента: markdown модели → HTML, с префиксом ⏺.
+
+    Раньше текст только экранировался, и пользователь видел «значки»
+    markdown как есть: `**жирный**`, `## Заголовок`, ```блоки кода```,
+    `- пункты`, `[ссылка](url)`. Конвертация — в `formatting.py`.
+    """
+    return f"⏺ {to_telegram_html(text)}"
+
+
+def render_reasoning(text: str) -> str:
+    """Рассуждения модели свёрнутым блоком.
+
+    `<blockquote expandable>` Telegram показывает одной строкой, которую
+    разворачивают нажатием: рассуждения часто длиннее самого ответа, и если
+    показывать их целиком, ответ уезжает за пределы экрана.
+
+    Текст экранируется и НЕ прогоняется через markdown: рассуждения — это
+    черновик модели (обрывки фраз, куски кода, звёздочки), и попытка
+    отформатировать его даёт мусорную разметку.
+    """
+    body = text.strip()
+    if not body:
+        return ""
+    return f"\n<blockquote expandable>💭 {html_escape(body)}</blockquote>"
 
 
 def render_compression(comp) -> str:

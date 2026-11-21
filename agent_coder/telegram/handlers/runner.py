@@ -45,6 +45,7 @@ class _TaskRunner:
     def events(self) -> LoopEvents:
         return LoopEvents(
             on_assistant_text=self._on_text,
+            on_reasoning=self._on_reasoning,
             on_tool_call=self._on_tool_call,
             on_tool_result=self._on_tool_result,
             on_usage=self._on_usage,
@@ -52,6 +53,13 @@ class _TaskRunner:
             request_approval=self._request_approval,
             on_compression=self._on_compression,
         )
+
+    async def _on_reasoning(self, text: str) -> None:
+        """Рассуждения модели — свёрнутый блок перед текстом ответа."""
+        block = renderer.render_reasoning(text)
+        if block:
+            self.buffer.append(block)
+            await self._schedule_edit()
 
     async def _on_text(self, text: str) -> None:
         self.buffer.append(renderer.render_assistant_text(text))
@@ -257,115 +265,119 @@ def _join_buffer(buffer: list[str]) -> str:
     return "\n".join(buffer)
 
 
-# Теги, внутри которых Telegram HTML «строгий»: разрыв пополам →
-# TelegramBadRequest «Can't find end tag» → сообщение теряется.
-_BLOCK_TAGS = ("pre", "code", "blockquote")
+# Теги, которые порождает рендерер и понимает Telegram. Разрыв тега пополам
+# даёт TelegramBadRequest «Can't find end tag» → сообщение теряется целиком.
+_HTML_TAG = re.compile(r"<[^>]+>")
+_TAG_NAME = re.compile(r"</?\s*([a-zA-Z][a-zA-Z0-9]*)")
+# Одиночные теги: их нельзя «переоткрывать» в следующей части.
+_VOID_TAGS = frozenset({"br", "hr", "img"})
 
 
-# Открывающий/закрывающий тег этих блоков (без учёта атрибутов —
-# у нас они всё равно не используются).
-def _open_block_tag(text: str) -> str | None:
-    """Имя незакрытого блочного тега (самого внутреннего) или None.
+def _update_tag_stack(
+    segment: str, stack: list[tuple[str, str]]
+) -> list[tuple[str, str]]:
+    """Обновить стек открытых тегов по сегменту.
 
-    Счёт по стеку: открыли <pre>, встретили </pre> — закрыли.
-    Возвращает имя тега, если в конце текста осталась открытая пара.
+    `stack` — `(имя, открывающий_тег)` в порядке открытия. На входе может быть
+    непустым: вызывающий переносит открытые теги из предыдущей части, чтобы
+    закрыть их в конце текущей.
     """
-    stack: list[str] = []
-    pattern = rf"<(/?)({'|'.join(_BLOCK_TAGS)})>"
-    for m in re.finditer(pattern, text):
-        closing, name = m.group(1), m.group(2)
-        if closing:
-            if stack and stack[-1] == name:
-                stack.pop()
-        else:
-            stack.append(name)
-    return stack[-1] if stack else None
+    for match in _HTML_TAG.finditer(segment):
+        tag = match.group(0)
+        name_match = _TAG_NAME.match(tag)
+        if name_match is None:
+            continue
+        name = name_match.group(1).lower()
+        if tag.startswith("</"):
+            for idx in range(len(stack) - 1, -1, -1):
+                if stack[idx][0] == name:
+                    del stack[idx]
+                    break
+        elif not tag.endswith("/>") and name not in _VOID_TAGS:
+            stack.append((name, tag))
+    return stack
+
+
+def _cut_pos(segment: str, budget: int) -> int:
+    """Где резать: перенос строки в пределах бюджета, но не внутри тега.
+
+    Разрез внутри `<...>` породит битый тег в обеих частях (`<code class="x"`
+    без `>` — Telegram отвергнет сообщение). Поэтому отступаем к началу тега.
+
+    Если тег начинается с нулевой позиции, отступать некуда: тогда отдаём её
+    целиком, даже если она чуть больше бюджета — иначе получился бы пустой
+    head и следующий чанк с обрубком тега.
+    """
+    if budget >= len(segment):
+        return len(segment)
+    cut = segment.rfind("\n", 0, budget + 1)
+    if cut <= 0:
+        cut = budget
+    last_open = segment.rfind("<", 0, cut)
+    if last_open != -1:
+        close = segment.find(">", last_open)
+        if close == -1 or close >= cut:
+            if last_open > 0:
+                return last_open
+            if close != -1:
+                return close + 1
+            return min(budget, len(segment))
+    return cut if cut > 0 else min(budget, len(segment))
 
 
 def _split_for_telegram(text: str, limit: int = 3900) -> list[str]:
-    """Разбить текст на части ≤ limit символов, не разрывая блочные теги.
+    """Разбить текст на части ≤ limit символов, не разрывая HTML-теги.
 
-    Рвём по границам строк. Если очередная часть обрывается внутри
-    <pre>/<code>/<blockquote>, сдвигаем точку реза до открывающего тега.
+    Рвём по границам строк (длинную строку без пробелов — по символам).
+    Часть закрывается всеми тегами, открытыми в ней, а следующая начинается
+    с их повторного открытия: Telegram отклоняет сообщение с незакрытым
+    тегом целиком, и `_render_parts` на такой ошибке откатывается в plain
+    text — один разорванный <b> на границе убивал разметку всего ответа.
+
+    Раньше здесь стоял `_fix_block_boundaries`, который склеивал части с
+    незакрытым блок-тегом, зная только pre/code/blockquote. <b>, <i> и <a>
+    он не видел, поэтому 'a'*3895 + '<b>жирный</b>' давал часть с <b> без
+    закрытия (регресс-тест в tests/test_split_telegram.py).
     """
-    if len(text) <= limit:
-        return [text]
+    if not text:
+        return [""]
+    if limit < 1:
+        raise ValueError("limit должен быть >= 1")
 
     parts: list[str] = []
-    current: list[str] = []
-    current_len = 0
-
-    def _flush() -> None:
-        nonlocal current, current_len
-        if current:
-            parts.append("\n".join(current))
-            current = []
-            current_len = 0
-
-    for line in text.split("\n"):
-        # Очень длинную строку (например, base64) режем вынужденно.
-        # Если внутри блочного тега — не режем, шлём как есть (Telegram
-        # словит по общему лимиту 4096, но лучше так, чем рвать тег).
-        while len(line) > limit:
-            _flush()
-            cut = line.rfind(" ", 0, limit)
-            cut = cut if cut > 0 else limit
-            parts.append(line[:cut])
-            line = line[cut:].lstrip()
-
-        added = len(line) + (1 if current else 0)
-        if current and current_len + added > limit:
-            _flush()
-            added = len(line)
-        current.append(line)
-        current_len += added
-
-        # Если после добавления строки в current остался открытый блок-
-        # тег и следующие строки могут его закрыть — не флашим сейчас,
-        # но на границе текущего чака проверим.
-        candidate = "\n".join(current)
-        if current_len >= limit * 0.9 and len(candidate) >= limit:
-            _flush()
-
-    _flush()
-
-    # Пост-обработка: если часть обрывается внутри блочного тега —
-    # сдвигаем границу. Делаем это итеративно, чтобы не рвать стыки.
-    result = _fix_block_boundaries(parts, limit)
-    return result
-
-
-def _fix_block_boundaries(parts: list[str], limit: int) -> list[str]:
-    """Склеить части, которые обрывают блочный тег, и снова порезать.
-
-    Простой подход: если в части открыт блок-тег, склеиваем её со следующей
-    и пробуем порезать ещё раз с меньшим limit'ом — на границе </...>.
-    Если и это не помогает — оставляем как есть (Telegram отклонит, будет
-    fallback на plain).
-    """
-    if len(parts) <= 1:
-        return parts
-
-    out: list[str] = []
-    buf = parts[0]
-    i = 1
-    while i < len(parts):
-        if _open_block_tag(buf) is not None:
-            # незакрытый блок → приклеиваем следующую часть
-            buf = buf + "\n" + parts[i]
-            i += 1
-            if len(buf) > 4096:
-                # вынужденно отправляем как есть — не можем закрыть тег
-                out.append(buf)
-                buf = ""
-                # продолжим с этого места
-                if i < len(parts):
-                    buf = parts[i]
-                    i += 1
-            continue
-        out.append(buf)
-        buf = parts[i]
-        i += 1
-    if buf:
-        out.append(buf)
-    return [p for p in out if p]
+    rest = text
+    carry: list[tuple[str, str]] = []
+    while True:
+        prefix = "".join(tag for _, tag in carry)
+        budget = limit - len(prefix)
+        if budget < 1:
+            # Патологический случай: открывающие теги сами не влезают в лимит.
+            # Отдаём остаток одним куском, чтобы не зациклиться.
+            parts.append(prefix + rest)
+            return parts
+        cut = _cut_pos(rest, budget)
+        head, tail = rest[:cut], rest[cut:]
+        stack = _update_tag_stack(head, list(carry))
+        closing = "".join(f"</{name}>" for name, _ in reversed(stack))
+        # Закрывающие теги тоже занимают место — ужимаем, пока не влезет.
+        #
+        # ОБЯЗАТЕЛЬНОЕ условие прогресса: каждый шаг обязан уменьшать cut.
+        # Без него был бесконечный цикл: в вырожденном случае (тег с нулевой
+        # позиции) `_cut_pos` возвращал конец тега, то есть значение БОЛЬШЕ
+        # запрошенного бюджета, и `cut - 1` давало ту же границу снова.
+        while len(prefix) + len(head) + len(closing) > limit and cut > 1:
+            shrunk = _cut_pos(rest, cut - 1)
+            if shrunk >= cut:
+                # Дальше ужимать некуда: единственный тег без закрытия не
+                # делится. Отдаём как есть — Telegram либо примет, либо
+                # сработает plain-text fallback в `_render_parts`.
+                break
+            cut = shrunk
+            head, tail = rest[:cut], rest[cut:]
+            stack = _update_tag_stack(head, list(carry))
+            closing = "".join(f"</{name}>" for name, _ in reversed(stack))
+        parts.append(prefix + head + closing)
+        carry = stack
+        rest = tail.lstrip("\n")
+        if not rest:
+            return parts
