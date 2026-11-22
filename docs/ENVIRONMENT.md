@@ -128,6 +128,41 @@ sudo botctl logs-follow agent-coder-bot   # journalctl -f
 4. Проверка: `sudo botctl list | grep agent-coder-bot` → `active`,
    `bash -ic 'cd ~/bots/agent-coder && echo $VIRTUAL_ENV'` → `.venv`.
 
+## GitHub CLI (`gh`) — host-level, боту не нужен
+
+`gh` нужен человеку, а не боту: смотреть CI с хоста — `gh run list`,
+`gh run watch`, `gh pr checks`. Бот в `gh` не ходит вовсе:
+GitHub-интеграция — `httpx` + `GITHUB_TOKEN` (`agent_coder/github_api.py`),
+push — обычный `git` по SSH.
+
+В apt-репозиториях Ubuntu 22.04 (jammy) пакета `gh` нет — только
+официальный репозиторий `cli.github.com`:
+
+```bash
+curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+  | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg >/dev/null
+echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+  | sudo tee /etc/apt/sources.list.d/github-cli.list >/dev/null
+sudo apt update && sudo apt install -y gh
+gh auth login          # или GH_TOKEN=… из .env
+```
+
+Готовый скрипт — `sessions/install-gh.sh` (идемпотентный, проверяет
+`command -v gh`). Пакет ставится в `/usr/bin/gh` — этот путь есть и в
+`PATH` юнита (`deploy/agent-coder-bot.service:15`).
+
+**Грабли:**
+
+- **Ставится только из интерактивного шелла.** Юнит идёт с
+  `NoNewPrivileges=true` (`deploy/agent-coder-bot.service:40`), поэтому
+  `sudo` из-под бота падает: `sudo: The "no new privileges" flag is set`.
+  Это by design (hardening), а не баг.
+- `~/.local/bin/gh` бот не увидит: этого пути нет в `PATH` юнита.
+- Если `gh` когда-нибудь понадобится **боту** — он пишет конфиг в
+  `~/.config/gh`, а `ProtectHome=read-only` (`:42`) сделает это
+  `EROFS`. Нужен `ReadWritePaths=-/home/botuser/.config/gh` либо
+  аутентификация через `Environment=GH_TOKEN=…`.
+
 ## См. также
 
 - `deploy/agent-coder-bot.service` — юнит (версионируется).

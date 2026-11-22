@@ -42,6 +42,21 @@ class TestRenderToolResult:
         out = renderer.render_tool_result(tc, "первая\nвторая")
         assert "вторая" not in out
 
+    def test_read_file_shows_line_range(self):
+        """read_file: в чате виден диапазон, а не обрезанный путь."""
+        tc = ToolCall(id="1", name="read_file")
+        out = renderer.render_tool_result(
+            tc, "очень/длинный/путь/к/файлу.py (строки 2001-4000 из 9000):\n  1│ x"
+        )
+        assert "2001-4000" in out
+        assert "9000" in out
+        assert "путь" not in out
+
+    def test_read_file_to_end_marked(self):
+        tc = ToolCall(id="1", name="read_file")
+        out = renderer.render_tool_result(tc, "a.py (строки 1-3 из 3):\n  1│ x")
+        assert "до конца" in out
+
 
 class TestRenderUsage:
     def test_basic(self):

@@ -31,7 +31,7 @@ DEFAULT_LIMITS: dict[str, int] = {
     "git_status": 2048,
     "git_log": 2048,
     "search": 2048,
-    "search_history": 2048,
+    "search_history": 4096,
     "list_files": 1024,
 }
 
@@ -47,7 +47,10 @@ READ_TAIL = 15
 SEARCH_TOP = 5
 SEARCH_SNIPPET = 120
 HISTORY_TOP = 5
-HISTORY_SNIPPET = 200
+# 200 → 600: история — это путь восстановления кода после compress, а 200
+# символов обрезали почти любую сигнатуру/тело функции. Лимит tool'а
+# (_fmt_search_history → _cap) поднят до 4096, чтобы 5×600 влезало целиком.
+HISTORY_SNIPPET = 600
 LIST_TOP = 10
 
 _ERROR_RE = re.compile(r"error|Error|FAIL|Traceback|Warning", re.IGNORECASE)

@@ -425,6 +425,21 @@ def _is_summary(msg: dict[str, Any]) -> bool:
     )
 
 
+# Лимиты tool-результатов при сборке транскрипта для резюме.
+# read_file режется мягче остальных: fallback head(40%)/tail(40%) от 2048
+# оставлял ~800+800 симв. из слайса на 2000 строк — терялись сигнатуры,
+# имена функций и номера строк, и модель перечитывала файл заново.
+# Это тот же класс бага, что cline#13923 (двойная обрезка: сначала tool,
+# потом транспорт).
+_SUMMARY_TOOL_LIMITS: dict[str, int] = {"read_file": 8192}
+_SUMMARY_DEFAULT_LIMIT = 2048
+
+
+def _summary_limit(tool_name: str) -> int:
+    """Лимит tool-результата в транскрипте для резюме (per-tool)."""
+    return _SUMMARY_TOOL_LIMITS.get(tool_name, _SUMMARY_DEFAULT_LIMIT)
+
+
 def format_for_summary(messages: list[dict[str, Any]]) -> str:
     """Плоский транскрипт для суммаризации.
 
@@ -463,7 +478,7 @@ def format_for_summary(messages: list[dict[str, Any]]) -> str:
             name = tool_names.get(tc_id, "") if isinstance(tc_id, str) else ""
             label = f"[TOOL {name}]" if name else "[TOOL]"
             extracted = tool_extract.extract(
-                name or "", {}, content, 2048, for_summary=True
+                name or "", {}, content, _summary_limit(name), for_summary=True
             )
             parts.append(f"{label}: {extracted}")
     return "\n\n".join(parts)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import html
+import re
 
 from agent_coder.llm.types import ToolCall, Usage, format_cost
 from agent_coder.telegram.formatting import to_telegram_html
@@ -37,8 +38,21 @@ def render_tool_call(tc: ToolCall) -> str:
     return f"{icon} <b>{html_escape(tc.name)}</b>({html_escape(args)})"
 
 
+_LINE_RANGE_RE = re.compile(r"строки (\d+)-(\d+) из (\d+)")
+
+
 def render_tool_result(tc: ToolCall, result: str) -> str:
     preview = result.strip().split("\n")[0]
+    # read_file: вместо «первой строки файла» показываем, что реально пришло —
+    # диапазон и объём. Раньше из слайса на 2000 строк в чате было видно
+    # только «файл.py (строки 1-2000 из 5000):», обрезанное до 80 симв.
+    if tc.name == "read_file":
+        m = _LINE_RANGE_RE.search(preview)
+        if m:
+            first, last, total = (int(g) for g in m.groups())
+            preview = f"строки {first}-{last} из {total}" + (
+                " (до конца)" if last >= total else ""
+            )
     if len(preview) > 80:
         preview = preview[:77] + "…"
     mark = "✗" if preview.startswith("Ошибка") else "✓"
