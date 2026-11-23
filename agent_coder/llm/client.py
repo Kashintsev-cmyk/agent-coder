@@ -177,6 +177,8 @@ def _build_request_kwargs(
     # 0/N endpoints. RouterAI такой параметр молча игнорирует (probe
     # 2026-11-21: HTTP 200 с параметром и без), но отправлять его бессмысленно:
     # UI показывал бы уровень reasoning, который ни на что не влияет.
+    if _supports(model, "reasoning_effort") is False:
+        reasoning_effort = None  # Явный сброс: модель не поддерживает, не отправлять
     if _supports(model, "reasoning_effort") is not False:
         if reasoning_effort and reasoning_effort not in ("none", ""):
             kwargs["reasoning_effort"] = reasoning_effort
