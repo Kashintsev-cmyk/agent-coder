@@ -153,6 +153,9 @@ class CompressionResult:
     # Фактические деньги за summary-вызов (usage.cost провайдера). Отдельно
     # от tokens_*: те — эвристика, эта — то, что списали.
     cost: float = 0.0
+    # Настроенный порог для session.model (включая per-model override).
+    # Отдельно от tokens_before: последнее — оценка размера истории.
+    compression_threshold: int = 0
 
 
 def model_price(
@@ -890,4 +893,5 @@ async def compress(session, client) -> CompressionResult | None:
         tokens_after=tokens_after,
         summary_count=session.summary_count,
         cost=summary_cost,
+        compression_threshold=soft,
     )

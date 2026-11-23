@@ -79,7 +79,7 @@ class TestRenderAssistantText:
 
 
 class TestRenderCompression:
-    def _comp(self, before=90000, after=18000, mb=40, ma=10, n=1):
+    def _comp(self, before=90000, after=18000, mb=40, ma=10, n=1, threshold=0):
         from agent_coder.agent.compression import CompressionResult
 
         return CompressionResult(
@@ -88,14 +88,19 @@ class TestRenderCompression:
             tokens_before=before,
             tokens_after=after,
             summary_count=n,
+            compression_threshold=threshold,
         )
 
     def test_shows_token_flow(self):
         out = renderer.render_compression(self._comp())
         assert "История сжата" in out
-        assert "90k" in out
-        assert "18k" in out
+        assert "оценка 90k → 18k токенов" in out
         assert "токенов" in out
+
+    def test_shows_model_specific_threshold_separately(self):
+        out = renderer.render_compression(self._comp(threshold=250000))
+        assert "порог сжатия 250k токенов" in out
+        assert "оценка 90k → 18k токенов" in out
 
     def test_shows_message_counts_and_index(self):
         out = renderer.render_compression(self._comp(mb=40, ma=10, n=3))

@@ -692,6 +692,21 @@ async def test_compression_cost_from_provider_usage():
 
 
 @pytest.mark.asyncio
+async def test_compression_result_reports_model_threshold(monkeypatch):
+    """UI receives the effective per-model threshold, not estimated tokens_before."""
+    from agent_coder.agent import compression
+
+    s = _session_for_compress()
+    s.model = "test/per-model-limit"
+    monkeypatch.setitem(compression.config.MODEL_HISTORY_TOKEN_LIMITS, s.model, 123456)
+
+    comp = await compression.compress(s, _ZeroCostClient(reply="СЖАТО"))
+
+    assert comp is not None
+    assert comp.compression_threshold == 123456
+
+
+@pytest.mark.asyncio
 async def test_compression_cost_fallback_when_provider_silent(monkeypatch):
     """usage.cost=0 → считаем по каталогу, а не показываем «бесплатно»."""
     from agent_coder.agent import compression

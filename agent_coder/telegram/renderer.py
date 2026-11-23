@@ -115,10 +115,15 @@ def render_compression(comp) -> str:
         return f"{n // 1000}k" if n >= 1000 else str(n)
 
     cost = f", {comp.cost:.2f}₽" if comp.cost > 0 else ""
+    threshold = (
+        f"порог сжатия {_k(comp.compression_threshold)} токенов; "
+        if comp.compression_threshold > 0
+        else ""
+    )
     return (
         f"📦 <b>История сжата</b>: "
-        f"{_k(comp.tokens_before)} → {_k(comp.tokens_after)} токенов "
-        f"<i>({comp.messages_before} → {comp.messages_after} сообщений, "
+        f"оценка {_k(comp.tokens_before)} → {_k(comp.tokens_after)} токенов "
+        f"<i>({threshold}{comp.messages_before} → {comp.messages_after} сообщений, "
         f"сжатие #{comp.summary_count}{cost})</i>"
     )
 
