@@ -150,11 +150,11 @@ class Config:
     ] or [
         "deepseek/deepseek-v4.1-flash-1017",
         "anthropic/claude-haiku-5.5",
-        "openai/gpt-6-luna-pro",
+        "openai/gpt-6-luna",
         "deepseek/deepseek-v4-pro-0813",
-        "openai/gpt-6.1-terra-pro",
+        "openai/gpt-6.1-terra",
         "anthropic/claude-sonnet-5.5",
-        "openai/gpt-6.1-sol-pro",
+        "openai/gpt-6.1-sol",
         "anthropic/claude-opus-5.5",
     ]
 
@@ -191,11 +191,11 @@ class Config:
         # exposing the same exact IDs as its runtime selector.
         "deepseek/deepseek-v4.1-flash-1017": ["act", "plan", "audit"],
         "anthropic/claude-haiku-5.5": ["act", "audit"],
-        "openai/gpt-6-luna-pro": ["plan", "act"],
+        "openai/gpt-6-luna": ["plan", "act"],
         "deepseek/deepseek-v4-pro-0813": ["plan", "act"],
-        "openai/gpt-6.1-terra-pro": ["plan", "act"],
+        "openai/gpt-6.1-terra": ["plan", "act"],
         "anthropic/claude-sonnet-5.5": [],
-        "openai/gpt-6.1-sol-pro": ["plan", "act"],
+        "openai/gpt-6.1-sol": ["plan", "act"],
         "anthropic/claude-opus-5.5": [],
     }
 
@@ -298,9 +298,9 @@ class Config:
                 "deepseek/deepseek-v4.1-flash-1017=400000,"
                 "deepseek/deepseek-v4-pro-0813=400000,"
                 "anthropic/claude-haiku-5.5=80000,"
-                "openai/gpt-6-luna-pro=250000,"
-                "openai/gpt-6.1-terra-pro=250000,"
-                "openai/gpt-6.1-sol-pro=250000,"
+                "openai/gpt-6-luna=250000,"
+                "openai/gpt-6.1-terra=250000,"
+                "openai/gpt-6.1-sol=250000,"
                 "anthropic/claude-sonnet-5.5=400000,"
                 "anthropic/claude-opus-5.5=400000",
             )
@@ -335,7 +335,7 @@ class Config:
     # ds-flash 8/364 / 0.46₽ — теряет больше половины фактов.
     # qwen 8/364 / 2.82₽ — дорого+плохо. 201K > context limit haiku
     # (~200K) — падает, для >200K fallback на kimi.
-    SUMMARY_MODEL: str = os.getenv("SUMMARY_MODEL", "anthropic/claude-haiku-5.5")
+    SUMMARY_MODEL: str = os.getenv("SUMMARY_MODEL", "openai/gpt-6-luna")
 
     # Retention медиа-вложений сессий: файлы старше N дней удаляются
     # фоновой задачей бота (раз в сутки + один раз при старте).

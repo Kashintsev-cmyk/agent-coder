@@ -25,6 +25,10 @@ LEGACY_IDS: set[str] = {
     "google/gemini-4-argon",
     "moonshotai/kimi-k2.7-code",
     "openai/gpt-6.1-sol",
+    # pro-варианты оставлены в каталоге для ручного /model и старых сессий.
+    "openai/gpt-6-luna-pro",
+    "openai/gpt-6.1-terra-pro",
+    "openai/gpt-6.1-sol-pro",
     "qwen/qwen3-coder-next",
     "x-ai/grok-4.20",
     "z-ai/glm-5.3",

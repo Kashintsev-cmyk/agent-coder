@@ -18,13 +18,13 @@ MODEL_PROFILES: dict[str, dict[str, Any]] = {
     # Claude 4.7+ / API 2026-10-21: temperature/top_p/top_k не поддерживаются,
     # не-дефолтное значение = 400. Для GPT-6 действует тот же контракт.
     "anthropic/claude-haiku-5.5": {},
-    "openai/gpt-6-luna-pro": {},
+    "openai/gpt-6-luna": {},
     "deepseek/deepseek-v4-pro-0813": {
         "reasoning_effort": "high",
     },
-    "openai/gpt-6.1-terra-pro": {},
+    "openai/gpt-6.1-terra": {},
     "anthropic/claude-sonnet-5.5": {},
-    "openai/gpt-6.1-sol-pro": {},
+    "openai/gpt-6.1-sol": {},
     "anthropic/claude-opus-5.5": {},
     # Legacy IDs retained for existing sessions and manual /model choices.
     "deepseek/deepseek-v4.1-flash": {
@@ -40,7 +40,6 @@ MODEL_PROFILES: dict[str, dict[str, Any]] = {
         "top_p": 0.95,
         "reasoning_effort": "max",
     },
-    "openai/gpt-6-luna": {},
     "mistralai/mistral-nemo": {
         "temperature": 0.35,
     },

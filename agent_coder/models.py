@@ -220,6 +220,25 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         output_price=1067.97,
         tag="агентный кодинг",
     ),
+    "openai/gpt-6.1-terra": ModelInfo(
+        id="openai/gpt-6.1-terra",
+        name="GPT-6.1 Terra",
+        context=1_050_000,
+        reasoning=True,
+        vision=True,
+        tools=True,
+        reasoning_effort=False,
+        web_search_builtin=True,
+        verbosity=True,
+        input_price=106.84843,
+        output_price=534.24215,
+        cache_read_price=5.342422,
+        # prompt-threshold >272K: вход ×2, выход ×1.5 (как у terra-pro).
+        tier_threshold=272_000,
+        tier_input_factor=2.0,
+        tier_output_factor=1.5,
+        tag="chat_bot balanced-tier",
+    ),
     # --- Прочие ранее известные модели (сохранены, чтобы старые id остались
     # валидными, если пользователь вернёт их в CURATED_MODEL_IDS). ---
     "deepseek/deepseek-v4.1-flash-1017": ModelInfo(
@@ -428,8 +447,9 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         reasoning_effort=False,
         web_search_builtin=False,
         verbosity=False,
-        input_price=10.53,
-        output_price=52.63,
+        input_price=10.684843,
+        output_price=53.424215,
+        cache_read_price=1.068484,
         tag="plan/act fallback (drop-in Haiku)",
     ),
     "x-ai/grok-4.20": ModelInfo(

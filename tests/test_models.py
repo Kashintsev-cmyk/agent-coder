@@ -57,11 +57,11 @@ def test_curated_ids_match_chat_bot_runtime_order():
     assert config.CURATED_MODEL_IDS == [
         "deepseek/deepseek-v4.1-flash-1017",
         "anthropic/claude-haiku-5.5",
-        "openai/gpt-6-luna-pro",
+        "openai/gpt-6-luna",
         "deepseek/deepseek-v4-pro-0813",
-        "openai/gpt-6.1-terra-pro",
+        "openai/gpt-6.1-terra",
         "anthropic/claude-sonnet-5.5",
-        "openai/gpt-6.1-sol-pro",
+        "openai/gpt-6.1-sol",
         "anthropic/claude-opus-5.5",
     ]
 
