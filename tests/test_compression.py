@@ -766,7 +766,9 @@ async def test_compression_cost_zero_for_unpriced_model(monkeypatch):
     """Модель без цены в каталоге → 0.0 (посчитать нельзя), без падения."""
     from agent_coder.agent import compression
 
-    monkeypatch.setattr(compression.config, "SUMMARY_MODEL", "нет/такой-модели")
+    monkeypatch.setattr(
+        compression, "_summary_model_for", lambda _target: "нет/такой-модели"
+    )
     s = _session_for_compress()
     comp = await compression.compress(s, _ZeroCostClient(reply="СЖАТО"))
     assert comp is not None
