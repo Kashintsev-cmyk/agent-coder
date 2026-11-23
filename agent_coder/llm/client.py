@@ -336,9 +336,13 @@ class LLMClient:
         provider = _extract_provider(response)
         # Per-request usage: нужен для замера кэша до/после compress
         # (итоговые суммы в сессии не позволяют разделить эффекты).
+        # id нужен для сверки стоимости через GET /generation?id=...
+        # service_tier — чтобы видеть фолбэк flex→default в логе.
         logger.info(
-            "LLM ← model=%s in=%d out=%d cache_read=%d cache_write=%d reasoning=%d cost=%.4f provider=%s",
+            "LLM ← model=%s id=%s tier=%s in=%d out=%d cache_read=%d cache_write=%d reasoning=%d cost=%.4f provider=%s",
             model,
+            getattr(response, "id", None) or "-",
+            getattr(response, "service_tier", None) or "-",
             usage.input_tokens,
             usage.output_tokens,
             usage.cache_read_tokens,
