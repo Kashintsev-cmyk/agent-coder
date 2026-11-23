@@ -32,15 +32,15 @@ def test_recommended_map_covers_all_modes() -> None:
         )
 
 
-def test_audit_recommended_is_haiku() -> None:
-    """Аудит по умолчанию — haiku-5.5 (2026-11-03 audit-бенчмарк).
+def test_audit_recommended_is_luna() -> None:
+    """Текущая рекомендуемая модель для аудита — GPT-6 Luna.
 
-    v4.1-flash (B9.2g, 2026-10-23) давал широкий MINOR-охват, но
-    пропускал BLOCKER/MAJOR: weather-bot 37 файлов, 29.34₽ / 60 findings
-    / 0 BLOCKER vs haiku 11.30₽ / 40 findings / 1 BLOCKER + 5 MAJOR,
-    ×2.6 дешевле и ×2.5 быстрее.
+    Исторический audit-бенчмарк 2026-11-03 сравнивал haiku-5.5 с
+    v4.1-flash: weather-bot 37 файлов, 29.34₽ / 60 findings / 0 BLOCKER
+    vs haiku 11.30₽ / 40 findings / 1 BLOCKER + 5 MAJOR, ×2.6 дешевле и
+    ×2.5 быстрее. Текущая рекомендация позже переключена на Luna.
     """
-    assert config.RECOMMENDED_MODEL_BY_MODE["audit"] == "anthropic/claude-haiku-5.5"
+    assert config.RECOMMENDED_MODEL_BY_MODE["audit"] == "openai/gpt-6-luna"
     # argon остаётся в FIT["audit"] — виден в UI как 🎯 audit.
     # 2026-11-03: Argon удалён из MODEL_IDS (210/1052 ₽, не использовался).
     # Заменяем конкретную проверку на инвариант: audit-режим покрыт хотя бы
@@ -51,11 +51,11 @@ def test_audit_recommended_is_haiku() -> None:
 
 
 def test_apply_on_mode_change_sets_recommended() -> None:
-    """ACT → AUDIT: модель становится deepseek (дешёвая рекомендация)."""
+    """ACT → AUDIT: модель становится рекомендованной GPT-6 Luna."""
     s = _session(Mode.ACT, model="anthropic/claude-sonnet-5.5")
     s.mode = Mode.AUDIT
     _apply_recommended_model(s)
-    assert s.model == "anthropic/claude-haiku-5.5"
+    assert s.model == "openai/gpt-6-luna"
 
 
 def test_apply_on_audit_to_act_returns_to_coding() -> None:
@@ -143,7 +143,7 @@ def test_session_new_model_manual_kwarg() -> None:
 
 @pytest.mark.asyncio
 async def test_cli_audit_run_uses_recommended_not_group() -> None:
-    """CLI-путь: run() ставит recommended (haiku), не audit-модель (kimi).
+    """CLI-путь: run() ставит recommended Luna, не audit-модель (kimi).
 
     Регресс сессии 95190cc2: /audit в CLI шёл напрямую через роутер
     и брал первую модель legacy audit-группы — kimi (27.51₽ за
@@ -205,8 +205,8 @@ async def test_cli_audit_run_uses_recommended_not_group() -> None:
     )
     await loop.run("аудит модуля")
 
-    assert client.models == ["anthropic/claude-haiku-5.5"], (
-        f"CLI-аудит должен идти на recommended (haiku), не на группе "
+    assert client.models == ["openai/gpt-6-luna"], (
+        f"CLI-аудит должен идти на recommended (Luna), не на группе "
         f"(kimi); фактически: {client.models}"
     )
-    assert s.model == "anthropic/claude-haiku-5.5"
+    assert s.model == "openai/gpt-6-luna"

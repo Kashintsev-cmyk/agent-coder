@@ -320,7 +320,7 @@ Haiku как победителя и DeepSeek Flash как fallback.
 | `MAX_RETRIES` | `3` | Число попыток при ошибках |
 | `RETRY_BACKOFF` | `2.0` | База экспоненциального backoff |
 | `TEMPERATURE` | `0.2` | Для моделей **вне** `MODEL_PROFILES` (ручной `/model` из `_FALLBACK_CATALOG`). Для `MODEL_IDS` — per-model, см. `agent_coder/llm/profiles.py` |
-| `SERVICE_TIER` | `default` | `default` / `flex` / `priority` |
+| `SERVICE_TIER` | `flex` | `flex` / `default` / `priority`; flex дешевле, но может быть медленнее. При ошибке flex клиент повторяет запрос на `default` |
 | `MAX_OUTPUT_TOKENS` | `32768` | Лимит токенов ответа на запрос (страховка от «улетевшей» генерации; провайдер разрешает до 128K–1M). `0` — не отправлять |
 | `WEB_SEARCH_ENGINE` | `exa` | Движок RouterAI для on-demand инструмента `web_search`: `exa` / `native`; `native` примерно в 16 раз дороже на контрольном запросе |
 | `WEB_SEARCH_MAX_RESULTS` | `5` | Сколько результатов запрашивать |

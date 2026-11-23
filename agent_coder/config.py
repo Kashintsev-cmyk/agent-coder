@@ -342,8 +342,9 @@ class Config:
     MEDIA_RETENTION_DAYS: int = _env_int("MEDIA_RETENTION_DAYS", "30")
 
     # Service tier (приоритет обработки у провайдера)
-    # default — стандарт; flex — ~−50% цены, медленнее; priority — быстрее
-    SERVICE_TIER: str = os.getenv("SERVICE_TIER", "default").strip().lower()
+    # flex — экономичнее (примерно −45% по контрольной пробе), медленнее;
+    # при недоступности flex клиент повторяет запрос на default.
+    SERVICE_TIER: str = os.getenv("SERVICE_TIER", "flex").strip().lower()
 
     # Retry
     MAX_RETRIES: int = int(os.getenv("MAX_RETRIES", "3"))
