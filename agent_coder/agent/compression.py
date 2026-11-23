@@ -658,6 +658,19 @@ def _register_success(session_id: str) -> None:
     _fail_until.pop(session_id, None)
 
 
+def _summary_model_for(target_model: str) -> str:
+    """Выбрать модель для сжатия по типу целевой модели сессии.
+
+    Claude (anthropic/*) → Haiku 5.5: вход сжатия обычно < 100K,
+    цена $0.10/$0.50 за 1M, без скачка ×5.
+    GPT/остальные → Luna: порог 272K, длинный контекст остаётся
+    в дешёвом диапазоне.
+    """
+    if target_model.startswith("anthropic/"):
+        return "anthropic/claude-haiku-5.5"
+    return "openai/gpt-6-luna"
+
+
 async def compress(session, client) -> CompressionResult | None:
     """Сжать историю сессии.
 
@@ -755,7 +768,7 @@ async def compress(session, client) -> CompressionResult | None:
                     {"role": "system", "content": system},
                     {"role": "user", "content": user_content},
                 ],
-                model=config.SUMMARY_MODEL,
+                model=_summary_model_for(session.model),
                 reasoning_effort="none",
                 temperature=0.0,
                 session_id=session.id,
@@ -837,7 +850,7 @@ async def compress(session, client) -> CompressionResult | None:
             TIER_THRESHOLD_TOKENS,
             TIER_FACTOR,
             model_price(
-                config.SUMMARY_MODEL,
+                _summary_model_for(session.model),
                 summary_input_tokens,
                 provider=getattr(resp, "provider", "") or "",
             ),
@@ -845,7 +858,7 @@ async def compress(session, client) -> CompressionResult | None:
     summary_cost = getattr(resp.usage, "cost", 0.0) or 0.0
     if summary_cost <= 0:
         summary_cost = model_price(
-            config.SUMMARY_MODEL,
+            _summary_model_for(session.model),
             summary_input_tokens,
             output_tokens=estimate_tokens([{"role": "assistant", "content": text}]),
             cache_read_tokens=getattr(resp.usage, "cache_read_tokens", 0) or 0,
