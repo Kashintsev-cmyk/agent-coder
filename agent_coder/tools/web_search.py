@@ -128,6 +128,9 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
             ],
             model=model,
             web_search=True,
+            # Sticky-роутинг RouterAI: тот же x-session-id, что у основной сессии,
+            # чтобы поиск попадал на тот же upstream и не ломал prefix-кэш.
+            session_id=ctx.session_id,
         )
     except Exception as exc:
         logger.warning("web_search: запрос не удался (%s): %s", model, exc)

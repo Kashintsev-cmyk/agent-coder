@@ -163,6 +163,7 @@ async def test_execute_formats_search_result(monkeypatch):
     ctx = ws.ToolContext(
         workspace="/tmp",
         mode=None,
+        session_id="sess-123",
         model="active/model",
         on_usage=on_usage,
     )  # type: ignore[arg-type]
@@ -172,6 +173,8 @@ async def test_execute_formats_search_result(monkeypatch):
     assert seen["started"] and seen["closed"]
     assert seen["kwargs"]["web_search"] is True
     assert seen["kwargs"]["model"] == "active/model"
+    # sticky-роутинг: поиск идёт под session_id основной сессии
+    assert seen["kwargs"]["session_id"] == "sess-123"
     assert "версия python" in seen["messages"][0]["content"]
     assert (
         "итоговый ответ сформирует вызывающая модель" in seen["messages"][0]["content"]
