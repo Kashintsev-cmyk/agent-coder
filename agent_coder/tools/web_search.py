@@ -105,9 +105,10 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     if not query:
         return "Ошибка: пустой query"
 
-    model = ctx.model
+    # Явная WEB_SEARCH_MODEL (обычно дешёвая) важнее активной модели сессии.
+    model = config.WEB_SEARCH_MODEL or ctx.model
     if not model:
-        return "Ошибка: web_search требует активную модель сессии"
+        return "Ошибка: web_search требует модель (WEB_SEARCH_MODEL или активная модель сессии)"
     if not config.ROUTERAI_API_KEY:
         return "Ошибка: ROUTERAI_API_KEY не задан — поиск недоступен"
 

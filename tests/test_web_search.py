@@ -187,7 +187,34 @@ async def test_execute_formats_search_result(monkeypatch):
 @pytest.mark.asyncio
 async def test_execute_requires_active_model():
     ctx = ws.ToolContext(workspace="/tmp", mode=None)  # type: ignore[arg-type]
-    assert "активную модель" in await ws._execute({"query": "python"}, ctx)
+    assert "модель" in await ws._execute({"query": "python"}, ctx)
+
+
+@pytest.mark.asyncio
+async def test_execute_prefers_configured_web_search_model(monkeypatch):
+    """WEB_SEARCH_MODEL (дешёвая) важнее активной модели сессии."""
+    monkeypatch.setattr(ws.config, "ROUTERAI_API_KEY", "test-key")
+    monkeypatch.setattr(ws.config, "WEB_SEARCH_MODEL", "anthropic/claude-haiku-5.5")
+
+    seen: dict[str, Any] = {}
+
+    class _Client:
+        async def start(self) -> None:
+            pass
+
+        async def close(self) -> None:
+            pass
+
+        async def chat(self, messages, **kwargs):
+            seen["model"] = kwargs["model"]
+            return _FakeResponse("факты", [])
+
+    monkeypatch.setattr(ws, "LLMClient", _Client)
+    ctx = ws.ToolContext(workspace="/tmp", mode=None, model="anthropic/claude-opus-5")  # type: ignore[arg-type]
+
+    await ws._execute({"query": "python"}, ctx)
+
+    assert seen["model"] == "anthropic/claude-haiku-5.5"
 
 
 @pytest.mark.asyncio

@@ -279,6 +279,8 @@ class Config:
     # одинаковом ответе — native тянет полные страницы в контекст (×16).
     WEB_SEARCH_ENGINE: str = os.getenv("WEB_SEARCH_ENGINE", "exa").strip().lower()
     WEB_SEARCH_MAX_RESULTS: int = _env_int("WEB_SEARCH_MAX_RESULTS", "5")
+    # Модель для веб-поиска. Пусто — берётся активная модель сессии.
+    WEB_SEARCH_MODEL: str = os.getenv("WEB_SEARCH_MODEL", "").strip()
 
     # Сжатие истории сессии
     # Верхняя граница input-токенов на один запрос (жёсткий потолок).
