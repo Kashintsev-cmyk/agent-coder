@@ -191,7 +191,7 @@ class Config:
         # exposing the same exact IDs as its runtime selector.
         "deepseek/deepseek-v4.1-flash-1017": ["act", "plan", "audit"],
         "anthropic/claude-haiku-5.5": ["act", "audit"],
-        "openai/gpt-6-luna": ["plan", "act"],
+        "openai/gpt-6-luna": ["plan", "act", "audit"],
         "deepseek/deepseek-v4-pro-0813": ["plan", "act"],
         "openai/gpt-6.1-terra": ["plan", "act"],
         "anthropic/claude-sonnet-5.5": [],
@@ -223,13 +223,13 @@ class Config:
     # TODO: re-verify on na_shtile/futures (пока свой benchmark не гонялся).
     # Если per-project RECOMMENDED понадобится — выносить в отдельную
     # структуру с benchmark'ом, не менять этот словарь точечно.
-    RECOMMENDED_MODEL_BY_MODE["audit"] = "anthropic/claude-haiku-5.5"
+    RECOMMENDED_MODEL_BY_MODE["audit"] = "openai/gpt-6-luna"
     # ACT winner (benchmark 6×3, 2026-10-24): haiku-5.5 — best
     # bootstrap signal (2/6 hard pass, 0 hard fails, fastest).
     # NOTE: fixture has testpaths bug (benchmark_target.py root
     # tests not collected) — 4/6 tasks soft-pass unverified.
     # Re-run after fixture fix; revision possible.
-    RECOMMENDED_MODEL_BY_MODE["act"] = "anthropic/claude-haiku-5.5"
+    RECOMMENDED_MODEL_BY_MODE["act"] = "openai/gpt-6-luna"
 
     # /verify: модель-верификатор по умолчанию. Не наследует
     # session.model/model_manual: цель verify — ДЕШЁВЫЙ фильтр ложных
@@ -297,10 +297,10 @@ class Config:
                 "MODEL_HISTORY_TOKEN_LIMITS",
                 "deepseek/deepseek-v4.1-flash-1017=400000,"
                 "deepseek/deepseek-v4-pro-0813=400000,"
-                "anthropic/claude-haiku-5.5=80000,"
-                "openai/gpt-6-luna=250000,"
-                "openai/gpt-6.1-terra=250000,"
-                "openai/gpt-6.1-sol=250000,"
+                "anthropic/claude-haiku-5.5=65000,"
+                "openai/gpt-6-luna=240000,"
+                "openai/gpt-6.1-terra=240000,"
+                "openai/gpt-6.1-sol=240000,"
                 "anthropic/claude-sonnet-5.5=400000,"
                 "anthropic/claude-opus-5.5=400000",
             )
