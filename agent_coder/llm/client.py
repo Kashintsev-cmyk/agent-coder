@@ -334,11 +334,16 @@ class LLMClient:
 
         usage = _extract_usage(response)
         provider = _extract_provider(response)
+        # Per-request usage: нужен для замера кэша до/после compress
+        # (итоговые суммы в сессии не позволяют разделить эффекты).
         logger.info(
-            "LLM ← in=%d out=%d cache=%d cost=%.4f provider=%s",
+            "LLM ← model=%s in=%d out=%d cache_read=%d cache_write=%d reasoning=%d cost=%.4f provider=%s",
+            model,
             usage.input_tokens,
             usage.output_tokens,
             usage.cache_read_tokens,
+            usage.cache_write_tokens,
+            usage.reasoning_tokens,
             usage.cost,
             provider or "-",
         )
