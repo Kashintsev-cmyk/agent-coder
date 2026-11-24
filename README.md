@@ -385,6 +385,10 @@ Haiku как победителя и DeepSeek Flash как fallback.
 | `MAX_AUTO_CONTINUE` | `3` | Авто-«продолжи», если агент встал на лимите, а задача не завершена |
 | `MAX_CONSECUTIVE_ERRORS` | `5` | Watchdog: стоп после N подряд tool-результатов с «Ошибка» |
 | `MAX_ITERATIONS_NO_PROGRESS` | `10` | Стоп, если N итераций без успешной мутации (анти-залип) |
+| `CACHE_GUARD_ENABLED` | `1` | Защита кеша провайдера: стоп сессии, если кеш пропал (`0` — выключить) |
+| `CACHE_GUARD_MIN_INPUT` | `20000` | Защита кеша: проверяются только запросы с input ≥ N токенов |
+| `CACHE_GUARD_RATIO` | `0.5` | Защита кеша: «плохой» запрос, если cache_read < RATIO × input предыдущего |
+| `CACHE_GUARD_STREAK` | `2` | Защита кеша: стоп после N плохих запросов подряд |
 | `PATCH_REASONING_EFFORT` | `low` | Reasoning-уровень для `/patch` (экономия токенов) |
 | `SESSIONS_DIR` | `<base>/sessions` | Каталог сессий (state, история, медиа) |
 | `WORK_STATE_DEDUP` | `1` | Дедуп findings по «файл:строка» в work-state (0 — выкл) |

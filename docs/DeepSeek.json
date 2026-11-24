@@ -1,0 +1,303 @@
+{
+  "data": {
+    "id": "deepseek/deepseek-v4.1-flash-1017",
+    "name": "DeepSeek: DeepSeek V4.1 Flash 1017",
+    "created": 1792225624,
+    "description": "DeepSeek V4.1 Flash 1017 — это снимок DeepSeek V4.1 Flash от 17 октября 2026 года, предоставляемый DeepSeek под именем модели API `deepseek-flash`. V4.1 Flash — это разреженная модель смеси экспертов от DeepSeek и первая, построенная на архитектуре Causal Encoder-Decoder (CED) компании. Она активирует 8 миллиардов параметров на входе и 16 миллиардов на выходе из основного блока с 552 миллиардами параметров, асимметричное разделение, которое сохраняет низкие вычислительные затраты на токен относительно общего размера модели. Понимание изображений является естественной частью архитектуры, с визуальными и текстовыми встраиваниями, обученными совместно с самого начала предобучения, а не добавленными впоследствии, как в более ранней экспериментальной версии V4 Flash Vision Exp.\n\nОна подходит для кодирования, работы с терминалом и использования агентами на компьютере, а также для задач с длинным горизонтом, которые должны выполняться до завершения на протяжении многих шагов и анализа с длинным контекстом. Сжатое кеширование KV сокращает объем памяти кеша примерно до четверти от предыдущего поколения Flash, значительно снижая затраты на агентные рабочие нагрузки. DeepSeek позиционирует её как экономичный уровень семейства V4.1 и сообщает, что она превосходит V4 Pro по производительности, скорости и времени выполнения задач.",
+    "architecture": {
+      "modality": "text+image->text",
+      "tokenizer": "DeepSeek",
+      "instruct_type": null,
+      "input_modalities": [
+        "text",
+        "image"
+      ],
+      "output_modalities": [
+        "text"
+      ]
+    },
+    "endpoints": [
+      {
+        "name": "BytePlus | deepseek/deepseek-v4.1-flash-1017",
+        "provider_name": "BytePlus",
+        "tag": "byteplus",
+        "country": "sg",
+        "countries": [
+          "sg"
+        ],
+        "context_length": 1048576,
+        "max_completion_tokens": 393216,
+        "supported_parameters": [
+          "frequency_penalty",
+          "include_reasoning",
+          "logit_bias",
+          "logprobs",
+          "max_completion_tokens",
+          "max_tokens",
+          "min_p",
+          "parallel_tool_calls",
+          "presence_penalty",
+          "reasoning",
+          "reasoning_effort",
+          "repetition_penalty",
+          "response_format",
+          "seed",
+          "stop",
+          "structured_outputs",
+          "temperature",
+          "tool_choice",
+          "tools",
+          "top_k",
+          "top_logprobs",
+          "top_p"
+        ],
+        "status": 0,
+        "pricing": {
+          "prompt": 0.0000352599819,
+          "completion": 0.0001410399276,
+          "input_cache_read": 7.05199638e-7
+        },
+        "pricing_units": {
+          "prompt": "token",
+          "completion": "token",
+          "input_cache_read": "token"
+        },
+        "variable_pricings": [
+          {
+            "type": "time-of-day",
+            "prompt": 0.00001762999095,
+            "utc_end": 0,
+            "utc_days": [
+              "saturday",
+              "sunday"
+            ],
+            "utc_start": 0,
+            "completion": 0.0000705199638,
+            "input_cache_read": 3.52599819e-7
+          },
+          {
+            "type": "time-of-day",
+            "prompt": 0.00001762999095,
+            "utc_end": 100,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "utc_start": 0,
+            "completion": 0.0000705199638,
+            "input_cache_read": 3.52599819e-7
+          },
+          {
+            "type": "time-of-day",
+            "prompt": 0.0000352599819,
+            "utc_end": 400,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "utc_start": 100,
+            "completion": 0.0001410399276,
+            "input_cache_read": 7.05199638e-7
+          },
+          {
+            "type": "time-of-day",
+            "prompt": 0.00001762999095,
+            "utc_end": 600,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "utc_start": 400,
+            "completion": 0.0000705199638,
+            "input_cache_read": 3.52599819e-7
+          },
+          {
+            "type": "time-of-day",
+            "prompt": 0.0000352599819,
+            "utc_end": 1000,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "utc_start": 600,
+            "completion": 0.0001410399276,
+            "input_cache_read": 7.05199638e-7
+          },
+          {
+            "type": "time-of-day",
+            "prompt": 0.00001762999095,
+            "utc_end": 0,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "utc_start": 1000,
+            "completion": 0.0000705199638,
+            "input_cache_read": 3.52599819e-7
+          }
+        ]
+      }
+    ]
+  },
+  "data": {
+    "id": "deepseek/deepseek-v4-pro-0813",
+    "name": "DeepSeek: DeepSeek V4 Pro 0813",
+    "created": 1786549364,
+    "description": "DeepSeek V4 Pro 0813 — это крупномасштабная модель смеси экспертов от DeepSeek. Это GA-релиз DeepSeek V4 Pro.",
+    "architecture": {
+      "modality": "text->text",
+      "tokenizer": "DeepSeek",
+      "instruct_type": null,
+      "input_modalities": [
+        "text"
+      ],
+      "output_modalities": [
+        "text"
+      ]
+    },
+    "endpoints": [
+      {
+        "name": "DeepSeek | deepseek/deepseek-v4-pro-0813",
+        "provider_name": "DeepSeek",
+        "tag": "deepseek",
+        "country": "cn",
+        "countries": [
+          "cn"
+        ],
+        "context_length": 1048576,
+        "quantization": "unknown",
+        "max_completion_tokens": 393216,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "temperature",
+          "top_p",
+          "stop",
+          "frequency_penalty",
+          "presence_penalty",
+          "logprobs",
+          "top_logprobs",
+          "tools",
+          "tool_choice",
+          "response_format"
+        ],
+        "status": 0,
+        "pricing": {
+          "prompt": 0.00009872794932,
+          "completion": 0.00029618384796,
+          "input_cache_read": 0.000003290931644
+        },
+        "pricing_units": {
+          "prompt": "token",
+          "completion": "token",
+          "input_cache_read": "token"
+        },
+        "variable_pricings": [
+          {
+            "type": "time-of-day",
+            "prompt": 0.00009872794932,
+            "utc_end": 0,
+            "utc_days": [
+              "saturday",
+              "sunday"
+            ],
+            "utc_start": 0,
+            "completion": 0.00029618384796,
+            "input_cache_read": 0.000003290931644
+          },
+          {
+            "type": "time-of-day",
+            "prompt": 0.00009872794932,
+            "utc_end": 100,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "utc_start": 0,
+            "completion": 0.00029618384796,
+            "input_cache_read": 0.000003290931644
+          },
+          {
+            "type": "time-of-day",
+            "prompt": 0.00019745589864,
+            "utc_end": 400,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "utc_start": 100,
+            "completion": 0.00059236769592,
+            "input_cache_read": 0.000006581863288
+          },
+          {
+            "type": "time-of-day",
+            "prompt": 0.00009872794932,
+            "utc_end": 600,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "utc_start": 400,
+            "completion": 0.00029618384796,
+            "input_cache_read": 0.000003290931644
+          },
+          {
+            "type": "time-of-day",
+            "prompt": 0.00019745589864,
+            "utc_end": 1000,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "utc_start": 600,
+            "completion": 0.00059236769592,
+            "input_cache_read": 0.000006581863288
+          },
+          {
+            "type": "time-of-day",
+            "prompt": 0.00009872794932,
+            "utc_end": 0,
+            "utc_days": [
+              "monday",
+              "tuesday",
+              "wednesday",
+              "thursday",
+              "friday"
+            ],
+            "utc_start": 1000,
+            "completion": 0.00029618384796,
+            "input_cache_read": 0.000003290931644
+          }
+        ]
+      }
+    ]
+  }
+}

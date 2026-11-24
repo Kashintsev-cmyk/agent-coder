@@ -1,0 +1,218 @@
+{
+  "data": {
+    "id": "openai/gpt-6-luna",
+    "name": "OpenAI: GPT-6 Luna",
+    "created": 1790100786,
+    "description": "GPT-6 Luna — это быстрая и экономичная модель в серии GPT-6 от OpenAI, расположенная ниже GPT-6 Sol. Она подходит для задач с высоким объемом и чувствительностью к задержкам, таких как чат, классификация и легкие агентные задачи, а при более высоких усилиях в области рассуждений может выполнять сложные задачи в области программного обеспечения, которые ранее требовали модели уровня Sol. Она разделяет достижения семейства GPT-6 в области фактической надежности и обладает более ясным и лаконичным стилем общения.",
+    "architecture": {
+      "modality": "text+image+file->text",
+      "tokenizer": "GPT",
+      "instruct_type": null,
+      "input_modalities": [
+        "file",
+        "image",
+        "text"
+      ],
+      "output_modalities": [
+        "text"
+      ]
+    },
+    "endpoints": [
+      {
+        "name": "OpenAI | openai/gpt-6-luna",
+        "provider_name": "OpenAI",
+        "tag": "openai",
+        "country": "us",
+        "countries": [
+          "us"
+        ],
+        "context_length": 1050000,
+        "quantization": "unknown",
+        "max_completion_tokens": 128000,
+        "max_prompt_tokens": 922000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "seed",
+          "max_tokens",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "verbosity"
+        ],
+        "status": 0,
+        "pricing": {
+          "prompt": 0.000010684843,
+          "completion": 0.000053424215,
+          "web_search": 1.0684843,
+          "input_cache_read": 0.0000010684843,
+          "input_cache_write": 0.00001335605375
+        },
+        "pricing_units": {
+          "prompt": "token",
+          "completion": "token",
+          "web_search": "request",
+          "input_cache_read": "token",
+          "input_cache_write": "token"
+        },
+        "variable_pricings": [
+          {
+            "type": "prompt-threshold",
+            "prompt": 0.000021369686,
+            "threshold": 272000,
+            "completion": 0.0000801363225,
+            "input_cache_read": 0.0000021369686,
+            "input_cache_write": 0.0000267121075
+          }
+        ]
+      }
+    ]
+  }
+}
+
+{
+  "data": {
+    "id": "openai/gpt-6.1-terra",
+    "name": "OpenAI: GPT-6.1 Terra",
+    "created": 1793038409,
+    "description": "GPT-6.1 Terra — модель среднего уровня в серии GPT-6.1 от OpenAI, цена которой ниже, чем у GPT-6.1 Sol. Она подходит для повседневных агентных задач, программирования и работы с текстом, особенно хорошо понимает скриншоты и содержимое экрана, а также достаточно эффективна для больших объёмов работы.",
+    "architecture": {
+      "modality": "text+image+file->text",
+      "tokenizer": "GPT",
+      "instruct_type": null,
+      "input_modalities": [
+        "file",
+        "image",
+        "text"
+      ],
+      "output_modalities": [
+        "text"
+      ]
+    },
+    "endpoints": [
+      {
+        "name": "OpenAI | openai/gpt-6.1-terra",
+        "provider_name": "OpenAI",
+        "tag": "openai",
+        "country": "us",
+        "countries": [
+          "us"
+        ],
+        "context_length": 1050000,
+        "quantization": "unknown",
+        "max_completion_tokens": 128000,
+        "max_prompt_tokens": 922000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "seed",
+          "max_tokens",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "verbosity"
+        ],
+        "status": 0,
+        "pricing": {
+          "prompt": 0.00010684843,
+          "completion": 0.00053424215,
+          "web_search": 1.0684843,
+          "input_cache_read": 0.0000053424215,
+          "input_cache_write": 0.0001335605375
+        },
+        "pricing_units": {
+          "prompt": "token",
+          "completion": "token",
+          "web_search": "request",
+          "input_cache_read": "token",
+          "input_cache_write": "token"
+        },
+        "variable_pricings": [
+          {
+            "type": "prompt-threshold",
+            "prompt": 0.00021369686,
+            "threshold": 272000,
+            "completion": 0.000801363225,
+            "input_cache_read": 0.000010684843,
+            "input_cache_write": 0.000267121075
+          }
+        ]
+      }
+    ]
+  }
+}
+
+{
+  "data": {
+    "id": "openai/gpt-6.1-sol",
+    "name": "OpenAI: GPT-6.1 Sol",
+    "created": 1790702882,
+    "description": "GPT-6.1 Sol является обновлением GPT-6 Sol от OpenAI, расположенным ниже флагманской модели GPT-6 Astra в серии GPT-6. Он подходит для агентного программирования, работы с компьютером, профессиональной работы с большим количеством документов и автоматизации многоступенчатых бизнес-процессов, достигая результатов уровня Astra в этих задачах при значительно меньших затратах. По сравнению с GPT-6 Sol, он делает меньше фактических ошибок и более надежен в соблюдении явных ограничений и намерений пользователя при выполнении агентных задач.",
+    "architecture": {
+      "modality": "text+image+file->text",
+      "tokenizer": "GPT",
+      "instruct_type": null,
+      "input_modalities": [
+        "file",
+        "image",
+        "text"
+      ],
+      "output_modalities": [
+        "text"
+      ]
+    },
+    "endpoints": [
+      {
+        "name": "OpenAI | openai/gpt-6.1-sol",
+        "provider_name": "OpenAI",
+        "tag": "openai",
+        "country": "us",
+        "countries": [
+          "us"
+        ],
+        "context_length": 1050000,
+        "quantization": "unknown",
+        "max_completion_tokens": 128000,
+        "max_prompt_tokens": 922000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "seed",
+          "max_tokens",
+          "response_format",
+          "structured_outputs",
+          "tools",
+          "tool_choice",
+          "verbosity"
+        ],
+        "status": 0,
+        "pricing": {
+          "prompt": 0.00021369686,
+          "completion": 0.0010684843,
+          "web_search": 1.0684843,
+          "input_cache_read": 0.000010684843,
+          "input_cache_write": 0.000267121075
+        },
+        "pricing_units": {
+          "prompt": "token",
+          "completion": "token",
+          "web_search": "request",
+          "input_cache_read": "token",
+          "input_cache_write": "token"
+        },
+        "variable_pricings": [
+          {
+            "type": "prompt-threshold",
+            "prompt": 0.00042739372,
+            "threshold": 272000,
+            "completion": 0.00160272645,
+            "input_cache_read": 0.000021369686,
+            "input_cache_write": 0.00053424215
+          }
+        ]
+      }
+    ]
+  }
+}

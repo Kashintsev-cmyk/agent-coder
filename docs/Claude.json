@@ -1,0 +1,204 @@
+{
+  "data": {
+    "id": "anthropic/claude-haiku-5.5",
+    "name": "Anthropic: Claude Haiku 5.5",
+    "created": 1791397883,
+    "description": "Claude Haiku 5.5 — это небольшая, быстрая модель от Anthropic для работы с большим объемом данных и чувствительных к стоимости задач, таких как суммаризация, субагенты и использование браузера. Она является преемником Claude Haiku 4.5 и обладает улучшенными возможностями в области кодирования, использования компьютера и работы с информацией, принимая текстовый и графический ввод с контекстным окном в 1 миллион токенов.\n\nЭто первая модель Haiku с регулируемыми усилиями. Мышление адаптивно и включено по умолчанию, причем усилия являются основным рычагом для балансировки глубины, задержки и стоимости; его можно отключить на низком, среднем и высоком уровне усилий.",
+    "architecture": {
+      "modality": "text+image+file->text",
+      "tokenizer": "Claude",
+      "instruct_type": null,
+      "input_modalities": [
+        "text",
+        "image",
+        "file"
+      ],
+      "output_modalities": [
+        "text"
+      ]
+    },
+    "endpoints": [
+      {
+        "name": "Anthropic | anthropic/claude-haiku-5.5",
+        "provider_name": "Anthropic",
+        "tag": "anthropic",
+        "country": "us",
+        "countries": [
+          "us"
+        ],
+        "context_length": 1000000,
+        "quantization": "unknown",
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "stop",
+          "tools",
+          "tool_choice",
+          "structured_outputs",
+          "response_format",
+          "verbosity"
+        ],
+        "status": 0,
+        "pricing": {
+          "prompt": 0.000010684843,
+          "completion": 0.000053424215,
+          "web_search": 1.0684843,
+          "input_cache_read": 0.0000010684843,
+          "input_cache_write": 0.00001335605375,
+          "input_cache_write_1h": 0.000021369686
+        },
+        "pricing_units": {
+          "prompt": "token",
+          "completion": "token",
+          "web_search": "request",
+          "input_cache_read": "token",
+          "input_cache_write": "token",
+          "input_cache_write_1h": "token"
+        },
+        "variable_pricings": [
+          {
+            "type": "prompt-threshold",
+            "prompt": 0.000053424215,
+            "threshold": 100000,
+            "completion": 0.000267121075,
+            "input_cache_read": 0.0000053424215,
+            "input_cache_write": 0.00006678026875,
+            "input_cache_write_1h": 0.00010684843
+          }
+        ]
+      }
+    ]
+  }
+}
+
+{
+  "data": {
+    "id": "anthropic/claude-sonnet-5.5",
+    "name": "Anthropic: Claude Sonnet 5.5",
+    "created": 1790618686,
+    "description": "Claude Sonnet 5.5 — это модель класса Sonnet от Anthropic для хорошо определенной повседневной работы, являющаяся прямым обновлением Claude Sonnet 5. Она особенно сильна в создании функций, исправлении ошибок и подготовке отточенных документов, презентаций и таблиц, а также пишет и излагает мысли более ясно, чем ее предшественник.\n\nМышление всегда активно, поэтому усилие является основным рычагом для балансировки глубины, задержки и стоимости, а настройки с меньшими усилиями позволяют ей оставаться отзывчивой для повседневных агентных циклов.",
+    "architecture": {
+      "modality": "text+image+file->text",
+      "tokenizer": "Claude",
+      "instruct_type": null,
+      "input_modalities": [
+        "text",
+        "image",
+        "file"
+      ],
+      "output_modalities": [
+        "text"
+      ]
+    },
+    "endpoints": [
+      {
+        "name": "Anthropic | anthropic/claude-sonnet-5.5",
+        "provider_name": "Anthropic",
+        "tag": "anthropic",
+        "country": "us",
+        "countries": [
+          "us"
+        ],
+        "context_length": 1000000,
+        "quantization": "unknown",
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "stop",
+          "tools",
+          "tool_choice",
+          "structured_outputs",
+          "response_format",
+          "verbosity"
+        ],
+        "status": 0,
+        "pricing": {
+          "prompt": 0.00021369686,
+          "completion": 0.0010684843,
+          "web_search": 1.0684843,
+          "input_cache_read": 0.000010684843,
+          "input_cache_write": 0.000267121075,
+          "input_cache_write_1h": 0.00042739372
+        },
+        "pricing_units": {
+          "prompt": "token",
+          "completion": "token",
+          "web_search": "request",
+          "input_cache_read": "token",
+          "input_cache_write": "token",
+          "input_cache_write_1h": "token"
+        },
+        "variable_pricings": []
+      }
+    ]
+  }
+}
+
+{
+  "data": {
+    "id": "anthropic/claude-opus-5.5",
+    "name": "Anthropic: Claude Opus 5.5",
+    "created": 1790094732,
+    "description": "Claude Opus 5.5 — это флагманская модель Anthropic для сложных задач, связанных с рассуждениями, программированием и долгосрочной агентной работой, которая является преемником Claude Opus 5. Она особенно сильна в многошаговых изменениях в крупных кодовых базах, обзоре кода и поиске ошибок, финансовом и научном анализе, а также в чтении сложных графиков, диаграмм и скриншотов. Она более осторожна, чем её предшественник, в отношении заявлений о цифрах и цитировании источников, которые она может подтвердить.\n\nМодель выполняет сопоставимые задачи за меньшее количество шагов и с меньшим числом токенов, чем Opus 5, и сообщает о своей работе более простым языком, с четкими обновлениями о том, что она сделала, что нашла и что ей нужно от пользователя. Мышление всегда адаптивно, поэтому усилие является основным рычагом для балансировки глубины, задержки и стоимости, и настройки с меньшими усилиями остаются эффективными для рабочих нагрузок, чувствительных к задержкам.",
+    "architecture": {
+      "modality": "text+image+file->text",
+      "tokenizer": "Claude",
+      "instruct_type": null,
+      "input_modalities": [
+        "text",
+        "image",
+        "file"
+      ],
+      "output_modalities": [
+        "text"
+      ]
+    },
+    "endpoints": [
+      {
+        "name": "Anthropic | anthropic/claude-opus-5.5",
+        "provider_name": "Anthropic",
+        "tag": "anthropic",
+        "country": "us",
+        "countries": [
+          "us"
+        ],
+        "context_length": 1000000,
+        "quantization": "unknown",
+        "max_completion_tokens": 128000,
+        "supported_parameters": [
+          "reasoning",
+          "include_reasoning",
+          "max_tokens",
+          "stop",
+          "tool_choice",
+          "tools",
+          "structured_outputs",
+          "response_format",
+          "verbosity"
+        ],
+        "status": 0,
+        "pricing": {
+          "prompt": 0.00042739372,
+          "completion": 0.0021369686,
+          "web_search": 1.0684843,
+          "input_cache_read": 0.000021369686,
+          "input_cache_write": 0.00053424215,
+          "input_cache_write_1h": 0.00085478744
+        },
+        "pricing_units": {
+          "prompt": "token",
+          "completion": "token",
+          "web_search": "request",
+          "input_cache_read": "token",
+          "input_cache_write": "token",
+          "input_cache_write_1h": "token"
+        },
+        "variable_pricings": []
+      }
+    ]
+  }
+}

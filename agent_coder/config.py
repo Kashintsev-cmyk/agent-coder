@@ -379,6 +379,17 @@ class Config:
     # «залип». 10 — эмпирически: read_file-loop упирался за 9 перечитываний.
     MAX_ITERATIONS_NO_PROGRESS: int = int(os.getenv("MAX_ITERATIONS_NO_PROGRESS", "10"))
 
+    # Защита кеша провайдера: если на большом промпте cache_read упал ниже
+    # CACHE_GUARD_RATIO от размера предыдущего промпта (при том, что кеш
+    # в предыдущем запросе был) — это «пропадание кеша». Подряд
+    # CACHE_GUARD_STREAK таких запросов → остановка сессии (деньги жгутся
+    # на полной записи префикса). CACHE_GUARD_MIN_INPUT — порог размера
+    # промпта, ниже которого проверка не делается (короткие префиксы шумные).
+    CACHE_GUARD_ENABLED: bool = os.getenv("CACHE_GUARD_ENABLED", "1") == "1"
+    CACHE_GUARD_MIN_INPUT: int = int(os.getenv("CACHE_GUARD_MIN_INPUT", "20000"))
+    CACHE_GUARD_RATIO: float = _env_float("CACHE_GUARD_RATIO", "0.5")
+    CACHE_GUARD_STREAK: int = int(os.getenv("CACHE_GUARD_STREAK", "2"))
+
     # B9.4: дедуп findings по «файл:строка» в WorkStateHandle.update/render.
     # Схлопывает «services/pricing.py:13» и «pricing.py:13» в один
     # (оставляет более информативный: severity > длина). Default: 1 (вкл).

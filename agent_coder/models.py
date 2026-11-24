@@ -270,7 +270,7 @@ _FALLBACK_CATALOG: dict[str, ModelInfo] = {
         # 2026-11-21: /endpoints — reasoning_effort 0/5. Агрегат /models врёт.
         reasoning_effort=False,
         web_search_builtin=True,
-        verbosity=True,
+        verbosity=False,
         input_price=10.684843,
         output_price=53.424215,
         cache_read_price=1.068484,

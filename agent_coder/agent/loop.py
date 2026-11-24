@@ -13,6 +13,7 @@ from pathlib import Path
 from typing import Any
 
 from agent_coder.agent import compression, history_archive, tool_extract
+from agent_coder.agent.cache_guard import CacheGuard
 from agent_coder.agent.prompts import Mode, system_prompt, volatile_block
 from agent_coder.agent.session import Session
 from agent_coder.agent.work_state import WorkStateHandle, make_read_digest
@@ -53,6 +54,7 @@ class LoopResult:
     watchdog_triggered: bool = False  # вышли по MAX_CONSECUTIVE_ERRORS
     consecutive_errors: int = 0  # сколько ошибок было подряд на выходе
     cost_limit_reached: bool = False  # вышли по MAX_COST_PER_TASK/SESSION
+    cache_guard_tripped: bool = False  # вышли: кеш провайдера пропал (CacheGuard)
     no_progress: bool = False  # вышли по MAX_ITERATIONS_NO_PROGRESS
     provider_error: bool = False  # LLM-провайдер недоступен (не ротируем)
     work_state_updates: int = 0  # B9.1: сколько раз state реально менялся
@@ -134,6 +136,13 @@ class AgentLoop:
         )
         # Ключ, по которому собран текущий stable system (см. _refresh_system_prompt).
         self._system_key: tuple | None = None
+        # Защита кеша провайдера (см. cache_guard.py). Состояние живёт на
+        # экземпляре AgentLoop (между run() одного экземпляра сохраняется).
+        self._cache_guard = CacheGuard(
+            min_input=config.CACHE_GUARD_MIN_INPUT,
+            ratio=config.CACHE_GUARD_RATIO,
+            streak=config.CACHE_GUARD_STREAK,
+        )
 
     async def run(self, task: str, images: list | None = None) -> LoopResult:
         # Бюджет: если сессия уже за потолком — не начинаем (не жжём).
@@ -271,6 +280,9 @@ class AgentLoop:
                 )
                 comp = await compression.compress(self.session, self.client)
                 if comp is not None:
+                    # Префикс истории законно изменился — старые наблюдения
+                    # кеша больше не сравнимы с новыми запросами.
+                    self._cache_guard.reset()
                     self.session.save()
                     # После compress messages изменились — пересчитать
                     # last_llm_messages_len (новые сообщения = всё после
@@ -363,6 +375,33 @@ class AgentLoop:
 
             self.session.add_usage(response.usage)
             await _maybe_await(self.events.on_usage, response.usage)
+
+            # Защита кеша провайдера: кеш пропал на нескольких запросах подряд
+            # при большом промпте → сессия стоп, деньги не жжём дальше.
+            if config.CACHE_GUARD_ENABLED and self._cache_guard.observe(
+                response.usage.input_tokens,
+                response.usage.cache_read_tokens,
+                response.usage.cache_write_tokens,
+            ):
+                msg = (
+                    f"Кеш промпта провайдера пропал на "
+                    f"{self._cache_guard.bad_run} запросах подряд "
+                    f"(input≥{config.CACHE_GUARD_MIN_INPUT}, cache_read "
+                    f"<{config.CACHE_GUARD_RATIO:.0%} предыдущего). "
+                    f"Сессия остановлена, чтобы не платить за полную запись "
+                    f"префикса. Сессия сохранена — проверь провайдера/модель."
+                )
+                logger.warning("CacheGuard: %s", msg)
+                await _maybe_await(self.events.on_error, msg)
+                self.session.save()
+                return LoopResult(
+                    iterations_used=iteration,
+                    consecutive_errors=consecutive_errors,
+                    cache_guard_tripped=True,
+                    error_message=msg,
+                    task_cost=self.session.total_usage.cost - start_cost,
+                    work_state_updates=work_state_updates,
+                )
 
             # Бюджет: жёсткий потолок трат (задача и сессия). Ловит любое
             # сжигание — loop на чтении, длинный аудит с автопродолжениями.

@@ -33,6 +33,13 @@ logger = logging.getLogger(__name__)
 logger.addFilter(SecretFilter())
 
 
+def _safe_log_text(value: Any, limit: int = 120) -> str:
+    """Ограничить scalar metadata для логов, удалив управляющие символы."""
+    if not isinstance(value, str):
+        return "-"
+    return "".join(ch for ch in value if ch.isprintable())[:limit] or "-"
+
+
 def _apply_cache_anchor(
     messages: list[dict[str, Any]],
     stable_count: int | None,
@@ -333,6 +340,33 @@ class LLMClient:
                 )
             else:
                 raise
+
+        choices = getattr(response, "choices", None)
+        if not choices:
+            extra = getattr(response, "model_extra", None)
+            extra_keys = (
+                sorted(
+                    _safe_log_text(key, 80) for key in extra if isinstance(key, str)
+                )[:20]
+                if isinstance(extra, dict)
+                else []
+            )
+            logger.warning(
+                "LLM returned response without choices: request_model=%s "
+                "response_id=%s response_model=%s tier=%s choices_type=%s "
+                "usage_type=%s extra_keys=%s",
+                _safe_log_text(model),
+                _safe_log_text(getattr(response, "id", None)),
+                _safe_log_text(getattr(response, "model", None)),
+                _safe_log_text(getattr(response, "service_tier", None)),
+                type(choices).__name__,
+                type(getattr(response, "usage", None)).__name__,
+                extra_keys,
+            )
+            raise LLMError(
+                "LLM-провайдер вернул пустой ответ (отсутствует choices).",
+                retryable=False,
+            )
 
         usage = _extract_usage(response)
         provider = _extract_provider(response)

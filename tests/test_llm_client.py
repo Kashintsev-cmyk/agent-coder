@@ -2,8 +2,44 @@
 
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+import pytest
+
 from agent_coder.config import config
-from agent_coder.llm.client import _apply_cache_anchor, _build_request_kwargs
+from agent_coder.llm.client import LLMClient, _apply_cache_anchor, _build_request_kwargs
+from agent_coder.llm.types import LLMError
+
+
+@pytest.mark.asyncio
+async def test_chat_rejects_response_without_choices(monkeypatch, caplog):
+    async def create(**kwargs):
+        return SimpleNamespace(
+            choices=None,
+            id="rai-test-id",
+            model="test/model",
+            service_tier="flex",
+            usage=None,
+            model_extra={"provider_error": "PRIVATE_RESPONSE_BODY"},
+        )
+
+    client = LLMClient()
+    fake = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=create))
+    )
+    monkeypatch.setattr(client, "_client", fake)
+
+    with pytest.raises(LLMError, match="вернул пустой ответ") as exc_info:
+        await client.chat(messages=[], model="test/model")
+
+    assert not exc_info.value.retryable
+    diagnostic = caplog.text
+    assert "response_id=rai-test-id" in diagnostic
+    assert "response_model=test/model" in diagnostic
+    assert "tier=flex" in diagnostic
+    assert "choices_type=NoneType" in diagnostic
+    assert "provider_error" in diagnostic
+    assert "PRIVATE_RESPONSE_BODY" not in diagnostic
 
 
 def test_minimal():
