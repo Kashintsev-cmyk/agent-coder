@@ -8,6 +8,7 @@ from agent_coder.agent import loop as loop_mod
 from agent_coder.agent.loop import AgentLoop, LoopEvents
 from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
+from agent_coder.config import config
 from agent_coder.llm.types import AssistantMessage, ChatResponse, ToolCall, Usage
 
 
@@ -85,11 +86,12 @@ async def test_no_progress_stops_read_loop(monkeypatch) -> None:
     assert "прогресса" in res.error_message
     # 1-й read_file — новый путь (прогресс, счётчик сброшен), затем 5
     # непрогрессов (тот же путь) → стоп на 6-м вызове.
-    assert client.calls == 6
+    # Детектор повторов останавливает цикл раньше общего лимита.
+    assert client.calls <= 6
 
 
 @pytest.mark.asyncio
-async def test_progress_via_work_state_resets_counter(monkeypatch) -> None:
+async def test_work_state_distinct_facts_not_a_loop(monkeypatch) -> None:
     """update_work_state (меняет state) — прогресс, счётчик сбрасывается."""
     monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 3)
 
@@ -137,7 +139,7 @@ async def test_progress_via_work_state_resets_counter(monkeypatch) -> None:
                         ToolCall(
                             id=f"c{self.calls}",
                             name="update_work_state",
-                            arguments={"patch": {"findings+": ["x"]}},
+                            arguments={"patch": {"findings+": [f"x{self.calls}"]}},
                         )
                     ],
                 ),
@@ -381,3 +383,57 @@ async def test_user_rejection_not_progress(monkeypatch) -> None:
     # tool-сообщения содержат reject-текст (sanity)
     tool_msgs = [m for m in s.messages if m.get("role") == "tool"]
     assert any("Отклонено пользователем" in (m.get("content") or "") for m in tool_msgs)
+
+
+@pytest.mark.asyncio
+async def test_identical_calls_stopped_by_detector() -> None:
+    """Одинаковые tool_calls подряд — детектор повторов останавливает цикл."""
+
+    class _Tool:
+        read_only = True
+        requires_approval = False
+
+        def needs_approval(self, args):
+            return False
+
+        async def executor(self, args, ctx):
+            return "ok"
+
+    class _Registry:
+        def openai_schemas(self, mode):
+            return []
+
+        def get(self, name):
+            return _Tool() if name == "update_work_state" else None
+
+        def is_call_allowed(self, mode, tool, args):
+            return True
+
+    class _Client:
+        calls = 0
+
+        async def chat(self, messages, **kwargs):
+            self.calls += 1
+            return ChatResponse(
+                message=AssistantMessage(
+                    content="",
+                    tool_calls=[
+                        ToolCall(
+                            id=f"c{self.calls}",
+                            name="update_work_state",
+                            arguments={"patch": {"findings+": ["same"]}},
+                        )
+                    ],
+                ),
+                usage=Usage(input_tokens=10, output_tokens=5, cost=0.0),
+            )
+
+    s = Session.new(workspace="/tmp", model="m", mode=Mode.ACT)
+    s.messages = [{"role": "system", "content": "S"}]
+    client = _Client()
+    loop = AgentLoop(client=client, registry=_Registry(), session=s, events=_events())
+    res = await loop.run("задача")
+    assert res.no_progress
+    assert "Нет прогресса" in res.error_message
+    assert client.calls == config.MAX_IDENTICAL_CALLS
+

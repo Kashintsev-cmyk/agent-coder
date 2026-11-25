@@ -176,6 +176,9 @@ class AgentLoop:
             )
         start_cost = self.session.total_usage.cost
         iterations_since_progress = 0
+        # Детектор повторов: подпись tool_calls предыдущей итерации и длина серии.
+        prev_call_sig: tuple | None = None
+        identical_streak = 0
         # Прогресс = новый факт. Ключи уже «прочитанных» путей — чтобы
         # отличить аудит (12 уникальных файлов) от loop (9 перечитываний
         # одного). Без этого watchdog ложно срабатывал в AUDIT: модель
@@ -544,8 +547,38 @@ class AgentLoop:
                 != ws_snapshot
             )
             if ws_changed:
+                # Новые факты в памяти — прогресс. Зацикливание на одинаковых
+                # вызовах ловит детектор повторов (MAX_IDENTICAL_CALLS).
                 progress_made = True
                 work_state_updates += 1
+
+            # Детектор повторов: одинаковые tool_calls (имя + аргументы)
+            # подряд N раз — цикл, независимо от того, меняется ли work_state.
+            call_sig = tuple(
+                (tc.name, json.dumps(tc.arguments, sort_keys=True, ensure_ascii=False))
+                for tc in assistant_msg.tool_calls
+            )
+            if call_sig == prev_call_sig:
+                identical_streak += 1
+            else:
+                identical_streak = 1
+            prev_call_sig = call_sig
+            if identical_streak >= config.MAX_IDENTICAL_CALLS:
+                msg = (
+                    f"Нет прогресса: модель {identical_streak} раза подряд повторяет "
+                    f"одинаковые вызовы инструментов — останавливаюсь, чтобы не зациклиться. "
+                    f"Сессия сохранена — уточни задачу или продолжи."
+                )
+                await _maybe_await(self.events.on_error, msg)
+                self.session.save()
+                return LoopResult(
+                    iterations_used=iteration,
+                    consecutive_errors=consecutive_errors,
+                    no_progress=True,
+                    error_message=msg,
+                    task_cost=self.session.total_usage.cost - start_cost,
+                    work_state_updates=work_state_updates,
+                )
 
             if progress_made:
                 iterations_since_progress = 0

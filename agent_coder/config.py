@@ -382,6 +382,8 @@ class Config:
     # и без успешной мутации (write_file/edit_file/git_commit) считать
     # «залип». 10 — эмпирически: read_file-loop упирался за 9 перечитываний.
     MAX_ITERATIONS_NO_PROGRESS: int = int(os.getenv("MAX_ITERATIONS_NO_PROGRESS", "10"))
+    # Детектор повторов: столько одинаковых подряд ответов tool_calls останавливают цикл.
+    MAX_IDENTICAL_CALLS: int = int(os.getenv("MAX_IDENTICAL_CALLS", "3"))
 
     # Защита кеша провайдера: если на большом промпте cache_read упал ниже
     # CACHE_GUARD_RATIO от размера предыдущего промпта (при том, что кеш
