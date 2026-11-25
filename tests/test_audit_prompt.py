@@ -144,9 +144,10 @@ def test_work_state_rule_hardens_audit() -> None:
 
 
 def test_work_state_rule_mentions_plan_todo() -> None:
-    """B9.1e: _WORK_STATE_RULE просит todo в PLAN."""
+    """PLAN saves todo only for substantial unfinished multi-step plans."""
     from agent_coder.agent.prompts import _WORK_STATE_RULE
 
     text = " ".join(_WORK_STATE_RULE.split())
-    assert "В PLAN — пиши `todo` по ходу" in text
-    assert "todo+" in text
+    assert "короткие исследовательские запросы не требуют записи `todo`" in text
+    assert "существенный план незавершённой многошаговой задачи" in text
+    assert '"todo": [...]' in text

@@ -110,7 +110,10 @@ class _WsRegistry:
             return False
 
         async def executor(self, args, ctx):
-            return f"content of {args.get('path', '')}"
+            path = args.get("path", "")
+            if path == "missing.py":
+                return "Ошибка: файл не найден"
+            return f"content of {path}"
 
     class _WsTool:
         name = "update_work_state"
@@ -153,6 +156,34 @@ def _read(path: str) -> ChatResponse:
     )
 
 
+def _reads(*paths: str) -> ChatResponse:
+    return ChatResponse(
+        message=AssistantMessage(
+            content="",
+            tool_calls=[
+                ToolCall(
+                    id=f"r-{index}-{path}", name="read_file", arguments={"path": path}
+                )
+                for index, path in enumerate(paths)
+            ],
+        ),
+        usage=_usage(),
+    )
+
+
+def _tool_calls(*calls: tuple[str, dict]) -> ChatResponse:
+    return ChatResponse(
+        message=AssistantMessage(
+            content="",
+            tool_calls=[
+                ToolCall(id=f"tool-{index}", name=name, arguments=arguments)
+                for index, (name, arguments) in enumerate(calls)
+            ],
+        ),
+        usage=_usage(),
+    )
+
+
 def _update(patch: dict) -> ChatResponse:
     return ChatResponse(
         message=AssistantMessage(
@@ -183,9 +214,11 @@ class _ScriptedClient:
         self.responses = responses
         self.fallback = fallback or _done("готово (fallback)")
         self.calls = 0
+        self.requests: list[list[dict]] = []
 
     async def chat(self, messages, **kwargs):
         self.calls += 1
+        self.requests.append(list(messages))
         if self.calls <= len(self.responses):
             return self.responses[self.calls - 1]
         return self.fallback
@@ -204,29 +237,110 @@ def _act_session() -> Session:
 
 
 @pytest.mark.asyncio
-async def test_audit_reminder_injected_after_5_iterations(monkeypatch) -> None:
-    """B9.1: AUDIT — после 5 итераций без ws_update напоминание в messages."""
+async def test_audit_reminder_after_5_unique_files_across_tool_calls(
+    monkeypatch,
+) -> None:
+    """AUDIT reminder is based on unique read_file paths, not model turns."""
     monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_AUDIT", 50)
     monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 100)
 
-    responses = [_read(f"f{i}.py") for i in range(1, 8)] + [_done()]
+    # Five unique files arrive in only two model turns; the duplicate f4.py
+    # must not count twice. The reminder is injected before the third turn.
+    responses = [
+        _reads("f1.py", "f2.py", "f3.py"),
+        _reads("f4.py", "f4.py", "f5.py"),
+        _done(),
+    ]
     client = _ScriptedClient(responses)
 
     s = _audit_session()
     loop = AgentLoop(client=client, registry=_WsRegistry(), session=s, events=_events())
     res = await loop.run("аудит")
 
-    reminder_msgs = [
-        m
+    reminders = [
+        m["content"]
         for m in s.messages
         if m.get("role") == "user" and "[НАПОМИНАНИЕ B9.1]" in (m.get("content") or "")
     ]
-    assert len(reminder_msgs) == 1, "напоминание должно появиться ровно один раз"
-    # 7 read + 1 done + 1 guard = 9
-    assert client.calls == 9
-    assert res.work_state_updates == 0, "findings так и не записаны"
-    assert res.limit_reached is False
-    assert res.no_progress is False
+    assert len(reminders) == 1
+    assert "5 новых уникальных файлов через read_file" in reminders[0]
+    assert "итерац" not in reminders[0]
+    # 2 turns with reads + done + post-audit guard
+    assert client.calls == 4
+    assert res.work_state_updates == 0
+    assert res.iterations_used == 3
+
+
+@pytest.mark.asyncio
+async def test_audit_reminder_resets_after_work_state_update(monkeypatch) -> None:
+    """New reminder threshold starts over; aliases and failed reads do not count."""
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_AUDIT", 50)
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 100)
+
+    responses = [
+        _reads("a.py", "b.py", "c.py", "d.py", "e.py"),
+        _update({"findings+": ["a.py:1 — проверено"]}),
+        # 4 unique successful paths: g.py and ./g.py are aliases. The failed
+        # read must not make this batch reach the five-file reminder threshold.
+        _reads("g.py", "./g.py", "h.py", "i.py", "j.py", "missing.py"),
+        _read("k.py"),
+        _done(),
+    ]
+    client = _ScriptedClient(responses)
+
+    s = _audit_session()
+    loop = AgentLoop(client=client, registry=_WsRegistry(), session=s, events=_events())
+    res = await loop.run("аудит")
+
+    def reminder_count(messages: list[dict]) -> int:
+        return sum(
+            1
+            for message in messages
+            if message.get("role") == "user"
+            and "[НАПОМИНАНИЕ B9.1]" in (message.get("content") or "")
+        )
+
+    # Initial five files trigger the first reminder; the state update resets
+    # the count. Alias + failed read leave only four files, so k.py is the fifth.
+    assert [reminder_count(request) for request in client.requests] == [0, 1, 1, 1, 2]
+    reminders = [
+        message
+        for message in s.messages
+        if message.get("role") == "user"
+        and "[НАПОМИНАНИЕ B9.1]" in (message.get("content") or "")
+    ]
+    assert len(reminders) == 2
+    assert all(
+        "5 новых уникальных файлов через read_file" in m["content"] for m in reminders
+    )
+    assert s.work_state["findings"] == ["a.py:1 — проверено"]
+    assert res.work_state_updates == 1
+    assert res.iterations_used == 5
+    assert client.calls == 5
+
+
+@pytest.mark.asyncio
+async def test_audit_reminder_waits_for_five_unique_files(monkeypatch) -> None:
+    """Repeated reads do not trigger the AUDIT reminder a second time."""
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_AUDIT", 50)
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 100)
+
+    responses = [
+        _reads("a.py", "b.py", "c.py", "d.py", "d.py"),
+        _done(),
+    ]
+    client = _ScriptedClient(responses)
+
+    s = _audit_session()
+    loop = AgentLoop(client=client, registry=_WsRegistry(), session=s, events=_events())
+    await loop.run("аудит")
+
+    reminders = [
+        m["content"]
+        for m in s.messages
+        if m.get("role") == "user" and "[НАПОМИНАНИЕ B9.1]" in (m.get("content") or "")
+    ]
+    assert reminders == []
 
 
 @pytest.mark.asyncio
@@ -325,8 +439,8 @@ async def test_work_state_updates_counter_in_act(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_plan_reminder_injected_after_5_iterations(monkeypatch) -> None:
-    """B9.1e: PLAN — после 5 итераций без ws_update напоминание."""
+async def test_plan_does_not_inject_reminder_after_seven_reads(monkeypatch) -> None:
+    """PLAN research never gets the periodic AUDIT reminder."""
     monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_PLAN", 50)
     monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 100)
 
@@ -343,31 +457,8 @@ async def test_plan_reminder_injected_after_5_iterations(monkeypatch) -> None:
         for m in s.messages
         if m.get("role") == "user" and "[НАПОМИНАНИЕ B9.1]" in (m.get("content") or "")
     ]
-    assert len(reminder_msgs) == 1, "PLAN: напоминание один раз"
+    assert reminder_msgs == []
     assert res.work_state_updates == 0
-
-
-@pytest.mark.asyncio
-async def test_plan_reminder_text_mentions_todo(monkeypatch) -> None:
-    """B9.1e: в PLAN reminder просит todo, а не findings."""
-    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_PLAN", 50)
-    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 100)
-
-    responses = [_read(f"f{i}.py") for i in range(1, 8)] + [_done()]
-    client = _ScriptedClient(responses)
-
-    s = Session.new(workspace="/tmp", model="m", mode=Mode.PLAN)
-    s.messages = [{"role": "system", "content": "S"}]
-    loop = AgentLoop(client=client, registry=_WsRegistry(), session=s, events=_events())
-    await loop.run("план")
-
-    reminder = next(
-        m["content"]
-        for m in s.messages
-        if m.get("role") == "user" and "[НАПОМИНАНИЕ B9.1]" in (m.get("content") or "")
-    )
-    assert "todo" in reminder, "PLAN: reminder должен просить todo"
-    assert "findings" not in reminder, "PLAN: reminder НЕ про findings"
 
 
 @pytest.mark.asyncio

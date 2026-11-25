@@ -157,6 +157,25 @@ def test_work_state_rule_is_shared_across_modes() -> None:
         assert "update_work_state" in system_prompt(mode, "/tmp")
 
 
+def test_plan_work_state_rule_is_for_substantial_unfinished_plans() -> None:
+    from agent_coder.agent.prompts import _WORK_STATE_RULE
+
+    assert (
+        "короткие исследовательские запросы не требуют записи `todo`"
+        in _WORK_STATE_RULE
+    )
+    assert "существенный план" in SYSTEM_PLAN
+    assert "незавершённой многошаговой задачи" in _WORK_STATE_RULE
+    assert "Не записывай каждый промежуточный вывод" in _WORK_STATE_RULE
+
+
+def test_plan_response_format_matches_user_request() -> None:
+    assert "для исследования — выводы" in SYSTEM_PLAN
+    assert "со ссылками на код" in SYSTEM_PLAN
+    assert "только если пользователь" in SYSTEM_PLAN
+    assert "В конце выдай пронумерованный план" not in SYSTEM_PLAN
+
+
 def test_system_act_no_duplicate_rule() -> None:
     """Правило в _WORK_STATE_RULE, не в SYSTEM_ACT (один источник)."""
     from agent_coder.agent.prompts import SYSTEM_ACT

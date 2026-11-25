@@ -213,9 +213,12 @@ class AgentLoop:
 
         soft = compression.soft_limit(self.session)
         consecutive_errors = 0
-        # B9.1: счётчик итераций без записи findings (для AUDIT) и
-        # общий счётчик «сколько раз state реально менялся» (метрика).
-        iterations_since_ws_update = 0
+        # B9.1: число новых уникальных read_file путей в AUDIT после
+        # последнего фактического изменения work_state. Напоминания идут
+        # на порогах 5, 10, ... файлов.
+        audit_files_since_ws_update: set[str] = set()
+        next_audit_reminder_at = 5
+        # Общий счётчик «сколько раз state реально менялся» (метрика).
         work_state_updates = 0
 
         for iteration in range(1, max_iter + 1):
@@ -301,20 +304,16 @@ class AgentLoop:
             # актуальные факты, иначе смысл structured memory теряется.
             self._refresh_system_prompt()
 
-            # B9.1/B9.1e: напоминание в read-only режимах. Модель уходит в
-            # цикл чтения и не пишет state: в AUDIT — findings, в PLAN —
-            # todo (план). Каждые N=5 итераций без изменения state
-            # добавляем user-reminder, чтобы вернуть к update_work_state.
-            # ACT не трогаем: мутации = естественный прогресс.
+            # B9.1: reminder только в AUDIT, по числу новых уникальных
+            # read_file-путей с последнего фактического изменения work_state.
+            # Вызовы из одного ответа модели учитываются все при обработке
+            # tool_calls ниже; повторы не увеличивают набор.
             if (
-                self.session.mode in (Mode.AUDIT, Mode.PLAN)
-                and iterations_since_ws_update >= 5
-                and self.session.read_paths
+                self.session.mode == Mode.AUDIT
+                and len(audit_files_since_ws_update) >= next_audit_reminder_at
             ):
-                self._inject_work_state_reminder(
-                    self.session.mode, iterations_since_ws_update
-                )
-                iterations_since_ws_update = 0
+                self._inject_work_state_reminder(len(audit_files_since_ws_update))
+                next_audit_reminder_at += 5
 
             # Запомнить длину messages ПЕРЕД запросом: на следующей итерации
             # messages[last_llm_messages_len:] — то, чего LLM ещё не видел
@@ -483,7 +482,21 @@ class AgentLoop:
             )
             progress_made = False
             for tc in assistant_msg.tool_calls:
-                await self._handle_tool_call(tc)
+                ws_before_tool = json.dumps(
+                    self.session.work_state, sort_keys=True, ensure_ascii=False
+                )
+                read_file_path = await self._handle_tool_call(tc)
+                ws_changed_by_tool = (
+                    json.dumps(
+                        self.session.work_state, sort_keys=True, ensure_ascii=False
+                    )
+                    != ws_before_tool
+                )
+                if ws_changed_by_tool and self.session.mode == Mode.AUDIT:
+                    audit_files_since_ws_update.clear()
+                    next_audit_reminder_at = 5
+                if self.session.mode == Mode.AUDIT and read_file_path is not None:
+                    audit_files_since_ws_update.add(Path(read_file_path).as_posix())
                 # Новый путь чтения/поиска — прогресс, даже в AUDIT/PLAN
                 # (там мутаций нет по дизайну, прогресс = охват нового).
                 # Повтор того же пути — не прогресс: это loop на перечитывании.
@@ -511,10 +524,7 @@ class AgentLoop:
             )
             if ws_changed:
                 progress_made = True
-                iterations_since_ws_update = 0
                 work_state_updates += 1
-            else:
-                iterations_since_ws_update += 1
 
             if progress_made:
                 iterations_since_progress = 0
@@ -599,7 +609,7 @@ class AgentLoop:
         self.session.add_usage(usage)
         await _maybe_await(self.events.on_usage, usage)
 
-    async def _handle_tool_call(self, tc: ToolCall) -> None:
+    async def _handle_tool_call(self, tc: ToolCall) -> str | None:
         await _maybe_await(self.events.on_tool_call, tc)
 
         tool = self.registry.get(tc.name)
@@ -607,7 +617,7 @@ class AgentLoop:
             result = f"Ошибка: инструмент '{tc.name}' не найден"
             self._append_tool_result(tc, result)
             await _maybe_await(self.events.on_tool_result, tc, result)
-            return
+            return None
 
         if not self.registry.is_call_allowed(self.session.mode, tool, tc.arguments):
             mode_name = self.session.mode.value
@@ -618,7 +628,7 @@ class AgentLoop:
             )
             self._append_tool_result(tc, result)
             await _maybe_await(self.events.on_tool_result, tc, result)
-            return
+            return None
 
         if tool.needs_approval(tc.arguments) and not self.yolo:
             approved = await self.events.request_approval(tc)
@@ -626,7 +636,7 @@ class AgentLoop:
                 result = "Отклонено пользователем"
                 self._append_tool_result(tc, result)
                 await _maybe_await(self.events.on_tool_result, tc, result)
-                return
+                return None
 
         ctx = ToolContext(
             workspace=self.session.workspace,
@@ -639,24 +649,24 @@ class AgentLoop:
             model=self.session.model,
             on_usage=self._report_nested_usage,
         )
+        read_file_path: str | None = None
         try:
             result = await tool.executor(tc.arguments, ctx)
         except Exception as e:
             result = f"Ошибка выполнения инструмента: {e}"
             logger.exception("tool %s failed", tc.name)
 
-        # read_file: запомнить digest (path + def/class/import) в Session.
-        # Переживает compress → модель видит «уже читал X» в system prompt
-        # и не перечитывает целиком (сессия 6cc7d5bd: 55 повторов = деньги).
         if tc.name == "read_file" and not result.lstrip().startswith("Ошибка"):
             path = str(tc.arguments.get("path") or "").strip()
             if path:
+                read_file_path = path
                 digest = make_read_digest(path, result)
                 if digest:
                     self.session.read_paths[path] = digest
 
         self._append_tool_result(tc, result)
         await _maybe_await(self.events.on_tool_result, tc, result)
+        return read_file_path if tc.name == "read_file" else None
 
     def _append_tool_result(self, tc: ToolCall, result: str) -> None:
         """Полный результат — в архив, extracted — в messages, затем save.
@@ -682,31 +692,16 @@ class AgentLoop:
         )
         self.session.save()
 
-    def _inject_work_state_reminder(self, mode: Mode, iters_no_ws: int) -> None:
-        """B9.1/B9.1e: напомнить модели записать state, не читая дальше.
-
-        AUDIT — findings (аудит нашёл проблемы, а не записал).
-        PLAN — todo (план/шаги, которые потеряются при compress).
-        ACT — не инжектится (мутации = естественный прогресс).
-        """
-        if mode == Mode.AUDIT:
-            field = "findings"
-            tail = "Если проблем не нашёл — запиши это в open_questions."
-        else:  # Mode.PLAN
-            field = "todo"
-            tail = (
-                "Запиши в todo текущий план и что уже выяснил — иначе при "
-                "compress план потеряется."
-            )
+    def _inject_work_state_reminder(self, new_files: int) -> None:
+        """B9.1: напомнить AUDIT записать findings после новых чтений."""
         self.session.add_message(
             {
                 "role": "user",
                 "content": (
-                    f"[НАПОМИНАНИЕ B9.1] Ты не записывал {field} уже "
-                    f"{iters_no_ws} итераций, хотя прочитал файлов: "
-                    f"{len(self.session.read_paths)}. "
-                    f"Вызови update_work_state с {field} СЕЙЧАС, до "
-                    f"следующего read_file. {tail}"
+                    "[НАПОМИНАНИЕ B9.1] С прошлого изменения work_state ты прочитал "
+                    f"{new_files} новых уникальных файлов через read_file. "
+                    "Вызови update_work_state с findings СЕЙЧАС, до следующего "
+                    "read_file. Если проблем не нашёл — запиши это в open_questions."
                 ),
             }
         )
