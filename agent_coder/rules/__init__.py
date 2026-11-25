@@ -9,8 +9,29 @@ from pathlib import Path
 logger = logging.getLogger(__name__)
 
 STANDARD_PATH = Path(__file__).parent / "project_standard.md"
+COMMAND_STYLE_STANDARD_PATH = Path(__file__).parent / "command_style.md"
 AUDIT_STANDARD_PATH = Path(__file__).parent / "audit_standard.md"
 VERIFY_STANDARD_PATH = Path(__file__).parent / "verify_standard.md"
+COMMAND_STYLE_HEADER = "\n\n--- COMMAND STYLE (builtin) ---\n\n"
+COMMAND_STYLE_FOOTER = "\n--- end COMMAND STYLE ---\n"
+
+
+@lru_cache(maxsize=1)
+def load_command_style_standard() -> str:
+    """Вернуть встроенный командный стандарт или '' при ошибке чтения."""
+    try:
+        return COMMAND_STYLE_STANDARD_PATH.read_text(encoding="utf-8")
+    except OSError as e:
+        logger.warning("command_style.md: не удалось прочитать: %s", e)
+        return ""
+
+
+def append_command_style(prompt: str) -> str:
+    """Добавить общий командный стандарт к системному промпту."""
+    text = load_command_style_standard()
+    if not text:
+        return prompt
+    return prompt + COMMAND_STYLE_HEADER + text.rstrip() + COMMAND_STYLE_FOOTER
 
 
 @lru_cache(maxsize=1)

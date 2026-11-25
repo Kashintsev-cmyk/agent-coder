@@ -31,8 +31,10 @@ class _ScriptedClient:
     def __init__(self, responses):
         self.responses = list(responses)
         self.calls = 0
+        self.messages: list = []
 
     async def chat(self, messages, **kwargs):
+        self.messages.append(messages)
         self.calls += 1
         idx = min(self.calls - 1, len(self.responses) - 1)
         return self.responses[idx]
@@ -89,7 +91,7 @@ def _session(scopes: list[str]) -> Session:
 
 
 @pytest.mark.asyncio
-async def test_patch_propagates_audit_scopes():
+async def test_patch_propagates_audit_scopes(tmp_path):
     """B1a: session.audit_scopes=['bot/'] → ctx.audit_scopes=['bot/']."""
     sink: list = []
     reg = _CapturingRegistry(sink)
@@ -99,10 +101,15 @@ async def test_patch_propagates_audit_scopes():
             _FakeResponse("готово"),
         ]
     )
-    res = await run_patch(client=client, session=_session(["bot/"]), registry=reg)
+    session = _session(["bot/"])
+    session.workspace = str(tmp_path)
+    res = await run_patch(client=client, session=session, registry=reg)
     assert res.error == "", res.error
     assert sink, "tool не вызвался"
     assert sink[0] == ["bot/"], sink
+    system = client.messages[0][0]["content"]
+    assert "--- COMMAND STYLE (builtin) ---" in system
+    assert "собери минимально необходимый контекст" in system
 
 
 @pytest.mark.asyncio

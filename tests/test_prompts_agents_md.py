@@ -20,6 +20,7 @@ from agent_coder.agent.workspace_rules import (
     TRUNCATION_MARKER,
     clear_cache,
 )
+from agent_coder.rules import append_command_style
 
 
 @pytest.fixture(autouse=True)
@@ -57,13 +58,15 @@ def test_no_rules_backward_compat(
     template: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Без AGENTS.md и builtin: PLAN/ACT = template + _WORK_STATE_RULE."""
+    """Без AGENTS.md и builtin project standard всё равно есть command style."""
     from agent_coder.agent.prompts import _WORK_STATE_RULE
+    from agent_coder.rules import append_command_style
 
     monkeypatch.setattr(workspace_rules, "append_builtin_standard", lambda p: p)
     ws = str(tmp_path)
     expected = template.format(workspace=ws)
     expected = expected + "\n\n" + _WORK_STATE_RULE
+    expected = append_command_style(expected)
     assert system_prompt(mode, ws) == expected
 
 
@@ -80,6 +83,8 @@ def test_builtin_standard_absent_when_agents_md_present(tmp_path: Path) -> None:
     out = system_prompt(Mode.PLAN, ws)
     assert "--- PROJECT STANDARD (builtin) ---" not in out
     assert "project-specific rule" in out
+    assert "--- COMMAND STYLE (builtin) ---" in out
+    assert "собери минимально необходимый контекст" in out
 
 
 # (в) файл больше лимита — обрезан + маркер, сквозь промт
@@ -102,21 +107,30 @@ def test_truncated_through_prompt(tmp_path: Path) -> None:
         + len(TRUNCATION_MARKER)
         + len(SECTION_FOOTER)
         + len(("\n\n" + _WORK_STATE_RULE).encode("utf-8"))
+        + len("\n\n--- COMMAND STYLE (builtin) ---\n\n")
+        + len("\n--- end COMMAND STYLE ---\n")
+        + len(
+            (Path(__file__).parents[1] / "agent_coder/rules/command_style.md")
+            .read_text(encoding="utf-8")
+            .rstrip()
+            .encode("utf-8")
+        )
     )
     assert len(out.encode("utf-8")) <= upper
 
 
-# AUDIT не тронут
-def test_audit_not_touched(tmp_path: Path) -> None:
+# AUDIT не подмешивает AGENTS.md, но получает общий командный стандарт.
+def test_audit_ignores_agents_md_and_has_command_style(tmp_path: Path) -> None:
     _write(tmp_path, "SECRET_RULE_XYZ")
     ws = str(tmp_path)
     from agent_coder.agent.audit_prompt import build_audit_prompt
     from agent_coder.agent.prompts import _WORK_STATE_RULE
+    from agent_coder.rules import append_command_style
 
-    assert system_prompt(Mode.AUDIT, ws) == (
-        build_audit_prompt(workspace=ws) + "\n\n" + _WORK_STATE_RULE
-    )
+    expected = append_command_style(build_audit_prompt(workspace=ws))
+    assert system_prompt(Mode.AUDIT, ws) == expected + "\n\n" + _WORK_STATE_RULE
     assert "SECRET_RULE_XYZ" not in system_prompt(Mode.AUDIT, ws)
+    assert "сохраняй и проверяй её exit code отдельно" in system_prompt(Mode.AUDIT, ws)
 
 
 # (д) падение workspace_rules -> откат на base, для PLAN/ACT
@@ -145,6 +159,7 @@ def test_failure_falls_back_to_base(
 
     expected = template.format(workspace=ws)
     expected = expected + "\n\n" + _WORK_STATE_RULE
+    expected = append_command_style(expected)
     assert out == expected
 
 
@@ -183,15 +198,33 @@ def test_system_act_no_duplicate_rule() -> None:
     assert "update_work_state" not in SYSTEM_ACT
 
 
-def test_system_act_encourages_fewer_tool_roundtrips() -> None:
-    """ACT groups independent work and avoids unnecessary repeat checks."""
-    assert "объединяй независимые чтения и поиски" in SYSTEM_ACT
-    assert "Зависимые действия выполняй последовательно" in SYSTEM_ACT
-    assert "не перечитывай/не перепроверяй" in SYSTEM_ACT
-    assert "выполни их один раз" in SYSTEM_ACT
-    assert "повторяй их только если код изменился" in SYSTEM_ACT
-    assert "Не пропускай необходимые проверки" in SYSTEM_ACT
-    assert "не добавляй" in SYSTEM_ACT
+def test_agents_md_fits_prompt_limit_without_truncation() -> None:
+    agents_md = Path(__file__).parents[1] / "AGENTS.md"
+    content = agents_md.read_text(encoding="utf-8")
+    assert len(content.encode("utf-8")) <= MAX_AGENTS_MD_BYTES
+
+    out = system_prompt(Mode.ACT, str(agents_md.parent))
+    assert TRUNCATION_MARKER.strip() not in out
+    assert content.rstrip() in out
+
+
+def test_workspace_command_rules_are_canonical() -> None:
+    agents_md = (Path(__file__).parents[1] / "AGENTS.md").read_text(encoding="utf-8")
+    assert "собери минимально необходимый контекст" in agents_md
+    assert "сохраняй exit code каждой отдельно" in agents_md
+    assert "полный CI-набор — перед публикацией" in agents_md
+    assert "Не объединяй команды для обхода разрешений" in agents_md
+
+
+def test_system_act_references_builtin_command_rules() -> None:
+    assert "Следуй встроенному командному стилю" in SYSTEM_ACT
+    assert (
+        "командному стилю workspace и правилам проверок из `AGENTS.md`"
+        not in SYSTEM_ACT
+    )
+    assert "объединяй независимые чтения и поиски" not in SYSTEM_ACT
+    assert "exit code" not in SYSTEM_ACT
+    assert "ruff check" not in SYSTEM_ACT
 
 
 def test_system_act_protects_user_changes_and_limits_git_publication() -> None:

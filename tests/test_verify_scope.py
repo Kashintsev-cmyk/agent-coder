@@ -56,9 +56,11 @@ class _ScriptClient:
     def __init__(self, replies: list[ChatResponse]):
         self._replies = list(replies)
         self.calls: list = []
+        self.messages: list = []
 
     async def chat(self, messages, **kwargs):
         self.calls.append(kwargs)
+        self.messages.append(messages)
         if not self._replies:
             raise RuntimeError("нет ответов")
         return self._replies.pop(0)
@@ -95,14 +97,19 @@ def _session(scopes: list[str]) -> Session:
 
 
 @pytest.mark.asyncio
-async def test_verify_propagates_audit_scopes(monkeypatch):
+async def test_verify_propagates_audit_scopes(monkeypatch, tmp_path):
     """M1: session.audit_scopes=['bot/'] → ctx.audit_scopes=['bot/']."""
     _patch_inputs(monkeypatch)
     reg = _CapturingReg()
     client = _ScriptClient([_reply_tool(), _reply_text()])
-    res = await run_verify(client=client, session=_session(["bot/"]), registry=reg)
+    session = _session(["bot/"])
+    session.workspace = str(tmp_path)
+    res = await run_verify(client=client, session=session, registry=reg)
     assert res.ok, res.error
     assert reg.captured == [["bot/"]], reg.captured
+    system = client.messages[0][0]["content"]
+    assert "--- COMMAND STYLE (builtin) ---" in system
+    assert "собери минимально необходимый контекст" in system
 
 
 @pytest.mark.asyncio

@@ -54,6 +54,7 @@ include = ["agent_coder*"]
     "*.in",
     ".gitignore-base",
 ]
+"agent_coder.rules" = ["*.md"]
 
 # mypy входит в CI (шаг "Mypy", только Python 3.12 — второй матричный
 # прогон ничего нового не даёт). handlers/ исключён: union-attr от aiogram

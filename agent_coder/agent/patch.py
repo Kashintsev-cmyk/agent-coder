@@ -28,6 +28,7 @@ from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
 from agent_coder.agent.work_state import render_for_prompt
 from agent_coder.config import config
+from agent_coder.rules import append_command_style
 from agent_coder.tools import build_registry
 from agent_coder.tools.registry import ToolContext, ToolRegistry
 
@@ -280,6 +281,7 @@ async def run_patch(
         res.error = "patch_standard.md не загружен (см. agent_coder/rules/)"
         return res
     system = system.replace("{workspace}", session.workspace)
+    system = append_command_style(system)
 
     reg = registry if registry is not None else build_registry()
     tools = [t for t in (reg.get(n) for n in PATCH_TOOLS) if t is not None]
