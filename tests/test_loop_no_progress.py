@@ -436,4 +436,3 @@ async def test_identical_calls_stopped_by_detector() -> None:
     assert res.no_progress
     assert "Нет прогресса" in res.error_message
     assert client.calls == config.MAX_IDENTICAL_CALLS
-
