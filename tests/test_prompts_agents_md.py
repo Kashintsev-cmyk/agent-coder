@@ -220,6 +220,34 @@ def test_workspace_command_rules_are_canonical() -> None:
     assert "Не объединяй команды для обхода разрешений" in command_style
 
 
+def test_command_style_defines_adaptive_project_research() -> None:
+    command_style = " ".join(
+        (Path(__file__).parents[1] / "agent_coder/rules/command_style.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "независимо от наличия" in command_style
+    assert "Если пользователь указал конкретный файл" in command_style
+    assert "не делай полный обзор репозитория" in command_style
+    assert "Если scope неясен" in command_style
+    assert "Не выводи полное дерево" in command_style
+    assert "Читай их выборочно" in command_style
+    assert "изучай только относящиеся к задаче участки" in command_style
+    assert "Группируй независимые безопасные поиски и чтения" in command_style
+    assert "После изменений выбери проверки по scope" in command_style
+    assert "Не требуй читать все Markdown-файлы" in command_style
+
+
+@pytest.mark.parametrize("mode", [Mode.PLAN, Mode.ACT, Mode.AUDIT])
+def test_builtin_command_style_is_available_without_agents_md(
+    tmp_path: Path, mode: Mode
+) -> None:
+    assert not (tmp_path / "AGENTS.md").exists()
+    out = system_prompt(mode, str(tmp_path))
+    assert "--- COMMAND STYLE (builtin) ---" in out
+    assert "Если пользователь указал конкретный файл" in out
+
+
 def test_system_act_references_builtin_command_rules() -> None:
     assert "Следуй встроенному командному стилю" in SYSTEM_ACT
     assert (

@@ -110,6 +110,7 @@ async def test_patch_propagates_audit_scopes(tmp_path):
     system = client.messages[0][0]["content"]
     assert "--- COMMAND STYLE (builtin) ---" in system
     assert "собери минимально необходимый контекст" in system
+    assert "Если пользователь указал конкретный файл" in system
 
 
 @pytest.mark.asyncio
