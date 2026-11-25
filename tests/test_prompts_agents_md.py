@@ -184,7 +184,10 @@ def test_system_act_no_duplicate_rule() -> None:
 
 
 def test_system_act_encourages_fewer_tool_roundtrips() -> None:
-    """ACT группирует независимые tools и завершает работу без лишних кругов."""
-    assert "Объединяй независимые чтения" in SYSTEM_ACT
+    """ACT группирует независимые действия и избегает повторных проверок."""
+    assert "объединяй независимые чтения и поиски" in SYSTEM_ACT
     assert "не перечитывай/не перепроверяй" in SYSTEM_ACT
+    assert "выполни их один раз" in SYSTEM_ACT
+    assert "Не запускай те же тесты повторно" in SYSTEM_ACT
+    assert "если после успешного запуска код не менялся" in SYSTEM_ACT
     assert "не добавляй" in SYSTEM_ACT
