@@ -242,6 +242,7 @@ async def run_verify(
                     tools=[] if force_final else schemas,
                     reasoning_effort=session.reasoning_effort,
                     session_id=session.id,
+                    source="verify",
                 ),
                 timeout=_timeout_sec,
             )

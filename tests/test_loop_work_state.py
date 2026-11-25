@@ -414,6 +414,30 @@ async def test_post_audit_guard_skips_when_findings_present(monkeypatch) -> None
 
 
 @pytest.mark.asyncio
+async def test_post_audit_guard_skips_when_open_questions_present(monkeypatch) -> None:
+    """Пункт 2: модель уже записала итог в open_questions — guard не добавляет chat."""
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_AUDIT", 50)
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 100)
+
+    responses = [
+        _read("a.py"),
+        _read("b.py"),
+        _update({"open_questions+": ["проблем не найдено"]}),
+        _done(),
+    ]
+    client = _ScriptedClient(responses)
+
+    s = _audit_session()
+    loop = AgentLoop(client=client, registry=_WsRegistry(), session=s, events=_events())
+    await loop.run("аудит")
+
+    assert client.calls == 4, (
+        "guard не должен добавить chat при непустом open_questions"
+    )
+    assert s.work_state.get("findings") in (None, [])
+
+
+@pytest.mark.asyncio
 async def test_work_state_updates_counter_in_act(monkeypatch) -> None:
     """B9.1: LoopResult.work_state_updates считает итерации с изменением state."""
     monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_ACT", 50)

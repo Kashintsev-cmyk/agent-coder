@@ -10,6 +10,7 @@ from agent_coder.tools.git import (
 )
 from agent_coder.tools.list_files import list_files_tool
 from agent_coder.tools.read_file import read_file_tool
+from agent_coder.tools.read_files import read_files_tool
 from agent_coder.tools.registry import Tool, ToolContext, ToolRegistry
 from agent_coder.tools.run_checks import run_checks_tool
 from agent_coder.tools.run_command import run_command_tool
@@ -24,6 +25,7 @@ def build_registry() -> ToolRegistry:
     registry = ToolRegistry()
     # Чтение
     registry.register(read_file_tool)
+    registry.register(read_files_tool)
     registry.register(list_files_tool)
     registry.register(search_tool)
     registry.register(search_history_tool)

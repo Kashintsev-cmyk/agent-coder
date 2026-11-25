@@ -115,6 +115,21 @@ def _read_path_key(tc: ToolCall) -> str | None:
     return f"{tc.name}:{path}"
 
 
+def _read_path_keys(tc: ToolCall) -> list[str]:
+    """Ключи прочитанных путей для вызова (read_files — по каждому пути).
+
+    Ключ совпадает с read_file:<path>, поэтому повтор того же файла через
+    read_file и read_files не считается новым прогрессом.
+    """
+    if tc.name == "read_files":
+        raw = tc.arguments.get("paths")
+        if not isinstance(raw, list):
+            return []
+        return [f"read_file:{str(p).strip()}" for p in raw if str(p).strip()]
+    key = _read_path_key(tc)
+    return [key] if key is not None else []
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -336,6 +351,7 @@ class AgentLoop:
                     temperature=config.TEMPERATURE,
                     session_id=self.session.id,
                     stable_count=stable_count,
+                    source="loop",
                 )
             except LLMError as e:
                 # Доменная ошибка LLM-слоя (402 и т.п.) — не retryable,
@@ -497,13 +513,18 @@ class AgentLoop:
                     next_audit_reminder_at = 5
                 if self.session.mode == Mode.AUDIT and read_file_path is not None:
                     audit_files_since_ws_update.add(Path(read_file_path).as_posix())
+                if self.session.mode == Mode.AUDIT and tc.name == "read_files":
+                    for key in _read_path_keys(tc):
+                        audit_files_since_ws_update.add(
+                            Path(key.removeprefix("read_file:")).as_posix()
+                        )
                 # Новый путь чтения/поиска — прогресс, даже в AUDIT/PLAN
                 # (там мутаций нет по дизайну, прогресс = охват нового).
                 # Повтор того же пути — не прогресс: это loop на перечитывании.
-                path_key = _read_path_key(tc)
-                if path_key is not None and path_key not in seen_paths:
-                    seen_paths.add(path_key)
-                    progress_made = True
+                for path_key in _read_path_keys(tc):
+                    if path_key not in seen_paths:
+                        seen_paths.add(path_key)
+                        progress_made = True
                 # В ACT успешный мутирующий tool — прогресс.
                 if self.session.mode == Mode.ACT:
                     tool = self.registry.get(tc.name)
@@ -725,7 +746,12 @@ class AgentLoop:
         """
         if self.session.mode != Mode.AUDIT:
             return 0, None
-        if (self.session.work_state or {}).get("findings"):
+        ws = self.session.work_state or {}
+        if ws.get("findings"):
+            return 0, None
+        # Модель уже явно зафиксировала итог («проблем не нашёл» → open_questions):
+        # дополнительный запрос не нужен.
+        if ws.get("open_questions"):
             return 0, None
         if not self.session.read_paths:
             return 0, None
@@ -765,6 +791,7 @@ class AgentLoop:
                 temperature=config.TEMPERATURE,
                 session_id=self.session.id,
                 stable_count=stable_count,
+                source="guard",
             )
         except Exception as e:
             logger.warning("post-audit guard: LLM error: %s", e)

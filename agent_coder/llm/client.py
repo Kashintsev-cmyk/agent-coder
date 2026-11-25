@@ -6,6 +6,7 @@ import asyncio
 import json
 import logging
 import random
+from collections import Counter
 from datetime import UTC
 from typing import Any
 
@@ -235,6 +236,9 @@ class LLMClient:
     def __init__(self) -> None:
         self._client: AsyncOpenAI | None = None
         self._http: httpx.AsyncClient | None = None
+        # Счётчики для замеров: вызовы chat() и HTTP-попытки (с retry) по источнику.
+        self.calls: Counter[str] = Counter()
+        self.attempts: Counter[str] = Counter()
 
     async def start(self) -> None:
         self._http = httpx.AsyncClient(
@@ -276,8 +280,11 @@ class LLMClient:
         session_id: str = "",
         stable_count: int | None = None,
         max_tokens: int | None = None,
+        source: str = "unknown",
     ) -> ChatResponse:
         """Один вызов LLM с retry.
+
+        `source` — откуда вызов (loop/guard/verify/patch/compress) — для счётчиков.
 
         `reasoning_effort` — none | minimal | low | medium | high | xhigh |
         max | ultra | None. При "none" или None параметр не передаётся
@@ -316,17 +323,20 @@ class LLMClient:
             kwargs["messages"] = _apply_cache_anchor(messages, stable_count)
 
         logger.info(
-            "LLM → model=%s msgs=%d tools=%d reasoning=%s",
+            "LLM → source=%s model=%s msgs=%d tools=%d reasoning=%s",
+            source,
             model,
             len(messages),
             len(tools) if tools else 0,
             reasoning_effort or "-",
         )
 
+        self.calls[source] += 1
         try:
             response = await self._with_retry(
                 lambda: self.client.chat.completions.create(**kwargs),
                 op_name=f"chat({model})",
+                source=source,
             )
         except Exception:
             # flex строго возвращает ошибку, если нет мощностей. Пробуем
@@ -337,6 +347,7 @@ class LLMClient:
                 response = await self._with_retry(
                     lambda: self.client.chat.completions.create(**kwargs),
                     op_name=f"chat({model})[flex→default]",
+                    source=source,
                 )
             else:
                 raise
@@ -411,11 +422,12 @@ class LLMClient:
             message=assistant, usage=usage, raw=response, provider=provider
         )
 
-    async def _with_retry(self, factory, op_name: str):
+    async def _with_retry(self, factory, op_name: str, source: str = "unknown"):
         attempts = max(1, config.MAX_RETRIES)
         backoff = max(1.0, config.RETRY_BACKOFF)
         last: Exception | None = None
         for i in range(attempts):
+            self.attempts[source] += 1
             try:
                 return await factory()
             except APITimeoutError as e:

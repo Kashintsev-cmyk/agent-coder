@@ -772,6 +772,7 @@ async def compress(session, client) -> CompressionResult | None:
                 reasoning_effort="none",
                 temperature=0.0,
                 session_id=session.id,
+                source="compress",
             )
             break
         except Exception as e:
