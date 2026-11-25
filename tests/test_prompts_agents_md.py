@@ -198,22 +198,26 @@ def test_system_act_no_duplicate_rule() -> None:
     assert "update_work_state" not in SYSTEM_ACT
 
 
-def test_agents_md_fits_prompt_limit_without_truncation() -> None:
-    agents_md = Path(__file__).parents[1] / "AGENTS.md"
-    content = agents_md.read_text(encoding="utf-8")
+def test_agents_md_fits_prompt_limit_without_truncation(tmp_path: Path) -> None:
+    content = "project-specific rules" * 10
+    agents_md = tmp_path / "AGENTS.md"
+    agents_md.write_text(content, encoding="utf-8")
     assert len(content.encode("utf-8")) <= MAX_AGENTS_MD_BYTES
 
-    out = system_prompt(Mode.ACT, str(agents_md.parent))
+    out = system_prompt(Mode.ACT, str(tmp_path))
     assert TRUNCATION_MARKER.strip() not in out
-    assert content.rstrip() in out
+    assert content in out
 
 
 def test_workspace_command_rules_are_canonical() -> None:
-    agents_md = (Path(__file__).parents[1] / "AGENTS.md").read_text(encoding="utf-8")
-    assert "собери минимально необходимый контекст" in agents_md
-    assert "сохраняй exit code каждой отдельно" in agents_md
-    assert "полный CI-набор — перед публикацией" in agents_md
-    assert "Не объединяй команды для обхода разрешений" in agents_md
+    command_style = (
+        Path(__file__).parents[1] / "agent_coder/rules/command_style.md"
+    ).read_text(encoding="utf-8")
+    assert "собери минимально необходимый контекст" in command_style
+    assert "сохраняй и проверяй её exit code отдельно" in command_style
+    assert "Не теряй ошибки за pipe" in command_style
+    assert "Сначала сохрани статус команды" in command_style
+    assert "Не объединяй команды для обхода разрешений" in command_style
 
 
 def test_system_act_references_builtin_command_rules() -> None:
