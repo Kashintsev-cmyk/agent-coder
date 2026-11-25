@@ -184,10 +184,28 @@ def test_system_act_no_duplicate_rule() -> None:
 
 
 def test_system_act_encourages_fewer_tool_roundtrips() -> None:
-    """ACT группирует независимые действия и избегает повторных проверок."""
+    """ACT groups independent work and avoids unnecessary repeat checks."""
     assert "объединяй независимые чтения и поиски" in SYSTEM_ACT
+    assert "Зависимые действия выполняй последовательно" in SYSTEM_ACT
     assert "не перечитывай/не перепроверяй" in SYSTEM_ACT
     assert "выполни их один раз" in SYSTEM_ACT
-    assert "Не запускай те же тесты повторно" in SYSTEM_ACT
-    assert "если после успешного запуска код не менялся" in SYSTEM_ACT
+    assert "повторяй их только если код изменился" in SYSTEM_ACT
+    assert "Не пропускай необходимые проверки" in SYSTEM_ACT
     assert "не добавляй" in SYSTEM_ACT
+
+
+def test_system_act_protects_user_changes_and_limits_git_publication() -> None:
+    assert "проверь имеющиеся незакоммиченные правки и учитывай их" in SYSTEM_ACT
+    assert (
+        "Не перезаписывай, не откатывай и не удаляй пользовательские изменения"
+        in SYSTEM_ACT
+    )
+    assert "если пользователь явно этого не попросил" in SYSTEM_ACT
+
+
+def test_system_act_clarifies_high_impact_ambiguity() -> None:
+    assert "существенно влияет на результат, данные, безопасность" in SYSTEM_ACT
+    assert (
+        "Для безопасного,\n   обратимого выбора прими совместимое решение" in SYSTEM_ACT
+    )
+    assert "укажи допущение в отчёте" in SYSTEM_ACT
