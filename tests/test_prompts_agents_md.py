@@ -162,3 +162,10 @@ def test_system_act_no_duplicate_rule() -> None:
     from agent_coder.agent.prompts import SYSTEM_ACT
 
     assert "update_work_state" not in SYSTEM_ACT
+
+
+def test_system_act_encourages_fewer_tool_roundtrips() -> None:
+    """ACT группирует независимые tools и завершает работу без лишних кругов."""
+    assert "Объединяй независимые чтения" in SYSTEM_ACT
+    assert "не перечитывай/не перепроверяй" in SYSTEM_ACT
+    assert "не добавляй" in SYSTEM_ACT
