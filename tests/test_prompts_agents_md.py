@@ -238,6 +238,36 @@ def test_command_style_defines_adaptive_project_research() -> None:
     assert "Не требуй читать все Markdown-файлы" in command_style
 
 
+def test_command_style_batches_related_tasks_and_publishes_only_when_complete() -> None:
+    command_style = " ".join(
+        (Path(__file__).parents[1] / "agent_coder/rules/command_style.md")
+        .read_text(encoding="utf-8")
+        .split()
+    )
+    assert "не запускай полный CI" in command_style
+    assert "не создавай промежуточные коммиты" in command_style
+    assert "не делай push после каждой подзадачи" in command_style
+    assert (
+        "Сначала заверши все поставленные задачи и проверь итоговый diff"
+        in command_style
+    )
+    assert (
+        "Целевые проверки запускай только когда они нужны для обратной связи"
+        in command_style
+    )
+    assert "повторяй их, только если затронутый код изменился" in command_style
+    assert "После закрытия всех задач один раз запусти полный CI" in command_style
+    assert (
+        "Если проверки упали или остались незавершённые задачи, не коммить и не пушь"
+        in command_style
+    )
+    assert "Не объединяй независимые изменения в один коммит" in command_style
+    assert (
+        "Явное указание пользователя на промежуточную публикацию имеет приоритет"
+        in command_style
+    )
+
+
 @pytest.mark.parametrize("mode", [Mode.PLAN, Mode.ACT, Mode.AUDIT])
 def test_builtin_command_style_is_available_without_agents_md(
     tmp_path: Path, mode: Mode
