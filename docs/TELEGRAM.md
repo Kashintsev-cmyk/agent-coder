@@ -131,7 +131,7 @@ CHAT-режим переключается через `/mode chat` (отдель
 | Что | Путь |
 |---|---|
 | Активная сессия chat_id → session_id | `sessions/telegram_state.json` |
-| Сессии | `sessions/<id>.json` |
+| Сессии | `sessions/<id>.json` (`SESSION_RETENTION_DAYS`, default 30 без активности) |
 | Медиа | `sessions/media/` (`MEDIA_RETENTION_DAYS`, default 30) |
 | Состояние миграции | `~/.agent-coder/projects/<project>/state.json` (вне git) |
 

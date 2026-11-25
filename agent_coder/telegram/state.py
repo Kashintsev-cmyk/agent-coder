@@ -26,6 +26,21 @@ def clear_active_session(chat_id: int) -> None:
     _save(data)
 
 
+def remove_session_references(session_ids: set[str]) -> int:
+    """Forget active-session pointers whose session files were removed."""
+    if not session_ids:
+        return 0
+    data = _load()
+    stale_chats = [
+        chat_id for chat_id, session_id in data.items() if session_id in session_ids
+    ]
+    for chat_id in stale_chats:
+        del data[chat_id]
+    if stale_chats:
+        _save(data)
+    return len(stale_chats)
+
+
 def _load() -> dict:
     if not STATE_PATH.exists():
         return {}

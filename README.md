@@ -354,6 +354,7 @@ Haiku как победителя и DeepSeek Flash как fallback.
 | `VERIFY_MODEL_ID` | `anthropic/claude-haiku-5.5` | Модель для `/verify` |
 | `PATCH_MODEL_ID` | `deepseek/deepseek-v4.1-flash-1017` | Модель для `/patch` |
 | `MAX_COST_VERIFY` | `50.0` | Отдельный бюджет verify, ₽ |
+| `SESSION_RETENTION_DAYS` | `30` | Удаление сессий без активности (вместе с файлами), дней |
 | `MEDIA_RETENTION_DAYS` | `30` | Retention медиа-вложений, дней |
 
 **Агент и окружение**
@@ -516,6 +517,7 @@ CI (GitHub Actions) прогоняет `ruff check .`, `ruff format --check .`,
 - Стоимость хранится как `float`. Для UI этого достаточно; для биллинга
   точность не гарантируется (переход на `Decimal` — при появлении задачи).
 - PDF-отчётов нет — только Markdown.
+- Сессии без активности удаляются по retention `SESSION_RETENTION_DAYS` (30 дней по умолчанию), фоновая задача проверяет раз в сутки. Удаляются также связанные отчёты, медиа и архив истории.
 - Медиа удаляются по retention: файлы старше `MEDIA_RETENTION_DAYS` (30)
   подчищает фоновая задача раз в сутки. При `/delete` — сразу.
 - `mypy` в CI исключает `agent_coder/telegram/handlers/**`:

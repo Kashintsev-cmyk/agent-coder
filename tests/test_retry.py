@@ -11,9 +11,14 @@ from openai import APIConnectionError, APIError, APITimeoutError, RateLimitError
 from agent_coder.llm.client import LLMClient, _parse_retry_after
 
 
+def _request() -> httpx.Request:
+    """Request object with the attributes expected by OpenAI exceptions."""
+    return httpx.Request("GET", "https://api.example/")
+
+
 def _http_response(headers: dict | None = None) -> httpx.Response:
     """Настоящий httpx.Response с request — нужен конструкторам openai."""
-    req = httpx.Request("GET", "https://api.example/")
+    req = _request()
     return httpx.Response(429, headers=headers or {}, request=req)
 
 
@@ -89,7 +94,7 @@ async def test_retry_eventually_succeeds():
     async def factory():
         attempts.append(1)
         if len(attempts) == 1:
-            raise APITimeoutError(request=SimpleNamespace())
+            raise APITimeoutError(request=_request())
         return "ok"
 
     # jitter не должен добавить реального времени — backoff = 0
@@ -114,7 +119,7 @@ async def test_retry_4xx_no_429_raises_immediately():
 
     async def factory():
         calls.append(1)
-        err = APIError("bad", request=SimpleNamespace(), body=None)
+        err = APIError("bad", request=_request(), body=None)
         err.status_code = 400
         raise err
 
@@ -129,7 +134,7 @@ async def test_retry_exhausted_raises_last():
     client = _make_client()
 
     async def factory():
-        raise APIConnectionError(request=SimpleNamespace())
+        raise APIConnectionError(request=_request())
 
     import agent_coder.llm.client as c
 
@@ -194,7 +199,7 @@ async def test_retry_jitter_in_range(monkeypatch):
     monkeypatch.setattr("asyncio.sleep", fake_sleep)
 
     async def factory():
-        raise APIConnectionError(request=SimpleNamespace())
+        raise APIConnectionError(request=_request())
 
     import agent_coder.llm.client as c
 

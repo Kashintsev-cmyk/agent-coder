@@ -337,6 +337,10 @@ class Config:
     # (~200K) — падает, для >200K fallback на kimi.
     SUMMARY_MODEL: str = os.getenv("SUMMARY_MODEL", "openai/gpt-6-luna")
 
+    # Retention сессий по неактивности (last updated_at): старые данные удаляются
+    # фоновой задачей бота раз в сутки + один раз при старте.
+    SESSION_RETENTION_DAYS: int = _env_int("SESSION_RETENTION_DAYS", "30")
+
     # Retention медиа-вложений сессий: файлы старше N дней удаляются
     # фоновой задачей бота (раз в сутки + один раз при старте).
     MEDIA_RETENTION_DAYS: int = _env_int("MEDIA_RETENTION_DAYS", "30")
@@ -570,6 +574,10 @@ class Config:
         if problem:
             errors.append(problem)
 
+        if cls.SESSION_RETENTION_DAYS < 1:
+            errors.append(
+                f"SESSION_RETENTION_DAYS={cls.SESSION_RETENTION_DAYS} должен быть >= 1"
+            )
         if cls.MEDIA_RETENTION_DAYS < 1:
             errors.append(
                 f"MEDIA_RETENTION_DAYS={cls.MEDIA_RETENTION_DAYS} должен быть >= 1"
