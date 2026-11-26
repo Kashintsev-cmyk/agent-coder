@@ -3,7 +3,7 @@
 Проблема, которую решает: при LLM-сжатии истории (compression) детали
 теряются — модель «забывает», что уже нашла/сделала, и ищет заново.
 work_state — детерминированный (не пересуммаризуемый LLM) набор фактов,
-который инжектится в system prompt каждый запрос и служит скелетом
+который инжектится в динамический контекст запроса и служит скелетом
 резюме при compress().
 
 Поля (все — списки строк, чтобы модель дописывала, не перезаписывала):
@@ -33,13 +33,26 @@ from typing import Any
 
 logger = logging.getLogger(__name__)
 
-# Порядок важен: так поля выводятся в system prompt и в скелет резюме.
+# Порядок важен: поля выводятся в динамический prompt и скелет резюме.
 FIELDS: tuple[str, ...] = (
     "user_requests",
     "findings",
     "done",
     "todo",
     "open_questions",
+)
+
+# SSOT dynamic-context policy shared by PLAN/ACT/AUDIT. State stays complete
+# in Session; these profiles only control its prompt projection and priority.
+PROMPT_FIELDS_BY_MODE: dict[str, tuple[str, ...]] = {
+    "plan": ("user_requests", "findings", "todo", "open_questions"),
+    "act": FIELDS,
+    "audit": ("user_requests", "findings", "open_questions", "todo"),
+}
+PROMPT_CONTEXT_MAX_CHARS = 12_000
+PROMPT_CONTEXT_WORK_STATE_CHARS = int(PROMPT_CONTEXT_MAX_CHARS * 0.70)
+PROMPT_CONTEXT_READ_PATHS_CHARS = (
+    PROMPT_CONTEXT_MAX_CHARS - PROMPT_CONTEXT_WORK_STATE_CHARS - 2
 )
 
 # Разумные потолки, чтобы state не разросся и не съел весь контекст.
@@ -228,40 +241,20 @@ class WorkStateHandle:
         return normalized
 
 
-def render_for_prompt(state: dict[str, Any] | None) -> str:
-    """Блок [WORK_STATE] для system prompt. Пустой state → пустая строка.
+def render_for_prompt(
+    state: dict[str, Any] | None,
+    *,
+    mode: object | None = None,
+    max_chars: int | None = None,
+) -> str:
+    """Render work_state, optionally using a mode projection and size budget.
 
-    Пустой блок не выводим: нечего модели видеть, лишние токены.
+    No mode and no budget preserve the full canonical rendering used by
+    compression, verification, and patch summaries.
     """
-    norm = normalize(state)
-    if not any(norm.values()):
-        return ""
-    lines = ["[WORK_STATE] — что уже установлено (обновляй через update_work_state):"]
-    titles = {
-        "user_requests": "Просьбы пользователя",
-        "findings": "Установленные факты",
-        "done": "Сделано",
-        "todo": "Осталось",
-        "open_questions": "Открытые вопросы",
-    }
-    for field_name in FIELDS:
-        items = norm[field_name]
-        # B9.4: дедуп при рендере — защита от старых сессий с дублями.
-        if field_name == "findings" and _dedup_enabled():
-            items = _dedup_findings(items)
-        if not items:
-            continue
-        # R11: в prompt — первые MAX_FINDINGS_IN_PROMPT, полный — в findings.md.
-        hidden = 0
-        if field_name == "findings" and len(items) > MAX_FINDINGS_IN_PROMPT:
-            hidden = len(items) - MAX_FINDINGS_IN_PROMPT
-            items = items[:MAX_FINDINGS_IN_PROMPT]
-        lines.append(f"\n{titles[field_name]}:")
-        for it in items:
-            lines.append(f"- {it}")
-        if hidden:
-            lines.append(f"…ещё {hidden} скрыто (полный список в findings.md)")
-    return "\n".join(lines)
+    mode_value = str(getattr(mode, "value", mode)) if mode is not None else ""
+    fields = PROMPT_FIELDS_BY_MODE.get(mode_value, FIELDS)
+    return _render_work_state_projection(state, fields, max_chars=max_chars)
 
 
 MAX_READ_PATHS_IN_PROMPT = 60
@@ -303,27 +296,184 @@ def make_read_digest(path: str, result: str) -> str | None:
     return digest[:200]
 
 
-def render_read_paths(read_paths: dict[str, str] | None) -> str:
-    """Блок [ПРОЧИТАННЫЕ ФАЙЛЫ] для system prompt. Пусто -> пустая строка."""
+def render_prompt_context(
+    state: dict[str, Any] | None,
+    read_paths: dict[str, str] | None,
+    mode: object = "act",
+) -> str:
+    """Render the canonical, mode-aware, bounded dynamic prompt context.
+
+    This is the SSOT for field projection and prompt-size budgets. The stored
+    work_state/read_paths remain complete; only this presentation is bounded.
+    """
+    state_budget = PROMPT_CONTEXT_WORK_STATE_CHARS
+    paths_budget = PROMPT_CONTEXT_READ_PATHS_CHARS
+    work_state = render_for_prompt(state, mode=mode, max_chars=state_budget)
+    read_path_block = render_read_paths(read_paths, max_chars=paths_budget)
+
+    if not work_state and read_path_block:
+        read_path_block = render_read_paths(
+            read_paths, max_chars=PROMPT_CONTEXT_MAX_CHARS
+        )
+    elif work_state and not read_path_block:
+        work_state = render_for_prompt(
+            state, mode=mode, max_chars=PROMPT_CONTEXT_MAX_CHARS
+        )
+    elif work_state and read_path_block:
+        unused_state = max(0, state_budget - len(work_state))
+        if unused_state:
+            paths_budget += unused_state
+            read_path_block = render_read_paths(read_paths, max_chars=paths_budget)
+        unused_paths = max(0, PROMPT_CONTEXT_READ_PATHS_CHARS - len(read_path_block))
+        if unused_paths:
+            work_state = render_for_prompt(
+                state,
+                mode=mode,
+                max_chars=min(
+                    PROMPT_CONTEXT_MAX_CHARS - len(read_path_block) - 2,
+                    state_budget + unused_paths,
+                ),
+            )
+
+    parts = [part for part in (work_state, read_path_block) if part]
+    return "\n\n".join(parts)
+
+
+def _render_work_state_projection(
+    state: dict[str, Any] | None,
+    fields: tuple[str, ...],
+    *,
+    max_chars: int | None = None,
+) -> str:
+    norm = normalize(state)
+    titles = {
+        "user_requests": "Просьбы пользователя",
+        "findings": "Установленные факты",
+        "done": "Сделано",
+        "todo": "Осталось",
+        "open_questions": "Открытые вопросы",
+    }
+    sections: list[tuple[str, list[str]]] = []
+    for field_name in fields:
+        items = norm[field_name]
+        if field_name == "findings" and _dedup_enabled():
+            items = _dedup_findings(items)
+        if not items:
+            continue
+        hidden = 0
+        if field_name == "findings" and len(items) > MAX_FINDINGS_IN_PROMPT:
+            hidden = len(items) - MAX_FINDINGS_IN_PROMPT
+            items = items[:MAX_FINDINGS_IN_PROMPT]
+        entries = [f"- {item}" for item in items]
+        if hidden:
+            entries.append(f"…ещё {hidden} скрыто (полный список в findings.md)")
+        sections.append((titles[field_name], entries))
+    if not sections:
+        return ""
+
+    header = "[WORK_STATE] — что уже установлено (обновляй через update_work_state):"
+
+    def render(selected: list[list[str]]) -> str:
+        lines = [header]
+        for (title, _), entries in zip(sections, selected):
+            if entries:
+                lines.append(f"\n{title}:")
+                lines.extend(entries)
+        return "\n".join(lines)
+
+    complete = render([entries.copy() for _, entries in sections])
+    if max_chars is None or len(complete) <= max_chars:
+        return complete
+
+    selected = [[entries[0]] for _, entries in sections]
+    text = render(selected)
+    marker = "…WORK_STATE сокращён по лимиту prompt"
+    suffix = "\n" + marker
+    if len(text) + len(suffix) > max_chars:
+        return _limit_prompt_text(text, max_chars, marker)
+
+    indexes = [1] * len(sections)
+    while True:
+        added = False
+        for section_index, (_, entries) in enumerate(sections):
+            item_index = indexes[section_index]
+            if item_index >= len(entries):
+                continue
+            selected[section_index].append(entries[item_index])
+            candidate = render(selected)
+            if len(candidate) + len(suffix) <= max_chars:
+                indexes[section_index] += 1
+                added = True
+            else:
+                selected[section_index].pop()
+                indexes[section_index] = len(entries)
+        if not added:
+            break
+
+    return render(selected) + suffix
+
+
+def render_read_paths(
+    read_paths: dict[str, str] | None,
+    *,
+    max_chars: int | None = None,
+) -> str:
+    """Render recent file digests; bounded rendering retains newest paths."""
     if not read_paths:
         return ""
-    # Recent-N, не alphabet: read_paths заполняется в порядке чтения
-    # (loop.py:545), а последние прочитанные забываются первыми после
-    # compress — их и показываем. sorted() давал a.py..z.py (старьё).
     items = list(read_paths.items())[-MAX_READ_PATHS_IN_PROMPT:]
     if not items:
         return ""
-    lines = [
-        (
-            "[ПРОЧИТАННЫЕ ФАЙЛЫ] — уже читал в этой сессии. "
-            "НЕ ПЕРЕЧИТЫВАЙ целиком: read_file по ним отвергается. "
-            "Детали — read_file с offset/limit (например, offset=285 limit=20) "
-            "или search_history:"
-        )
-    ]
-    for path, digest in items:
-        lines.append(f"- {path}: {digest}")
-    hidden = len(read_paths) - len(items)
-    if hidden > 0:
-        lines.append(f"…ещё {hidden} файлов скрыто (см. search_history)")
-    return "\n".join(lines)
+    header = (
+        "[ПРОЧИТАННЫЕ ФАЙЛЫ] — уже читал в этой сессии. "
+        "НЕ ПЕРЕЧИТЫВАЙ целиком: read_file по ним отвергается. "
+        "Детали — read_file с offset/limit или search_history:"
+    )
+    hidden_by_count = len(read_paths) - len(items)
+    lines = [header, *(f"- {path}: {digest}" for path, digest in items)]
+    if hidden_by_count:
+        lines.append(f"…ещё {hidden_by_count} файлов скрыто (см. search_history)")
+    text = "\n".join(lines)
+    if max_chars is None or len(text) <= max_chars:
+        return text
+
+    selected: list[str] = []
+    for path, digest in reversed(items):
+        line = f"- {path}: {digest}"
+        omitted = len(read_paths) - len(selected) - 1
+        marker = f"…ещё {omitted} файлов скрыто или сокращено (см. search_history)"
+        candidate = "\n".join((header, *reversed([*selected, line]), marker))
+        if len(candidate) > max_chars:
+            break
+        selected.append(line)
+
+    if not selected:
+        omitted = len(read_paths)
+        marker = f"…ещё {omitted} файлов скрыто или сокращено (см. search_history)"
+        room = max_chars - len(header) - len(marker) - 2
+        if room > 1:
+            path, digest = items[-1]
+            selected = [f"- {path}: {digest}"[: room - 1].rstrip() + "…"]
+    omitted = len(read_paths) - len(selected)
+    marker = f"…ещё {omitted} файлов скрыто или сокращено (см. search_history)"
+    bounded = "\n".join((header, *reversed(selected), marker))
+    if len(bounded) <= max_chars:
+        return bounded
+    return _limit_prompt_text(
+        bounded,
+        max_chars,
+        "… список прочитанных файлов сокращён (см. search_history)",
+    )
+
+
+def _limit_prompt_text(text: str, max_chars: int, marker: str) -> str:
+    if len(text) <= max_chars:
+        return text
+    if max_chars <= len(marker):
+        return marker[:max_chars]
+    suffix = "\n" + marker
+    prefix_limit = max_chars - len(suffix)
+    prefix = text[:prefix_limit]
+    if "\n" in prefix:
+        prefix = prefix.rsplit("\n", 1)[0]
+    return prefix.rstrip() + suffix

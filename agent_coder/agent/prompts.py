@@ -177,28 +177,14 @@ def system_prompt(
 def volatile_block(
     work_state: object | None = None,
     read_paths: dict[str, str] | None = None,
+    mode: Mode | str | None = None,
 ) -> str:
-    """Волатильный хвост запроса: [WORK_STATE] + [ПРОЧИТАННЫЕ ФАЙЛЫ].
+    """Build the bounded, mode-aware volatile tail for one LLM request.
 
-    Пустая строка, если блокам нечего показать. Вызывающий кладёт результат
-    последним сообщением ТОЛЬКО в запрос к LLM, не в историю сессии.
-
-    work_state — WorkStateHandle (см. agent/work_state.py) или None.
-    read_paths — {path: digest} уже прочитанных файлов (переживает
-    compress) или None. Блок [ПРОЧИТАННЫЕ ФАЙЛЫ] — чтобы модель не
-    перечитывала целиком (сессия 6cc7d5bd: 55 повторов = деньги).
+    Session state stays complete; this renderer applies the centralized
+    projection and character budget in work_state.py.
     """
-    parts: list[str] = []
-    if work_state is not None:
-        from agent_coder.agent.work_state import render_for_prompt
+    from agent_coder.agent.work_state import render_prompt_context
 
-        block = render_for_prompt(getattr(work_state, "_state", None))
-        if block:
-            parts.append(block)
-    if read_paths:
-        from agent_coder.agent.work_state import render_read_paths
-
-        rp_block = render_read_paths(read_paths)
-        if rp_block:
-            parts.append(rp_block)
-    return "\n\n".join(parts)
+    state = getattr(work_state, "_state", None) if work_state is not None else None
+    return render_prompt_context(state, read_paths, mode=mode)

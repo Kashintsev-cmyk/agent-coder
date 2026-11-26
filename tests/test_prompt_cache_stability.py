@@ -15,6 +15,10 @@ read_file менял начало запроса → prefix-кэш OpenAI про
 from __future__ import annotations
 
 from agent_coder.agent.prompts import Mode, system_prompt, volatile_block
+from agent_coder.agent.work_state import (
+    PROMPT_CONTEXT_MAX_CHARS,
+    render_prompt_context,
+)
 
 
 class _Handle:
@@ -62,3 +66,44 @@ def test_volatile_block_partial() -> None:
     block = volatile_block(None, {"c.py": "c.py (1): x"})
     assert "[ПРОЧИТАННЫЕ ФАЙЛЫ]" in block
     assert "[WORK_STATE]" not in block
+
+
+def test_prompt_context_projects_fields_by_mode() -> None:
+    state = {
+        "user_requests": ["request"],
+        "findings": ["finding"],
+        "done": ["completed"],
+        "todo": ["next step"],
+        "open_questions": ["question"],
+    }
+
+    plan = render_prompt_context(state, None, Mode.PLAN)
+    act = render_prompt_context(state, None, Mode.ACT)
+    audit = render_prompt_context(state, None, Mode.AUDIT)
+
+    assert "request" in plan and "finding" in plan and "next step" in plan
+    assert "completed" not in plan
+    assert "completed" in act
+    assert "finding" in audit and "question" in audit
+    assert "completed" not in audit
+
+
+def test_dynamic_prompt_context_obeys_total_budget() -> None:
+    state = {"findings": [f"finding {index}: " + "x" * 450 for index in range(100)]}
+    paths = {f"src/file_{index}.py": "digest " + "y" * 180 for index in range(60)}
+
+    context = render_prompt_context(state, paths, Mode.AUDIT)
+
+    assert len(context) <= PROMPT_CONTEXT_MAX_CHARS
+    assert "[WORK_STATE]" in context
+    assert "[ПРОЧИТАННЫЕ ФАЙЛЫ]" in context
+    assert "src/file_59.py" in context
+    assert "src/file_0.py" not in context
+    assert "сокращён по лимиту prompt" in context
+
+
+def test_mode_projection_can_render_empty_state() -> None:
+    assert (
+        render_prompt_context({"done": ["only ACT-relevant value"]}, None, Mode.PLAN)
+        == ""
+    )

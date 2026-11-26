@@ -95,6 +95,43 @@ def test_refresh_updates_existing_system_message() -> None:
     assert "[WORK_STATE]" not in s.messages[-1].get("content", "")
 
 
+def test_request_payload_projects_work_state_for_each_mode() -> None:
+    for mode, show_done in (
+        (Mode.PLAN, False),
+        (Mode.ACT, True),
+        (Mode.AUDIT, False),
+    ):
+        session = Session(
+            id=f"test-{mode.value}",
+            workspace="/tmp",
+            model="m",
+            mode=mode,
+        )
+        session.work_state = {
+            "user_requests": ["request"],
+            "findings": ["finding"],
+            "done": ["completed"],
+            "todo": ["next"],
+            "open_questions": ["question"],
+        }
+        session.read_paths = {"src/one.py": "module digest"}
+        loop = _loop(session)
+        loop._refresh_system_prompt()
+        stable_prompt = session.messages[0]["content"]
+
+        payload = loop._request_messages()
+        dynamic_tail = payload[-1]["content"]
+        assert payload[-1]["role"] == "user"
+        assert "[ПРОЧИТАННЫЕ ФАЙЛЫ]" in dynamic_tail
+        assert "finding" in dynamic_tail
+        assert ("completed" in dynamic_tail) is show_done
+
+        session.work_state["findings"] = ["updated finding"]
+        loop._refresh_system_prompt()
+        assert session.messages[0]["content"] == stable_prompt
+        assert "updated finding" in loop._request_messages()[-1]["content"]
+
+
 # --- B9.1: reminder + post-audit guard ---------------------------------
 
 

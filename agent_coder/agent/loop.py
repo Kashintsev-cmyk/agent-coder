@@ -967,7 +967,9 @@ class AgentLoop:
         None — хвоста нет, стабилен весь запрос.
         """
         tail = volatile_block(
-            self._work_state_handle(), self.session.read_paths or None
+            self._work_state_handle(),
+            self.session.read_paths or None,
+            mode=self.session.mode,
         )
         if not tail:
             return self.session.messages, None
