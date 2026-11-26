@@ -2,7 +2,30 @@
 
 from __future__ import annotations
 
-from agent_coder.tools.run_command import _is_safe_command
+from agent_coder.tools.run_command import _is_safe_command, run_command_tool
+
+
+def test_description_lists_read_only_whitelist():
+    description = run_command_tool.description
+    for command in (
+        "ls",
+        "cat",
+        "head",
+        "tail",
+        "wc",
+        "grep",
+        "find",
+        "git status",
+        "git log",
+        "git ls-files",
+        "git diff",
+        "git show",
+    ):
+        assert command in description
+    assert (
+        "для истории и содержимого коммитов используй git_log/git_diff, не run_command"
+        in description
+    )
 
 
 def _cmd(s: str) -> bool:
