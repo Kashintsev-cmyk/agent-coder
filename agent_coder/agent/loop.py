@@ -22,6 +22,7 @@ from agent_coder.llm.client import LLMClient
 from agent_coder.llm.router import RouterState, router
 from agent_coder.llm.types import LLMError, ToolCall, Usage
 from agent_coder.tools.registry import ToolContext, ToolRegistry
+from agent_coder.tools.run_command import _is_safe_command
 
 logger = logging.getLogger(__name__)
 
@@ -500,11 +501,13 @@ class AgentLoop:
                 self.session.work_state, sort_keys=True, ensure_ascii=False
             )
             progress_made = False
+            tool_results: list[str] = []
             for tc in assistant_msg.tool_calls:
                 ws_before_tool = json.dumps(
                     self.session.work_state, sort_keys=True, ensure_ascii=False
                 )
                 read_file_path = await self._handle_tool_call(tc)
+                tool_results.append(str(self.session.messages[-1].get("content") or ""))
                 ws_changed_by_tool = (
                     json.dumps(
                         self.session.work_state, sort_keys=True, ensure_ascii=False
@@ -531,7 +534,14 @@ class AgentLoop:
                 # В ACT успешный мутирующий tool — прогресс.
                 if self.session.mode == Mode.ACT:
                     tool = self.registry.get(tc.name)
-                    if tool is not None and not tool.read_only:
+                    if (
+                        tool is not None
+                        and not tool.read_only
+                        and (
+                            tc.name != "run_command"
+                            or not _is_safe_command(tc.arguments)
+                        )
+                    ):
                         last = (
                             self.session.messages[-1] if self.session.messages else {}
                         )
@@ -552,17 +562,18 @@ class AgentLoop:
                 progress_made = True
                 work_state_updates += 1
 
-            # Детектор повторов: одинаковые tool_calls (имя + аргументы)
-            # подряд N раз — цикл, независимо от того, меняется ли work_state.
+            # Детектор повторов: одинаковые tool_calls (имя + аргументы) и
+            # результаты подряд N раз — цикл, независимо от изменения work_state.
             call_sig = tuple(
                 (tc.name, json.dumps(tc.arguments, sort_keys=True, ensure_ascii=False))
                 for tc in assistant_msg.tool_calls
             )
-            if call_sig == prev_call_sig:
+            signature = (call_sig, tuple(tool_results))
+            if signature == prev_call_sig:
                 identical_streak += 1
             else:
                 identical_streak = 1
-            prev_call_sig = call_sig
+            prev_call_sig = signature
             if identical_streak >= config.MAX_IDENTICAL_CALLS:
                 msg = (
                     f"Нет прогресса: модель {identical_streak} раза подряд повторяет "

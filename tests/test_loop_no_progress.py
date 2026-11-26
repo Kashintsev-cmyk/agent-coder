@@ -386,6 +386,126 @@ async def test_user_rejection_not_progress(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
+async def test_run_command_read_only_is_not_progress(monkeypatch) -> None:
+    """Успешные run_command с ls не сбрасывают watchdog прогресса."""
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 3)
+    monkeypatch.setattr(loop_mod.config, "MAX_IDENTICAL_CALLS", 10)
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_TASK", 10_000.0)
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_SESSION", 10_000.0)
+
+    class _Tool:
+        read_only = False
+        requires_approval = False
+
+        def needs_approval(self, args):
+            return False
+
+        async def executor(self, args, ctx):
+            return "file listing"
+
+    class _Registry:
+        def openai_schemas(self, mode):
+            return []
+
+        def get(self, name):
+            return _Tool() if name == "run_command" else None
+
+        def is_call_allowed(self, mode, tool, args):
+            return True
+
+    class _Client:
+        calls = 0
+
+        async def chat(self, messages, **kwargs):
+            self.calls += 1
+            return ChatResponse(
+                message=AssistantMessage(
+                    content="",
+                    tool_calls=[
+                        ToolCall(
+                            id=f"c{self.calls}",
+                            name="run_command",
+                            arguments={"command": "ls"},
+                        )
+                    ],
+                ),
+                usage=Usage(input_tokens=10, output_tokens=5, cost=0.0),
+            )
+
+    s = Session.new(workspace="/tmp", model="m", mode=Mode.ACT)
+    s.messages = [{"role": "system", "content": "S"}]
+    client = _Client()
+    loop = AgentLoop(client=client, registry=_Registry(), session=s, events=_events())
+    res = await loop.run("посмотри файлы")
+
+    assert res.no_progress
+    assert client.calls == 3
+
+
+@pytest.mark.asyncio
+async def test_identical_calls_with_different_results_not_stopped(monkeypatch) -> None:
+    """Одинаковые git_status с разными результатами не считаются повтором."""
+    monkeypatch.setattr(
+        loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", config.MAX_IDENTICAL_CALLS + 2
+    )
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_TASK", 10_000.0)
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_SESSION", 10_000.0)
+
+    class _Tool:
+        read_only = True
+        requires_approval = False
+
+        def __init__(self):
+            self.calls = 0
+
+        def needs_approval(self, args):
+            return False
+
+        async def executor(self, args, ctx):
+            self.calls += 1
+            return f"status {self.calls}"
+
+    class _Registry:
+        def __init__(self):
+            self.tool = _Tool()
+
+        def openai_schemas(self, mode):
+            return []
+
+        def get(self, name):
+            return self.tool if name == "git_status" else None
+
+        def is_call_allowed(self, mode, tool, args):
+            return True
+
+    class _Client:
+        calls = 0
+
+        async def chat(self, messages, **kwargs):
+            self.calls += 1
+            tool_calls = (
+                [ToolCall(id=f"c{self.calls}", name="git_status", arguments={})]
+                if self.calls <= config.MAX_IDENTICAL_CALLS
+                else []
+            )
+            return ChatResponse(
+                message=AssistantMessage(
+                    content="готово" if not tool_calls else "", tool_calls=tool_calls
+                ),
+                usage=Usage(input_tokens=10, output_tokens=5, cost=0.0),
+            )
+
+    s = Session.new(workspace="/tmp", model="m", mode=Mode.ACT)
+    s.messages = [{"role": "system", "content": "S"}]
+    client = _Client()
+    loop = AgentLoop(client=client, registry=_Registry(), session=s, events=_events())
+    res = await loop.run("проверь статус")
+
+    assert not res.no_progress
+    assert client.calls == config.MAX_IDENTICAL_CALLS + 1
+
+
+@pytest.mark.asyncio
 async def test_identical_calls_stopped_by_detector() -> None:
     """Одинаковые tool_calls подряд — детектор повторов останавливает цикл."""
 
