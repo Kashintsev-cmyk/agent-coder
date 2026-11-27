@@ -8,7 +8,12 @@ from typing import Any
 
 from agent_coder.shell_runner import run_shell
 from agent_coder.tools._scope import in_scope
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
 
 TIMEOUT_SEC = 300
 MAX_OUTPUT = 30_000
@@ -758,25 +763,24 @@ def _scope_violation(cmd: str, scopes: list[str]) -> str | None:
     return None
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResult:
     command = args.get("command", "").strip()
     if not command:
-        return "Ошибка: пустая команда"
+        return ToolExecutionResult("Ошибка: пустая команда", ToolStatus.ERROR)
 
-    # Hard-block: никогда не выполняем — ни с yolo, ни с approval.
     if _HARD_BLOCK.search(command) or _is_destructive_rm(command):
-        return (
+        return ToolExecutionResult(
             "🛑 Команда заблокирована на уровне безопасности: "
             "потенциально разрушительная операция "
             "(rm -rf /, mkfs, dd на диск, fork bomb и т.п.). "
-            "Выполни вручную, если уверен."
+            "Выполни вручную, если уверен.",
+            ToolStatus.REJECTED,
         )
 
-    # B9.2h: scope-gate — только при непустых audit_scopes (AUDIT)
     if ctx.audit_scopes:
         gate_err = _scope_violation(command, ctx.audit_scopes)
         if gate_err:
-            return gate_err
+            return ToolExecutionResult(gate_err, ToolStatus.REJECTED)
 
     result = await run_shell(
         command,
@@ -786,16 +790,36 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         mask=True,
     )
     if result.timed_out:
-        return f"Команда прервана по таймауту ({TIMEOUT_SEC}с)"
+        return ToolExecutionResult(
+            f"Команда прервана по таймауту ({TIMEOUT_SEC}с)",
+            ToolStatus.ERROR,
+            exit_code=result.returncode,
+        )
     if result.error:
-        return f"Ошибка запуска: {result.error}"
+        return ToolExecutionResult(
+            f"Ошибка запуска: {result.error}",
+            ToolStatus.ERROR,
+            exit_code=result.returncode,
+        )
 
     parts = [f"$ {command}", f"exit code: {result.returncode}"]
     if result.stdout.strip():
-        parts.append(f"--- stdout ---\n{result.stdout}")
+        parts.append(f"--- stdout ---\\n{result.stdout}")
     if result.stderr.strip():
-        parts.append(f"--- stderr ---\n{result.stderr}")
-    return "\n".join(parts)
+        parts.append(f"--- stderr ---\\n{result.stderr}")
+
+    if result.returncode != 0:
+        status = ToolStatus.ERROR
+    elif _is_safe_command({"command": command}):
+        status = ToolStatus.SUCCESS_NO_CHANGE
+    else:
+        status = ToolStatus.SUCCESS_EFFECT_UNKNOWN
+
+    return ToolExecutionResult(
+        output="\\n".join(parts),
+        status=status,
+        exit_code=result.returncode,
+    )
 
 
 run_command_tool = Tool(

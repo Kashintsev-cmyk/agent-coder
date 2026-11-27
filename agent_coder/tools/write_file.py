@@ -6,10 +6,15 @@ from pathlib import Path
 from typing import Any
 
 from agent_coder.tools._scope import in_scope
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResult | str:
     rel = args.get("path", "").strip()
     content = args.get("content", "")
     if not rel:
@@ -31,6 +36,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
 
     existed = full.exists()
     try:
+        before = full.read_bytes() if existed else None
         full.parent.mkdir(parents=True, exist_ok=True)
         full.write_text(content, encoding="utf-8")
     except Exception as e:
@@ -38,7 +44,15 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
 
     lines = content.count("\n") + (1 if content else 0)
     verb = "перезаписан" if existed else "создан"
-    return f"Файл {verb}: {rel} ({lines} строк, {len(content)} байт)"
+    output = f"Файл {verb}: {rel} ({lines} строк, {len(content)} байт)"
+    changed = before != full.read_bytes()
+    return ToolExecutionResult(
+        output=output,
+        status=(
+            ToolStatus.SUCCESS_CHANGED if changed else ToolStatus.SUCCESS_NO_CHANGE
+        ),
+        changed_paths=(rel,) if changed else (),
+    )
 
 
 write_file_tool = Tool(

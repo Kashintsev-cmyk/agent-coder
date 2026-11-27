@@ -4,12 +4,63 @@ from __future__ import annotations
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from enum import StrEnum
 from typing import Any
 
 from agent_coder.agent.prompts import Mode
 from agent_coder.llm.types import Usage
 
-ToolExecutor = Callable[[dict[str, Any], "ToolContext"], Awaitable[str]]
+
+class ToolStatus(StrEnum):
+    """Внутренний статус выполнения инструмента; не показывается модели."""
+
+    SUCCESS_CHANGED = "success_changed"
+    SUCCESS_NO_CHANGE = "success_no_change"
+    SUCCESS_EFFECT_UNKNOWN = "success_effect_unknown"
+    ERROR = "error"
+    REJECTED = "rejected"
+
+
+@dataclass(frozen=True)
+class ToolExecutionResult:
+    """Структурированный результат инструмента и прежний текст для модели."""
+
+    output: str
+    status: ToolStatus
+    exit_code: int | None = None
+    changed_paths: tuple[str, ...] = ()
+
+
+def normalize_tool_result(
+    raw: str | ToolExecutionResult,
+    *,
+    tool: Tool,
+) -> ToolExecutionResult:
+    """Нормализовать legacy-строку по контракту инструмента.
+
+    Новый инструмент должен возвращать ToolExecutionResult. legacy-строки
+    классифицируются ради обратной совместимости.
+    """
+    if isinstance(raw, ToolExecutionResult):
+        return raw
+
+    output = str(raw)
+    stripped = output.lstrip()
+    if stripped.startswith("Отклонено"):
+        status = ToolStatus.REJECTED
+    elif stripped.startswith(("Ошибка", "Команда прервана", "🛑")):
+        status = ToolStatus.ERROR
+    elif tool.read_only:
+        status = ToolStatus.SUCCESS_NO_CHANGE
+    else:
+        # Текстовый ответ не доказывает, что операция изменила состояние.
+        status = ToolStatus.SUCCESS_EFFECT_UNKNOWN
+    return ToolExecutionResult(output=output, status=status)
+
+
+ToolExecutor = Callable[
+    [dict[str, Any], "ToolContext"], Awaitable[str | ToolExecutionResult]
+]
 SafeCheck = Callable[[dict[str, Any]], bool]
 
 

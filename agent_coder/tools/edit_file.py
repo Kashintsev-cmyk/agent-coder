@@ -6,10 +6,15 @@ from pathlib import Path
 from typing import Any
 
 from agent_coder.tools._scope import in_scope
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResult | str:
     rel = (args.get("path") or "").strip()
     old_string = args.get("old_string", "")
     new_string = args.get("new_string", "")
@@ -76,9 +81,19 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     except Exception as e:
         return f"Ошибка записи: {e}"
 
-    if replace_all:
-        return f"Заменено {count} вхождений в {rel}"
-    return f"Заменено в {rel}:{line_num}"
+    output = (
+        f"Заменено {count} вхождений в {rel}"
+        if replace_all
+        else f"Заменено в {rel}:{line_num}"
+    )
+    changed = new_content != content
+    return ToolExecutionResult(
+        output=output,
+        status=(
+            ToolStatus.SUCCESS_CHANGED if changed else ToolStatus.SUCCESS_NO_CHANGE
+        ),
+        changed_paths=(rel,) if changed else (),
+    )
 
 
 edit_file_tool = Tool(

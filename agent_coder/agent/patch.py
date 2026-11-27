@@ -30,7 +30,12 @@ from agent_coder.agent.work_state import render_for_prompt
 from agent_coder.config import config
 from agent_coder.rules import append_command_style
 from agent_coder.tools import build_registry
-from agent_coder.tools.registry import ToolContext, ToolRegistry
+from agent_coder.tools.registry import (
+    ToolContext,
+    ToolRegistry,
+    ToolStatus,
+    normalize_tool_result,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -411,20 +416,17 @@ async def run_patch(
                 _hint = tc.arguments.get("path") or tc.arguments.get("command") or ""
                 logger.info("patch: %s %s", tc.name, str(_hint)[:120])
                 try:
-                    result = await tool_map[tc.name].executor(tc.arguments, ctx)
+                    raw_result = await tool_map[tc.name].executor(tc.arguments, ctx)
+                    outcome = normalize_tool_result(raw_result, tool=tool_map[tc.name])
+                    result = outcome.output
                     logger.info(
-                        "patch: %s -> %s", tc.name, str(result)[:200].replace("\n", " ")
+                        "patch: %s -> %s",
+                        tc.name,
+                        result[:200].replace("\\n", " "),
                     )
-                    # B9.2g.3: files_changed.add — только после error-check.
-                    # Раньше write с ошибкой (путь вне workspace и т.п.)
-                    # попадал в files_changed → exclusion в _build_task
-                    # терял findings для следующего прогона.
-                    is_error = result.lstrip().startswith("Ошибка")
-                    if tc.name in ("write_file", "edit_file") and not is_error:
-                        path = str(tc.arguments.get("path") or "").strip()
-                        if path:
-                            files_changed.add(path)
-                    if is_error:
+                    if tc.name in ("write_file", "edit_file"):
+                        files_changed.update(outcome.changed_paths)
+                    if outcome.status in (ToolStatus.ERROR, ToolStatus.REJECTED):
                         consecutive_errors += 1
                     else:
                         consecutive_errors = 0

@@ -11,6 +11,7 @@ from agent_coder.agent.patch import (
 from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
 from agent_coder.llm.types import ToolCall, Usage
+from agent_coder.tools.registry import ToolExecutionResult, ToolStatus
 
 
 class _FakeMessage:
@@ -58,6 +59,13 @@ class _FakeTool:
     async def executor(self, args, ctx):
         if self.behavior == "error":
             return "Ошибка: simulated"
+        if self.name in ("write_file", "edit_file"):
+            path = str(args.get("path") or "")
+            return ToolExecutionResult(
+                output=f"ok: {self.name}",
+                status=ToolStatus.SUCCESS_CHANGED,
+                changed_paths=(path,) if path else (),
+            )
         return f"ok: {self.name}"
 
 

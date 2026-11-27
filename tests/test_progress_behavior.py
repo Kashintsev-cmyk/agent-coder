@@ -12,6 +12,7 @@ from agent_coder.agent.loop import AgentLoop, LoopEvents
 from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
 from agent_coder.llm.types import AssistantMessage, ChatResponse, ToolCall, Usage
+from agent_coder.tools.registry import ToolExecutionResult, ToolStatus
 
 
 class _Tool:
@@ -89,8 +90,11 @@ async def _run(
     registry: _Registry,
     *,
     approved: bool = True,
+    no_progress_limit: int = 1,
 ) -> tuple[Any, _ScriptedClient, Session]:
-    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 1)
+    monkeypatch.setattr(
+        loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", no_progress_limit
+    )
     monkeypatch.setattr(loop_mod.config, "MAX_IDENTICAL_CALLS", 10)
     monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_TASK", 10_000.0)
     monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_SESSION", 10_000.0)
@@ -210,3 +214,79 @@ async def test_work_state_change_counts_as_progress(monkeypatch, tmp_path) -> No
     assert not result.no_progress
     assert client.chat_calls == 2
     assert session.work_state["findings"] == ["new fact"]
+
+
+@pytest.mark.asyncio
+async def test_successful_noop_write_is_not_progress(monkeypatch, tmp_path) -> None:
+    """Успешный ответ записи без изменения файла не сбрасывает watchdog."""
+    path = tmp_path / "unchanged.py"
+    path.write_text("original\n", encoding="utf-8")
+
+    async def noop_write(args: dict[str, Any], ctx: Any) -> str:
+        return ToolExecutionResult("Файл успешно записан", ToolStatus.SUCCESS_NO_CHANGE)
+
+    result, client, _ = await _run(
+        monkeypatch,
+        tmp_path,
+        [
+            _tool_call("write_file", {"path": str(path)}),
+            None,
+        ],
+        _Registry(_Tool("write_file", noop_write, read_only=False)),
+    )
+
+    assert result.no_progress
+    assert client.chat_calls == 1
+    assert path.read_text(encoding="utf-8") == "original\n"
+
+
+@pytest.mark.asyncio
+async def test_actual_file_change_is_progress(monkeypatch, tmp_path) -> None:
+    """Фактическое изменение файла считается прогрессом."""
+    path = tmp_path / "changed.py"
+
+    async def write_file(args: dict[str, Any], ctx: Any) -> str:
+        path.write_text("changed\n", encoding="utf-8")
+        return ToolExecutionResult(
+            "Файл успешно записан",
+            ToolStatus.SUCCESS_CHANGED,
+            changed_paths=(str(path),),
+        )
+
+    result, client, _ = await _run(
+        monkeypatch,
+        tmp_path,
+        [_tool_call("write_file", {"path": str(path)}), None],
+        _Registry(_Tool("write_file", write_file, read_only=False)),
+    )
+
+    assert not result.no_progress
+    assert client.chat_calls == 2
+    assert path.read_text(encoding="utf-8") == "changed\n"
+
+
+@pytest.mark.asyncio
+async def test_failed_read_does_not_mark_path_as_seen(monkeypatch, tmp_path) -> None:
+    calls_made = 0
+
+    async def read_file(args: dict[str, Any], ctx: Any) -> ToolExecutionResult:
+        nonlocal calls_made
+        calls_made += 1
+        if calls_made == 1:
+            return ToolExecutionResult("Ошибка чтения", ToolStatus.ERROR)
+        return ToolExecutionResult("file contents", ToolStatus.SUCCESS_NO_CHANGE)
+
+    result, client, _ = await _run(
+        monkeypatch,
+        tmp_path,
+        [
+            _tool_call("read_file", {"path": "src/a.py"}, "failed"),
+            _tool_call("read_file", {"path": "src/a.py"}, "success"),
+            None,
+        ],
+        _Registry(_Tool("read_file", read_file, read_only=True)),
+        no_progress_limit=2,
+    )
+
+    assert not result.no_progress
+    assert client.chat_calls == 3

@@ -327,6 +327,29 @@ async def test_verify_precheck_blocks(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_verify_actual_cost_overrun_stops_before_tools(monkeypatch):
+    _patch_verify_inputs(monkeypatch)
+    monkeypatch.setattr(verify_mod, "_estimate_cost_rub", lambda *_: 1.0)
+    monkeypatch.setattr(verify_mod.config, "MAX_COST_VERIFY", 50.0)
+
+    class _OverBudgetClient:
+        calls = 0
+
+        async def chat(self, **kwargs):
+            self.calls += 1
+            return ChatResponse(
+                message=AssistantMessage(content="CONFIRMED: finding", tool_calls=[]),
+                usage=Usage(input_tokens=100, output_tokens=50, cost=60.0),
+            )
+
+    client = _OverBudgetClient()
+    result = await verify_mod.run_verify(client, _PreSession(), registry=_PreReg())
+    assert result.budget_exceeded
+    assert result.cost == 60.0
+    assert client.calls == 1
+
+
+@pytest.mark.asyncio
 async def test_verify_precheck_passes(monkeypatch):
     _patch_verify_inputs(monkeypatch)
     monkeypatch.setattr(verify_mod, "_estimate_cost_rub", lambda *_: 1.0)

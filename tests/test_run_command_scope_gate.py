@@ -71,4 +71,4 @@ def test_execute_gates_in_audit() -> None:
 
     ctx = ToolContext(workspace=".", mode=Mode.ACT, audit_scopes=SCOPES)
     out = asyncio.run(run_command_tool.executor({"command": "cat config.py"}, ctx))
-    assert "вне области аудита" in out
+    assert "вне области аудита" in out.output

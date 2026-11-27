@@ -22,7 +22,7 @@ def _ctx(workspace: str, scopes: list[str] | None) -> ToolContext:
 async def test_write_file_in_scope_ok(tmp_path):
     ctx = _ctx(str(tmp_path), ["bot/"])
     out = await write_exec({"path": "bot/x.py", "content": "print(1)\n"}, ctx)
-    assert "создан" in out, out
+    assert "создан" in out.output, out
     assert (tmp_path / "bot" / "x.py").exists()
 
 
@@ -48,7 +48,7 @@ async def test_write_file_unscoped_ok(tmp_path):
     """None scopes = без ограничений (ACT/PLAN, contract)."""
     ctx = _ctx(str(tmp_path), None)
     out = await write_exec({"path": ".env", "content": "x\n"}, ctx)
-    assert "создан" in out, out
+    assert "создан" in out.output, out
 
 
 @pytest.mark.asyncio
@@ -60,7 +60,7 @@ async def test_edit_file_in_scope_ok(tmp_path):
     out = await edit_exec(
         {"path": "bot/x.py", "old_string": "old", "new_string": "new"}, ctx
     )
-    assert "Заменено" in out, out
+    assert "Заменено" in out.output, out
     assert target.read_text(encoding="utf-8") == "new\n"
 
 

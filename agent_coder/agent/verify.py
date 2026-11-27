@@ -31,7 +31,11 @@ from agent_coder.agent.work_state import render_for_prompt
 from agent_coder.config import config
 from agent_coder.rules import append_command_style, load_verify_standard
 from agent_coder.tools import build_registry
-from agent_coder.tools.registry import ToolContext, ToolRegistry
+from agent_coder.tools.registry import (
+    ToolContext,
+    ToolRegistry,
+    normalize_tool_result,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -263,6 +267,15 @@ async def run_verify(
         if msg.content:
             final_parts.append(msg.content)
 
+        if res.cost >= config.MAX_COST_VERIFY:
+            res.budget_exceeded = True
+            logger.warning(
+                "verify: бюджет %.2f₽ исчерпан (лимит %.2f₽)",
+                res.cost,
+                config.MAX_COST_VERIFY,
+            )
+            break
+
         if not msg.tool_calls:
             break
 
@@ -292,20 +305,14 @@ async def run_verify(
                 )
             else:
                 try:
-                    result = await tool_map[tc.name].executor(tc.arguments, ctx)
+                    raw_result = await tool_map[tc.name].executor(tc.arguments, ctx)
+                    result = normalize_tool_result(
+                        raw_result, tool=tool_map[tc.name]
+                    ).output
                 except Exception as e:
                     logger.exception("verify: tool %s failed", tc.name)
                     result = f"Ошибка выполнения инструмента: {e}"
             messages.append({"role": "tool", "tool_call_id": tc.id, "content": result})
-
-        if res.cost >= config.MAX_COST_VERIFY:
-            res.budget_exceeded = True
-            logger.warning(
-                "verify: бюджет %.2f₽ исчерпан (лимит %.2f₽)",
-                res.cost,
-                config.MAX_COST_VERIFY,
-            )
-            break
 
     res.raw_text = "\n".join(final_parts).strip()
     verdicts = parse_verdicts(res.raw_text)

@@ -42,6 +42,13 @@ async def test_paths_must_be_list(tmp_path) -> None:
 
 
 @pytest.mark.asyncio
+async def test_structured_result_reports_missing_child_as_error(tmp_path) -> None:
+    result = await rf._execute_result({"paths": ["missing.py"]}, _ctx(tmp_path))
+    assert result.status.name == "ERROR"
+    assert "Файл не найден" in result.output
+
+
+@pytest.mark.asyncio
 async def test_out_of_scope_path_rejected_others_read(tmp_path) -> None:
     (tmp_path / "a.py").write_text("x = 1\n", encoding="utf-8")
     (tmp_path / "b.py").write_text("y = 2\n", encoding="utf-8")

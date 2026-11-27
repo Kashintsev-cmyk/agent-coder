@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from agent_coder.tools._scope import in_scope
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
 
 
 def _env_int(name: str, default: int, *, lo: int, hi: int) -> int:
@@ -95,14 +100,28 @@ def _render(
     return f"{head}\n{body}"
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+def _read_error(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.ERROR)
+
+
+def _read_rejected(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.REJECTED)
+
+
+def _read_success(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.SUCCESS_NO_CHANGE)
+
+
+async def _execute_result(
+    args: dict[str, Any], ctx: ToolContext
+) -> ToolExecutionResult:
     rel = args.get("path", "").strip()
     if not rel:
-        return "Ошибка: не указан path"
+        return _read_error("Ошибка: не указан path")
 
     full = _resolve(ctx.workspace, rel)
     if full is None:
-        return f"Ошибка: путь вне рабочей директории: {rel}"
+        return _read_error(f"Ошибка: путь вне рабочей директории: {rel}")
 
     # M2: проверяем resolved-relative, а не сырой rel — иначе `bot/../.env`
     # проходил сырую in_scope через prefix-match, хотя resolve давал `.env`.
@@ -111,18 +130,18 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
             Path(full).resolve().relative_to(Path(ctx.workspace).resolve())
         )
     except ValueError:
-        return f"Ошибка: путь вне рабочей директории: {rel}"
+        return _read_error(f"Ошибка: путь вне рабочей директории: {rel}")
 
     if not in_scope(str(resolved_rel), ctx.audit_scopes):
-        return (
+        return _read_error(
             f"Ошибка: {rel!r} вне области аудита {ctx.audit_scopes}. "
             f"Читай только файлы из указанных путей."
         )
 
     if not full.exists():
-        return f"Файл не найден: {rel}"
+        return _read_error(f"Файл не найден: {rel}")
     if not full.is_file():
-        return f"Не файл: {rel}"
+        return _read_error(f"Не файл: {rel}")
 
     offset_raw = args.get("offset")
     limit_raw = args.get("limit")
@@ -132,14 +151,16 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         offset = int(offset_raw) if offset_raw is not None else 0
         limit = int(limit_raw) if limit_raw is not None else None
     except (TypeError, ValueError):
-        return "Ошибка: offset и limit должны быть целыми числами"
+        return _read_error("Ошибка: offset и limit должны быть целыми числами")
 
     if offset < 0:
-        return f"Ошибка: offset не может быть отрицательным ({offset})"
+        return _read_error(f"Ошибка: offset не может быть отрицательным ({offset})")
     if limit is not None and limit < 0:
-        return f"Ошибка: limit не может быть отрицательным ({limit})"
+        return _read_error(f"Ошибка: limit не может быть отрицательным ({limit})")
     if limit is not None and limit > MAX_LINES:
-        return f"limit слишком большой ({limit}). Максимум {MAX_LINES} строк за раз."
+        return _read_error(
+            f"limit слишком большой ({limit}). Максимум {MAX_LINES} строк за раз."
+        )
 
     # R13: is_full_read — «читать всё целиком», даже с offset=0 (обход).
     is_full_read = (offset == 0) and (limit is None)
@@ -151,7 +172,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         known = {k.replace("\\", "/").lstrip("./") for k in ctx.read_paths}
         rel_clean = rel.replace("\\", "/").lstrip("./")
         if rel_clean in known:
-            return (
+            return _read_rejected(
                 f"Файл {rel} уже прочитан (см. [ПРОЧИТАННЫЕ ФАЙЛЫ]). "
                 f"НЕ перечитывай целиком — используй offset/limit для "
                 f"конкретных строк (например, offset=285 limit=20) или search."
@@ -163,7 +184,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     # Формулировка — как в Claude Code: сообщаем размер и сразу готовую
     # команду следующего шага, чтобы не тратить итерацию на «а как читать?».
     if is_full_read and size > MAX_BYTES:
-        return (
+        return _read_error(
             f"Файл слишком большой ({size} байт, лимит {MAX_BYTES}). "
             f"Читай слайсами: offset=0 limit={MAX_LINES}, затем "
             f"offset={MAX_LINES} limit={MAX_LINES} и т.д. "
@@ -184,28 +205,33 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
                     if i >= offset:
                         chunk.append(raw_line.rstrip("\r\n"))
         except Exception as e:
-            return f"Ошибка чтения: {e}"
+            return _read_error(f"Ошибка чтения: {e}")
 
         if not chunk:
-            return f"{rel}: пусто (offset={offset}, limit={limit})"
+            return _read_success(f"{rel}: пусто (offset={offset}, limit={limit})")
         out = _render(rel, chunk, offset, total)
         if out is None:
-            return (
+            return _read_error(
                 f"{rel}: первой строке не хватает места в {MAX_BYTES} байт "
                 f"(строка длиннее лимита). Уменьши offset или читай search."
             )
-        return out
+        return _read_success(out)
 
     try:
         text = full.read_text(encoding="utf-8", errors="replace")
     except Exception as e:
-        return f"Ошибка чтения: {e}"
+        return _read_error(f"Ошибка чтения: {e}")
 
     lines = text.splitlines()
     out = _render(rel, lines, 0, len(lines))
     if out is None:
-        return f"{rel}: пусто"
-    return out
+        return _read_success(f"{rel}: пусто")
+    return _read_success(out)
+
+
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Compatibility wrapper used by existing direct executor tests."""
+    return (await _execute_result(args, ctx)).output
 
 
 def _resolve(workspace: str, rel: str) -> Path | None:
@@ -234,6 +260,6 @@ read_file_tool = Tool(
         },
         "required": ["path"],
     },
-    executor=_execute,
+    executor=_execute_result,
     read_only=True,
 )
