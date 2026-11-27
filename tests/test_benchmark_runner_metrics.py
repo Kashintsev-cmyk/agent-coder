@@ -136,6 +136,15 @@ def test_find_case_archive_excludes_index_json(tmp_path):
     assert _find_case_archive(tmp_path) == session
 
 
+def test_find_case_archive_selects_explicit_session(tmp_path):
+    older = tmp_path / "first.json"
+    older.write_text('{"request_count": 2}', encoding="utf-8")
+    newer = tmp_path / "second.json"
+    newer.write_text('{"request_count": 9}', encoding="utf-8")
+
+    assert _find_case_archive(tmp_path, "first") == older
+
+
 def test_find_case_archive_empty_dir_returns_none(tmp_path):
     (tmp_path / "archive").mkdir()
     assert _find_case_archive(tmp_path) is None

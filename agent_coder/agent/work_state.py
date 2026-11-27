@@ -289,10 +289,7 @@ def make_read_digest(path: str, result: str) -> str | None:
         if len(defs) >= 8:
             break
     header = first if len(first) <= 120 else first[:117] + "…"
-    if defs:
-        digest = header + " | " + "; ".join(defs[:8])
-    else:
-        digest = header
+    digest = header + " | " + "; ".join(defs[:8]) if defs else header
     return digest[:200]
 
 
@@ -375,7 +372,7 @@ def _render_work_state_projection(
 
     def render(selected: list[list[str]]) -> str:
         lines = [header]
-        for (title, _), entries in zip(sections, selected):
+        for (title, _), entries in zip(sections, selected, strict=True):
             if entries:
                 lines.append(f"\n{title}:")
                 lines.extend(entries)

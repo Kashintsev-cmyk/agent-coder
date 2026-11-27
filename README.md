@@ -1,7 +1,7 @@
 # agent-coder
 
 [![CI](https://github.com/Kashintsev-cmyk/agent-coder/actions/workflows/ci.yml/badge.svg)](https://github.com/Kashintsev-cmyk/agent-coder/actions/workflows/ci.yml)
-![Python](https://img.shields.io/badge/python-3.10%20%7C%203.11%20%7C%203.12-blue)
+![Python](https://img.shields.io/badge/python-3.12%2B-blue)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 Автономный coding-агент для сервера. CLI и Telegram-бот на базе RouterAI:
@@ -61,7 +61,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 - Сессии на диске + sidecar-индекс метаданных (быстрый `/sessions`)
 - Медиа-retention: файлы старше 30 дней удаляются фоновой задачей
 - Retry с jitter и уважением `Retry-After`
-- CI: pytest + ruff (check и format) + mypy на Python 3.12–3.13
+- CI: pytest + coverage, Ruff (lint/format), mypy, Bandit, pip-audit и build; тесты на Python 3.12/3.13
 
 ## Быстрый старт
 
@@ -69,7 +69,7 @@ remote-helper'ов, с точным учётом стоимости каждой
 
 | Что | Зачем | Обязательно |
 |---|---|---|
-| Python **≥ 3.10** | `requires-python` в `pyproject.toml` | да |
+| Python **≥ 3.12** | `requires-python` в `pyproject.toml` | да |
 | `ROUTERAI_API_KEY` | доступ к моделям через [routerai.ru](https://routerai.ru) | да |
 | `ripgrep` (`rg`) | инструмент `search` | для поиска |
 | `git` + SSH-ключ на GitHub | инструменты `git_*`, `/clone`, `/ghnew` | для GitHub |

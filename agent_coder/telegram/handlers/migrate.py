@@ -8,6 +8,7 @@ Core — agent_coder.migrate.migrate_one; здесь только UI.
 from __future__ import annotations
 
 import logging
+from contextlib import suppress
 
 from aiogram import F
 from aiogram.filters import Command
@@ -176,10 +177,8 @@ async def cb_migrate_apply(query: CallbackQuery) -> None:
 
 @router.callback_query(F.data.startswith("mig:no"))
 async def cb_migrate_no(query: CallbackQuery) -> None:
-    try:
+    with suppress(Exception):
         await query.message.edit_text("❌ Отменено", reply_markup=None)
-    except Exception:  # nosec B110
-        pass
     await query.answer()
 
 

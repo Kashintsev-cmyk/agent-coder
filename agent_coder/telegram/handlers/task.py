@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import asyncio
 import logging
+from contextlib import suppress
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -271,10 +272,8 @@ async def cb_continue_task(query: CallbackQuery, bot: Bot) -> None:
     tg_state.set_active_session(chat_id, sid)
 
     # Снимаем кнопки, чтобы не нажали дважды
-    try:
+    with suppress(Exception):
         await query.message.edit_reply_markup(reply_markup=None)
-    except Exception:  # nosec B110
-        pass
     await query.answer("Продолжаю…")
 
     # Запускаем «продолжи» как обычную задачу
@@ -526,17 +525,13 @@ async def _run_task(
 
     except asyncio.CancelledError:
         if not _shutting_down:
-            try:
+            with suppress(Exception):
                 await bot.send_message(chat_id, "⏹ Отменено")
-            except Exception:  # nosec B110
-                pass
         raise
     except Exception as e:
         logger.exception("task failed")
-        try:
+        with suppress(Exception):
             await bot.send_message(chat_id, f"❌ Ошибка: {e}")
-        except Exception:  # nosec B110
-            pass
     finally:
         if client is not None:
             try:

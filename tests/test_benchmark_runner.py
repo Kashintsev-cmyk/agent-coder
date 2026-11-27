@@ -108,3 +108,36 @@ def test_should_stop_missing_cost_key():
 
     results = [{"usage": {}}, {}]
     assert runner._should_stop(results, 5.0) is False
+
+
+def test_workflow_mode_routing_and_prompt_profiles():
+    from benchmark import runner
+
+    assert runner._task_mode_args({"category": "plan"}) == ["--plan"]
+    assert runner._task_mode_args({"category": "audit"}) == ["--audit"]
+    assert runner._task_mode_args({"category": "act"}) == []
+
+    task = {"category": "plan", "prompt": "inspect and plan"}
+    assert (
+        runner._variant_prompt(task, runner.BENCHMARK_VARIANTS["baseline"])
+        == task["prompt"]
+    )
+    assert runner._variant_prompt(
+        task, runner.BENCHMARK_VARIANTS["optimized"]
+    ).startswith(task["prompt"])
+    assert (
+        runner._variant_prompt(task, runner.BENCHMARK_VARIANTS["optimized"])
+        != task["prompt"]
+    )
+
+
+def test_workflow_tasks_cover_three_agent_modes():
+    import json
+
+    tasks_path = (
+        Path(__file__).resolve().parents[1] / "benchmark" / "workflow_tasks.json"
+    )
+    tasks = json.loads(tasks_path.read_text(encoding="utf-8"))
+
+    assert {task["category"] for task in tasks} == {"plan", "act", "audit"}
+    assert all(task.get("quality_review") for task in tasks)

@@ -25,6 +25,7 @@ import json
 import logging
 import os
 import time
+from contextlib import suppress
 from dataclasses import asdict, fields, replace
 from pathlib import Path
 from typing import Any
@@ -316,10 +317,8 @@ class ModelCatalog:
             os.replace(tmp_path, path)
         except OSError as exc:
             logger.warning("Не удалось записать кэш каталога %s: %s", path, exc)
-            try:
+            with suppress(OSError):
                 tmp_path.unlink(missing_ok=True)
-            except OSError:
-                pass
 
     # ------------------------------------------------------------------
     # API

@@ -42,7 +42,7 @@ def kappa(y1, y2):
     n = len(y1)
     if n == 0:
         return 0.0
-    po = sum(1 for a, b in zip(y1, y2) if a == b) / n
+    po = sum(1 for a, b in zip(y1, y2, strict=True) if a == b) / n
     pe = sum(
         (sum(1 for a in y1 if a == label) / n) * (sum(1 for a in y2 if a == label) / n)
         for label in LABELS
@@ -51,9 +51,21 @@ def kappa(y1, y2):
 
 
 def pr(y_true, y_pred):
-    tp = sum(1 for t, p in zip(y_true, y_pred) if t == "confirmed" and p == "confirmed")
-    fp = sum(1 for t, p in zip(y_true, y_pred) if t != "confirmed" and p == "confirmed")
-    fn = sum(1 for t, p in zip(y_true, y_pred) if t == "confirmed" and p != "confirmed")
+    tp = sum(
+        1
+        for t, p in zip(y_true, y_pred, strict=True)
+        if t == "confirmed" and p == "confirmed"
+    )
+    fp = sum(
+        1
+        for t, p in zip(y_true, y_pred, strict=True)
+        if t != "confirmed" and p == "confirmed"
+    )
+    fn = sum(
+        1
+        for t, p in zip(y_true, y_pred, strict=True)
+        if t == "confirmed" and p != "confirmed"
+    )
     precision = tp / (tp + fp) if tp + fp else 0.0
     recall = tp / (tp + fn) if tp + fn else 0.0
     return precision, recall, tp, fp, fn

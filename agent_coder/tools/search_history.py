@@ -93,7 +93,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     if len(lines) > MAX_MATCHES:
         lines = lines[:MAX_MATCHES] + [f"... (обрезано на {MAX_MATCHES})"]
     # Без --line-number каждая строка вывода rg — это JSONL-строка целиком
-    return "\n\n".join(_format_match(l) for l in lines)
+    return "\n\n".join(_format_match(line) for line in lines)
 
 
 search_history_tool = Tool(

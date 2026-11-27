@@ -1,0 +1,42 @@
+[
+  {
+    "id": "workflow-plan-retry",
+    "category": "plan",
+    "title": "Plan bounded async retry helper",
+    "prompt": "Inspect the small target project and provide a concise implementation plan for adding retry_async(operation, attempts=3, base_delay=0.01). It must retry only ordinary Exceptions, use exponential backoff, reject attempts < 1, and re-raise the last exception. Identify the relevant files and tests. Do not modify files.",
+    "setup": "create_retry_fixture.py",
+    "quality_review": [
+      "Plan identifies the target module and test file from inspected workspace contents.",
+      "Plan covers validation, retry boundary, exponential delay, final exception, and tests.",
+      "No implementation or unrelated work is proposed."
+    ]
+  },
+  {
+    "id": "workflow-act-boundary",
+    "category": "act",
+    "title": "Fix zero-size chunk boundary",
+    "prompt": "Fix chunk(items, size) so size <= 0 raises ValueError while preserving normal chunking. The target includes a regression test. Make the minimal code change, do not alter tests, and run the relevant tests.",
+    "setup": "fix_boundary_fixture.py",
+    "test_files": ["test_benchmark_target.py"],
+    "quality_review": [
+      "Production code is fixed without changing or weakening tests.",
+      "The regression and existing behavior tests pass.",
+      "No unrelated files or behavior are changed."
+    ]
+  },
+  {
+    "id": "workflow-audit-multi",
+    "category": "audit",
+    "title": "Audit multi-file seeded project (tokens, logs, hardcoded keys, lifecycle)",
+    "prompt": "Perform a read-only security audit of the seeded mini-project (config.py, storage.py, api_client.py). Check token handling and defaults, secrets or personal data in logs, hardcoded credentials, broad exception handling, temporary-file and permission lifecycle, and request safety (certs/timeouts). Report only evidence-backed findings with severity (critical/high/medium/low), exact file and line, impact, and remediation. Do not modify files.",
+    "setup": "audit_multi_fixture.py",
+    "scope_files": ["config.py", "storage.py", "api_client.py"],
+    "extra_args": ["--fresh-audit"],
+    "min_findings": 4,
+    "quality_review": [
+      "Findings cover only confirmed issues in config.py / storage.py / api_client.py.",
+      "Recognizes the development-token fallback, header logging, hardcoded key, broad except and request-safety issues, with evidence and impact.",
+      "No files are modified and speculative issues are excluded."
+    ]
+  }
+]

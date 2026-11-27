@@ -12,6 +12,7 @@ import asyncio
 import logging
 import os
 import signal
+from contextlib import suppress
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -109,10 +110,8 @@ async def run_shell(
         )
     except TimeoutError:
         _kill_proc_tree(proc, use_group=start_new_session)
-        try:
+        with suppress(Exception):
             await proc.wait()
-        except Exception:  # nosec B110
-            pass
         return ShellResult(
             returncode=-1,
             stdout="",
@@ -146,7 +145,5 @@ def _kill_proc_tree(proc, *, use_group: bool) -> None:
             return
         except (ProcessLookupError, PermissionError, OSError):
             pass
-    try:
+    with suppress(Exception):
         proc.kill()
-    except Exception:  # nosec B110
-        pass

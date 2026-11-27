@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import suppress
 
 from aiogram import F
 from aiogram.types import CallbackQuery
@@ -202,12 +203,10 @@ async def cb_tier_toggle(query: CallbackQuery) -> None:
     nxt = TIER_CYCLE[(TIER_CYCLE.index(cur) + 1) % len(TIER_CYCLE)]
     session.service_tier = nxt
     session.save()
-    try:
+    with suppress(Exception):
         await query.message.edit_reply_markup(
             reply_markup=keyboards.session_menu_keyboard(session)
         )
-    except Exception:  # nosec B110
-        pass
     await query.answer(f"Service tier: {nxt}")
 
 

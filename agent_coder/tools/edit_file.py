@@ -43,7 +43,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         return f"Не файл: {rel}"
 
     try:
-        with open(full, "r", encoding="utf-8", newline="") as f:
+        with open(full, encoding="utf-8", newline="") as f:
             content = f.read()
     except Exception as e:
         return f"Ошибка чтения: {e}"

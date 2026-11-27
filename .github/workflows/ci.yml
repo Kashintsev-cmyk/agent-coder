@@ -45,8 +45,16 @@ jobs:
         if: matrix.python-version == '3.12'
         run: python3 -m bandit -r agent_coder -c bandit.yaml
 
+      - name: Dependency audit
+        if: matrix.python-version == '3.12'
+        run: pip-audit --skip-editable --progress-spinner off
+
+      - name: Build package
+        if: matrix.python-version == '3.12'
+        run: python -m build --outdir "$RUNNER_TEMP/dist"
+
       - name: Pytest
-        run: pytest -q -n auto
+        run: pytest -q -n auto --cov --cov-report=term-missing
         env:
           # Заглушки, чтобы config.validate() не падал на импорте.
           ROUTERAI_API_KEY: sk-test-ci-dummy
@@ -55,4 +63,4 @@ jobs:
           # Изоляция от окружения раннера.
           DEFAULT_WORKSPACE: /tmp
           MODELS_CACHE_DIR: /tmp/agent-coder-cache
-          SESSIONS_DIR_OVERRIDE: /tmp/agent-coder-sessions
+          SESSIONS_DIR: /tmp/agent-coder-sessions

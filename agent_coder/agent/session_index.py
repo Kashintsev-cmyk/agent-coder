@@ -31,6 +31,7 @@ import math
 import os
 import tempfile
 import time
+from contextlib import suppress
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Any, Protocol
@@ -264,10 +265,8 @@ class SessionIndex:
             os.replace(tmp, self._path)
         except OSError as exc:
             logger.warning("Не удалось записать индекс сессий %s: %s", self._path, exc)
-            try:
+            with suppress(OSError):
                 tmp.unlink(missing_ok=True)
-            except OSError:
-                pass
 
     # ---------- операции ----------
 

@@ -489,10 +489,7 @@ def _is_safe_git_metadata(cmd: str) -> bool:
             "prune",
             "update",
         }
-        for a in args:
-            if a in MUT:
-                return False
-        return True
+        return all(arg not in MUT for arg in args)
 
     return False
 

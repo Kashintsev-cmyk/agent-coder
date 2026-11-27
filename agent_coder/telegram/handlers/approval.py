@@ -7,6 +7,7 @@ _TaskRunner в момент approval-запроса.
 from __future__ import annotations
 
 import logging
+from contextlib import suppress
 
 from aiogram import F
 from aiogram.types import CallbackQuery
@@ -22,14 +23,12 @@ async def cb_approve(query: CallbackQuery) -> None:
     fut = _pending.get(rid)
     if fut and not fut.done():
         fut.set_result(True)
-        try:
+        with suppress(Exception):
             await query.message.edit_text(
                 "✅ <b>Разрешено</b>",
                 reply_markup=None,
                 parse_mode="HTML",
             )
-        except Exception:  # nosec B110
-            pass
     else:
         await query.answer("Устарело", show_alert=True)
     await query.answer()
@@ -41,14 +40,12 @@ async def cb_deny(query: CallbackQuery) -> None:
     fut = _pending.get(rid)
     if fut and not fut.done():
         fut.set_result(False)
-        try:
+        with suppress(Exception):
             await query.message.edit_text(
                 "❌ <b>Отклонено</b>",
                 reply_markup=None,
                 parse_mode="HTML",
             )
-        except Exception:  # nosec B110
-            pass
     else:
         await query.answer("Устарело", show_alert=True)
     await query.answer()

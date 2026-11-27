@@ -12,6 +12,7 @@ import logging
 import re
 import time
 import uuid
+from contextlib import suppress
 
 from aiogram import Bot
 from aiogram.exceptions import TelegramBadRequest
@@ -241,7 +242,7 @@ class _TaskRunner:
             return await asyncio.wait_for(future, timeout=config.APPROVAL_TIMEOUT)
         except TimeoutError:
             if self.approval_msg_id is not None:
-                try:
+                with suppress(Exception):
                     await self.bot.edit_message_text(
                         chat_id=self.chat_id,
                         message_id=self.approval_msg_id,
@@ -249,8 +250,6 @@ class _TaskRunner:
                         reply_markup=None,
                         parse_mode="HTML",
                     )
-                except Exception:  # nosec B110
-                    pass
             return False
         finally:
             _pending.pop(request_id, None)

@@ -207,13 +207,10 @@ def model_price(
     cached_write = min(max(cache_write_tokens, 0), max(tokens - cached_read, 0))
     uncached = max(tokens - cached_read - cached_write, 0)
     read_price = cache_read_price or in_price
-    if rate is not None:
-        # В endpoints нет отдельной ставки записи в кэш — считаем по обычному
-        # входу ЭТОГО провайдера. Брать cache_write_price из /models нельзя:
-        # он принадлежит другому провайдеру (та же причина, что в B7).
-        write_price = in_price
-    else:
-        write_price = m.cache_write_price or in_price
+    # В endpoints нет отдельной ставки записи в кэш — считаем по обычному
+    # входу ЭТОГО провайдера. Брать cache_write_price из /models нельзя:
+    # он принадлежит другому провайдеру (та же причина, что в B7).
+    write_price = in_price if rate is not None else m.cache_write_price or in_price
     input_cost = (
         uncached * in_price + cached_read * read_price + cached_write * write_price
     )

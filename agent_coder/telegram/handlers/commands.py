@@ -8,6 +8,7 @@
 from __future__ import annotations
 
 import logging
+from contextlib import suppress
 from pathlib import Path
 
 from aiogram import Bot, F
@@ -403,12 +404,10 @@ async def cb_yolo_toggle(query: CallbackQuery) -> None:
         return
     session.yolo = not session.yolo
     session.save()
-    try:
+    with suppress(Exception):
         await query.message.edit_reply_markup(
             reply_markup=keyboards.session_menu_keyboard(session),
         )
-    except Exception:  # nosec B110
-        pass
     await query.answer("YOLO: " + ("вкл ⚡" if session.yolo else "выкл 🔒"))
 
 

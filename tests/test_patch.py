@@ -139,6 +139,17 @@ async def test_run_patch_task_contains_only_confirmed() -> None:
     assert res.ok
 
 
+def test_patch_standard_groups_related_findings_and_checks_after_changeset() -> None:
+    text = " ".join(patch_mod.load_patch_standard().split())
+    assert "Обрабатывай confirmed findings группами" in text
+    assert "После завершения change set запусти релевантные тесты один раз" in text
+    assert (
+        "`MAX_PATCH_ITERATIONS=60` — общий safety budget, а не лимит на finding" in text
+    )
+    assert "Добавляй или обновляй регрессионный тест" in text
+    assert "существующие тесты/ожидания не ослабляй" in text
+
+
 async def test_run_patch_records_files_changed() -> None:
     """write_file/edit_file добавляют путь в files_changed."""
     s = _mk_session()

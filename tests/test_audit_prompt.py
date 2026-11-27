@@ -21,7 +21,7 @@ def test_audit_standard_md_non_empty() -> None:
     assert text
     assert "РОЛЬ" in text
     assert "ЭТАП 1" in text
-    assert "ЭТАП 4" in text
+    assert "ЭТАП 3" in text
     assert "ЧЕК-ЛИСТ" in text.upper()
 
 
@@ -77,6 +77,24 @@ def test_fill_does_not_break_on_curly_braces() -> None:
     assert out == "A=/tmp/ws B={a: 1}"
 
 
+def test_audit_prioritizes_applicable_categories_and_tracks_gaps() -> None:
+    text = " ".join(load_audit_standard().split())
+    assert "По стеку и коду определи применимые категории" in text
+    assert "coverage относится только к этому scope" in text
+    assert "применимые, но не проверенные — «не проверено» с причиной" in text
+    assert "Связанные файлы читай одной пачкой" in text
+    assert (
+        "Следующие проверки и эвристики запускай только когда scope/прочитанный код"
+        in text
+    )
+    assert (
+        "Только явный запрос на полный аудит расширяет проверку на весь проект" in text
+    )
+    assert "План исправлений добавляй, только если пользователь его запросил" in text
+    assert "не проверяй импорты вне целевого сценария" in text
+    assert "каталог проверок, а не требование пройти каждый пункт" in text
+
+
 def test_has_anti_hallucination_block() -> None:
     text = load_audit_standard()
     assert "# ГЛАВНОЕ ПРАВИЛО" in text
@@ -88,7 +106,10 @@ def test_audit_prompt_does_not_ask_questions_for_missing_context() -> None:
     text = " ".join(load_audit_standard().split())
     assert "НЕ задавай вопросов пользователю" in text
     assert "Не хватает контекста — не задавай вопрос" in text
-    assert "продолжай аудит без уточняющих вопросов" in text
+    assert (
+        "пометь область как «не проверено» и укажи, что нужно проверить при верификации"
+        in text
+    )
     assert "уточняющий вопрос" not in text
     assert "задай уточняющие вопросы" not in text
 

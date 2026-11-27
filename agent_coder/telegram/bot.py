@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import sys
+from contextlib import suppress
 
 from aiogram import Bot, Dispatcher
 from aiogram.client.default import DefaultBotProperties
@@ -231,10 +232,8 @@ async def _run() -> None:
         for t in (media_task, session_task, refresh_loop_task, refresh_task):
             if not t.done():
                 t.cancel()
-                try:
+                with suppress(asyncio.CancelledError, Exception):
                     await t
-                except (asyncio.CancelledError, Exception):
-                    pass
         await bot.session.close()
 
 
