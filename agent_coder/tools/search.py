@@ -9,20 +9,35 @@ from typing import Any
 
 from agent_coder.tools._scope import in_scope
 from agent_coder.tools.list_files import SKIP_DIRS
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
 
 MAX_MATCHES = 200
 TIMEOUT_SEC = 60
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+def _error(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.ERROR)
+
+
+def _ok(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.SUCCESS_NO_CHANGE)
+
+
+async def _execute_result(
+    args: dict[str, Any], ctx: ToolContext
+) -> ToolExecutionResult:
     query = args.get("query", "").strip()
     if not query:
-        return "Ошибка: пустой query"
+        return _error("Ошибка: пустой query")
 
     rg = shutil.which("rg")
     if not rg:
-        return "Ошибка: ripgrep (rg) не найден на сервере"
+        return _error("Ошибка: ripgrep (rg) не найден на сервере")
 
     # Валидация path: только внутри workspace
     raw_path = (args.get("path") or ".").strip() or "."
@@ -30,13 +45,15 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         if raw_path in (".", "./"):
             raw_path = ctx.audit_scopes[0]
         elif not in_scope(raw_path, ctx.audit_scopes):
-            return f"Ошибка: путь {raw_path!r} вне области аудита {ctx.audit_scopes}"
+            return _error(
+                f"Ошибка: путь {raw_path!r} вне области аудита {ctx.audit_scopes}"
+            )
     try:
         base = Path(ctx.workspace).resolve()
         target = (base / raw_path).resolve()
         target.relative_to(base)
     except (ValueError, OSError):
-        return f"Ошибка: путь {raw_path!r} вне workspace"
+        return _error(f"Ошибка: путь {raw_path!r} вне workspace")
 
     cmd = [
         rg,
@@ -74,19 +91,24 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
             await proc.wait()
         except Exception:  # nosec B110
             pass
-        return f"search: таймаут {TIMEOUT_SEC}с (ripgrep не завершился)"
+        return _error(f"search: таймаут {TIMEOUT_SEC}с (ripgrep не завершился)")
     stdout = out.decode("utf-8", errors="replace").strip()
     if not stdout:
         if proc.returncode == 1:
-            return f"Ничего не найдено по запросу: {query!r}"
-        return (
+            return _ok(f"Ничего не найдено по запросу: {query!r}")
+        return _error(
             f"rg завершился с кодом {proc.returncode}: {err.decode(errors='replace')}"
         )
 
     lines = stdout.splitlines()
     if len(lines) > MAX_MATCHES:
         lines = lines[:MAX_MATCHES] + [f"... (обрезано на {MAX_MATCHES})"]
-    return "\n".join(lines)
+    return _ok("\n".join(lines))
+
+
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Совместимая обёртка: текст результата без структуры."""
+    return (await _execute_result(args, ctx)).output
 
 
 search_tool = Tool(
@@ -111,6 +133,6 @@ search_tool = Tool(
         },
         "required": ["query"],
     },
-    executor=_execute,
+    executor=_execute_result,
     read_only=True,
 )

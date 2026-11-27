@@ -7,7 +7,12 @@ from pathlib import Path
 from typing import Any
 
 from agent_coder.tools._scope import in_scope
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
 
 SKIP_DIRS = {
     ".git",
@@ -46,25 +51,27 @@ def _is_skipped_dir(part: str) -> bool:
     return bool(any(part.endswith(s) for s in SKIP_SUFFIXES))
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _execute_result(
+    args: dict[str, Any], ctx: ToolContext
+) -> ToolExecutionResult:
     base = Path(ctx.workspace).resolve()
     sub = (args.get("path") or ".").strip()
     target = (base / sub).resolve()
     try:
         target.relative_to(base)
     except ValueError:
-        return f"Ошибка: путь вне workspace: {sub}"
+        return _error(f"Ошибка: путь вне workspace: {sub}")
 
     if not in_scope(sub, ctx.audit_scopes):
-        return (
+        return _error(
             f"Ошибка: {sub!r} вне области аудита {ctx.audit_scopes}. "
             f"Используй один из путей: {ctx.audit_scopes}"
         )
 
     if not target.exists():
-        return f"Не найдено: {sub}"
+        return _error(f"Не найдено: {sub}")
     if not target.is_dir():
-        return f"Не директория: {sub}"
+        return _error(f"Не директория: {sub}")
 
     pattern = args.get("pattern") or "*"
     entries = await asyncio.to_thread(
@@ -75,8 +82,21 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     )
 
     if not entries:
-        return f"Пусто: {sub}"
-    return "\n".join(entries)
+        return _ok(f"Пусто: {sub}")
+    return _ok("\n".join(entries))
+
+
+def _error(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.ERROR)
+
+
+def _ok(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.SUCCESS_NO_CHANGE)
+
+
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Совместимая обёртка: текст результата без структуры."""
+    return (await _execute_result(args, ctx)).output
 
 
 def _collect_entries(target: Path, base: Path, pattern: str) -> list[str]:
@@ -111,6 +131,6 @@ list_files_tool = Tool(
             },
         },
     },
-    executor=_execute,
+    executor=_execute_result,
     read_only=True,
 )

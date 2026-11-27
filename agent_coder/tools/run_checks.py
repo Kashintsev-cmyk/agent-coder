@@ -5,7 +5,12 @@ from __future__ import annotations
 from typing import Any
 
 from agent_coder.shell_runner import clean_env, run_shell
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
 
 # Таймауты: ruff быстрый, pytest — как у run_command.
 RUFF_TIMEOUT = 60
@@ -58,7 +63,11 @@ def _is_not_configured(result: Any) -> bool:
     return any(marker in blob for marker in _SKIP_MARKERS)
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _execute_result(
+    args: dict[str, Any], ctx: ToolContext
+) -> ToolExecutionResult:
+    # Результат — отчёт о прогоне проверок, а не статус каждой проверки:
+    # упавший ruff/pytest — это данные для модели, а не ошибка вызова инструмента.
     parts: list[str] = []
     for cmd, timeout, soft in _CHECKS:
         result = await run_shell(
@@ -83,7 +92,12 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
             parts.append(f"{header}\nпропущено: инструмент не настроен в проекте")
             continue
         parts.append(f"{header}\nexit code: {result.returncode}\n{body}")
-    return "\n\n".join(parts)
+    return ToolExecutionResult("\n\n".join(parts), ToolStatus.SUCCESS_NO_CHANGE)
+
+
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Совместимая обёртка: текст результата без структуры."""
+    return (await _execute_result(args, ctx)).output
 
 
 run_checks_tool = Tool(
@@ -95,7 +109,7 @@ run_checks_tool = Tool(
         "после правок в ACT."
     ),
     parameters={"type": "object", "properties": {}},
-    executor=_execute,
+    executor=_execute_result,
     requires_approval=False,
     read_only=True,
 )
