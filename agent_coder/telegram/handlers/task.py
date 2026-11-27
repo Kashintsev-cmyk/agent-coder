@@ -258,10 +258,17 @@ async def cb_continue_task(query: CallbackQuery, bot: Bot) -> None:
     """Кнопка «▶️ Продолжить» после достижения лимита итераций."""
     from agent_coder.telegram import state as tg_state
 
-    sid = query.data.split(":", 1)[1]
+    parts = query.data.split(":", 2)
+    if len(parts) != 3:
+        await query.answer("Кнопка устарела — отправь новый запрос", show_alert=True)
+        return
+    _, sid, task_id = parts
     session = Session.load(sid)
     if session is None:
         await query.answer("Сессия не найдена", show_alert=True)
+        return
+    if session.task_state.get("id") != task_id:
+        await query.answer("Эта задача уже закрыта или изменена", show_alert=True)
         return
 
     chat_id = query.message.chat.id
@@ -278,7 +285,7 @@ async def cb_continue_task(query: CallbackQuery, bot: Bot) -> None:
 
     # Запускаем «продолжи» как обычную задачу
     task = asyncio.create_task(
-        _run_task(bot, chat_id, session, "продолжи", images=None)
+        _run_task(bot, chat_id, session, "продолжи", images=None, continuation=True)
     )
     _running[chat_id] = task
 
@@ -444,6 +451,8 @@ async def _run_task(
     session: Session,
     task_text: str,
     images: list[Path] | None = None,
+    *,
+    continuation: bool = False,
 ) -> None:
     """Точка входа задачи.
 
@@ -471,12 +480,19 @@ async def _run_task(
         # Авто-продолжение: если агент упёрся в лимит итераций, но задача
         # не завершена — сами шлём «продолжи» до MAX_AUTO_CONTINUE раз.
         # После — показываем кнопку «▶️ Продолжить».
-        auto_continue = 0
+        auto_continue = (
+            int(session.task_state.get("auto_continue", 0)) if continuation else 0
+        )
         current_task = task_text
         current_images = images
+        is_continuation = continuation
 
         while True:
-            result = await loop.run(current_task, images=current_images)
+            result = await loop.run(
+                current_task,
+                images=current_images,
+                continuation=is_continuation,
+            )
             session.save()
             await runner.flush()
 
@@ -499,6 +515,8 @@ async def _run_task(
             # Лимит достигнут, но автопродолжений ещё есть
             if auto_continue < config.MAX_AUTO_CONTINUE:
                 auto_continue += 1
+                session.task_state["auto_continue"] = auto_continue
+                session.save()
                 logger.info(
                     "auto-continue %d/%d для сессии %s (итераций: %d)",
                     auto_continue,
@@ -508,6 +526,7 @@ async def _run_task(
                 )
                 current_task = "продолжи"
                 current_images = None  # фото только на первом круге
+                is_continuation = True
                 continue
 
             # Автопродолжения закончились — даём кнопку пользователю
@@ -517,13 +536,18 @@ async def _run_task(
                     f"⏸ Лимит итераций ({result.iterations_used}). "
                     f"Автопродолжений: {auto_continue}/{config.MAX_AUTO_CONTINUE}.\n\n"
                     f"Задача не завершена — нажми, чтобы продолжить.",
-                    reply_markup=keyboards.continue_keyboard(session.id),
+                    reply_markup=keyboards.continue_keyboard(
+                        session.id, str(session.task_state.get("id", ""))
+                    ),
                 )
             except Exception as e:
                 logger.warning("continue message failed: %s", e)
             return
 
     except asyncio.CancelledError:
+        session.end_task()
+        with suppress(Exception):
+            session.save()
         if not _shutting_down:
             with suppress(Exception):
                 await bot.send_message(chat_id, "⏹ Отменено")

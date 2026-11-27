@@ -21,8 +21,13 @@ from agent_coder.config import config
 from agent_coder.llm.client import LLMClient
 from agent_coder.llm.router import RouterState, router
 from agent_coder.llm.types import LLMError, ToolCall, Usage
-from agent_coder.tools.registry import ToolContext, ToolRegistry
-from agent_coder.tools.run_command import _is_safe_command
+from agent_coder.tools.registry import (
+    ToolContext,
+    ToolExecutionResult,
+    ToolRegistry,
+    ToolStatus,
+    normalize_tool_result,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -160,7 +165,13 @@ class AgentLoop:
             streak=config.CACHE_GUARD_STREAK,
         )
 
-    async def run(self, task: str, images: list | None = None) -> LoopResult:
+    async def run(
+        self,
+        task: str,
+        images: list | None = None,
+        *,
+        continuation: bool = False,
+    ) -> LoopResult:
         # Бюджет: если сессия уже за потолком — не начинаем (не жжём).
         if self.session.total_usage.cost > config.MAX_COST_PER_SESSION:
             msg = (
@@ -175,17 +186,53 @@ class AgentLoop:
                 error_message=msg,
                 task_cost=self.session.total_usage.cost,
             )
-        start_cost = self.session.total_usage.cost
-        iterations_since_progress = 0
-        # Детектор повторов: подпись tool_calls предыдущей итерации и длина серии.
-        prev_call_sig: tuple | None = None
-        identical_streak = 0
-        # Прогресс = новый факт. Ключи уже «прочитанных» путей — чтобы
-        # отличить аудит (12 уникальных файлов) от loop (9 перечитываний
-        # одного). Без этого watchdog ложно срабатывал в AUDIT: модель
-        # читала разные файлы, но не звала update_work_state (сессия
-        # a1b0a44b: 12 read_file, 12 уникальных, work_state пуст).
-        seen_paths: set[str] = set()
+        if continuation and not self.session.task_state.get("id"):
+            msg = "Нет активной задачи для продолжения. Отправь новый запрос."
+            await _maybe_await(self.events.on_error, msg)
+            return LoopResult(no_progress=True, error_message=msg)
+        if continuation:
+            task_state = self.session.task_state
+        else:
+            self.session.begin_task()
+            task_state = self.session.task_state
+        self.session.save()
+        start_cost = float(
+            task_state.get("started_cost", self.session.total_usage.cost)
+        )
+        task_cost = self.session.total_usage.cost - start_cost
+        if task_cost > config.MAX_COST_PER_TASK:
+            msg = (
+                f"Бюджет задачи исчерпан: {task_cost:.1f}₽ "
+                f"(лимит {config.MAX_COST_PER_TASK:.0f}₽). "
+                "Отправь новый запрос, чтобы начать отдельную задачу."
+            )
+            await _maybe_await(self.events.on_error, msg)
+            return LoopResult(
+                cost_limit_reached=True,
+                error_message=msg,
+                task_cost=task_cost,
+            )
+        watchdog = task_state.setdefault("watchdog", {})
+        iterations_since_progress = int(watchdog.get("iterations_since_progress", 0))
+        consecutive_errors = int(watchdog.get("consecutive_errors", 0))
+        prev_call_sig: str | None = watchdog.get("prev_call_sig")
+        identical_streak = int(watchdog.get("identical_streak", 0))
+        # Сохраняем охват чтения вместе с watchdog, чтобы продолжение не
+        # превращало уже прочитанные пути в новый прогресс.
+        seen_paths: set[str] = set(watchdog.get("seen_paths", []))
+
+        def persist_watchdog() -> None:
+            watchdog.update(
+                {
+                    "iterations_since_progress": iterations_since_progress,
+                    "consecutive_errors": consecutive_errors,
+                    "prev_call_sig": prev_call_sig,
+                    "identical_streak": identical_streak,
+                    "seen_paths": sorted(seen_paths),
+                }
+            )
+            task_state["watchdog"] = watchdog
+
         # Длина messages ПЕРЕД прошлым client.chat (без ответа и tool-результатов).
         # Нужна для pre-check: после запроса добавились assistant + tool-результаты,
         # которых LLM не видел. Их оценка + last_input_tokens = effective size
@@ -231,7 +278,6 @@ class AgentLoop:
         }.get(self.session.mode, config.MAX_ITERATIONS)
 
         soft = compression.soft_limit(self.session)
-        consecutive_errors = 0
         # B9.1: число новых уникальных read_file путей в AUDIT после
         # последнего фактического изменения work_state. Напоминания идут
         # на порогах 5, 10, ... файлов.
@@ -502,11 +548,12 @@ class AgentLoop:
             )
             progress_made = False
             tool_results: list[str] = []
+            last_error_content = ""
             for tc in assistant_msg.tool_calls:
                 ws_before_tool = json.dumps(
                     self.session.work_state, sort_keys=True, ensure_ascii=False
                 )
-                read_file_path = await self._handle_tool_call(tc)
+                tool_outcome, read_file_path = await self._handle_tool_call(tc)
                 tool_results.append(str(self.session.messages[-1].get("content") or ""))
                 ws_changed_by_tool = (
                     json.dumps(
@@ -519,39 +566,40 @@ class AgentLoop:
                     next_audit_reminder_at = 5
                 if self.session.mode == Mode.AUDIT and read_file_path is not None:
                     audit_files_since_ws_update.add(Path(read_file_path).as_posix())
-                if self.session.mode == Mode.AUDIT and tc.name == "read_files":
+                read_succeeded = tool_outcome.status not in (
+                    ToolStatus.ERROR,
+                    ToolStatus.REJECTED,
+                )
+                if (
+                    read_succeeded
+                    and self.session.mode == Mode.AUDIT
+                    and tc.name == "read_files"
+                ):
                     for key in _read_path_keys(tc):
                         audit_files_since_ws_update.add(
                             Path(key.removeprefix("read_file:")).as_posix()
                         )
-                # Новый путь чтения/поиска — прогресс, даже в AUDIT/PLAN
-                # (там мутаций нет по дизайну, прогресс = охват нового).
-                # Повтор того же пути — не прогресс: это loop на перечитывании.
-                for path_key in _read_path_keys(tc):
-                    if path_key not in seen_paths:
-                        seen_paths.add(path_key)
-                        progress_made = True
-                # В ACT успешный мутирующий tool — прогресс.
-                if self.session.mode == Mode.ACT:
-                    tool = self.registry.get(tc.name)
-                    if (
-                        tool is not None
-                        and not tool.read_only
-                        and (
-                            tc.name != "run_command"
-                            or not _is_safe_command(tc.arguments)
-                        )
-                    ):
-                        last = (
-                            self.session.messages[-1] if self.session.messages else {}
-                        )
-                        content = last.get("content") or ""
-                        if last.get(
-                            "role"
-                        ) == "tool" and not content.lstrip().startswith(
-                            ("Ошибка", "Отклонено пользователем")
-                        ):
+                # Неуспешное чтение не добавляет путь и не считается прогрессом.
+                if read_succeeded:
+                    for path_key in _read_path_keys(tc):
+                        if path_key not in seen_paths:
+                            seen_paths.add(path_key)
                             progress_made = True
+                # В ACT прогресс — только подтверждённое изменение.
+                if (
+                    self.session.mode == Mode.ACT
+                    and tool_outcome.status == ToolStatus.SUCCESS_CHANGED
+                ):
+                    progress_made = True
+
+                # Считаем ошибки каждого вызова, а не только последний
+                # результат всего пакета tool_calls.
+                if tool_outcome.status == ToolStatus.ERROR:
+                    consecutive_errors += 1
+                    last_error_content = tool_outcome.output
+                else:
+                    consecutive_errors = 0
+
             ws_changed = (
                 json.dumps(self.session.work_state, sort_keys=True, ensure_ascii=False)
                 != ws_snapshot
@@ -568,12 +616,15 @@ class AgentLoop:
                 (tc.name, json.dumps(tc.arguments, sort_keys=True, ensure_ascii=False))
                 for tc in assistant_msg.tool_calls
             )
-            signature = (call_sig, tuple(tool_results))
+            signature = json.dumps(
+                [call_sig, tool_results], ensure_ascii=False, sort_keys=True
+            )
             if signature == prev_call_sig:
                 identical_streak += 1
             else:
                 identical_streak = 1
             prev_call_sig = signature
+            persist_watchdog()
             if identical_streak >= config.MAX_IDENTICAL_CALLS:
                 msg = (
                     f"Нет прогресса: модель {identical_streak} раза подряд повторяет "
@@ -591,6 +642,22 @@ class AgentLoop:
                     work_state_updates=work_state_updates,
                 )
 
+            # Watchdog проверяется до общего лимита отсутствия прогресса.
+            if consecutive_errors >= config.MAX_CONSECUTIVE_ERRORS:
+                await _maybe_await(
+                    self.events.on_error,
+                    f"⚠️ {consecutive_errors} ошибок подряд — останавливаюсь, "
+                    f"чтобы не зациклиться. Последняя: {last_error_content[:150]}",
+                )
+                persist_watchdog()
+                self.session.save()
+                return LoopResult(
+                    iterations_used=iteration,
+                    watchdog_triggered=True,
+                    consecutive_errors=consecutive_errors,
+                    work_state_updates=work_state_updates,
+                )
+
             if progress_made:
                 iterations_since_progress = 0
             else:
@@ -603,6 +670,7 @@ class AgentLoop:
                         f"Сессия сохранена — уточни задачу или продолжи."
                     )
                     await _maybe_await(self.events.on_error, msg)
+                    persist_watchdog()
                     self.session.save()
                     return LoopResult(
                         iterations_used=iteration,
@@ -613,36 +681,15 @@ class AgentLoop:
                         work_state_updates=work_state_updates,
                     )
 
-            # Watchdog: считаем подряд идущие ошибочные tool-результаты
-            if self.session.messages:
-                last_msg = self.session.messages[-1]
-                if last_msg.get("role") == "tool":
-                    last_content = last_msg.get("content", "")
-                    if isinstance(
-                        last_content, str
-                    ) and last_content.lstrip().startswith("Ошибка"):
-                        consecutive_errors += 1
-                    else:
-                        consecutive_errors = 0
-
-            if consecutive_errors >= config.MAX_CONSECUTIVE_ERRORS:
-                await _maybe_await(
-                    self.events.on_error,
-                    f"⚠️ {consecutive_errors} ошибок подряд — останавливаюсь, "
-                    f"чтобы не зациклиться. Последняя: {last_content[:150]}",
-                )
-                self.session.save()
-                return LoopResult(
-                    iterations_used=iteration,
-                    watchdog_triggered=True,
-                    consecutive_errors=consecutive_errors,
-                    work_state_updates=work_state_updates,
-                )
-
+            persist_watchdog()
             self.session.save()
 
         else:
             # Цикл завершился естественно = упёрлись в лимит
+            persist_watchdog()
+            self.session.task_state["iterations"] = (
+                int(self.session.task_state.get("iterations", 0)) + max_iter
+            )
             self.session.save()
             return LoopResult(
                 iterations_used=max_iter,
@@ -663,6 +710,8 @@ class AgentLoop:
         if guard_result is not None:
             return guard_result
 
+        self.session.end_task()
+        self.session.save()
         return LoopResult(
             iterations_used=iteration,
             consecutive_errors=consecutive_errors,
@@ -674,35 +723,52 @@ class AgentLoop:
         self.session.add_usage(usage)
         await _maybe_await(self.events.on_usage, usage)
 
-    async def _handle_tool_call(self, tc: ToolCall) -> str | None:
+    async def _handle_tool_call(
+        self, tc: ToolCall
+    ) -> tuple[ToolExecutionResult, str | None]:
         await _maybe_await(self.events.on_tool_call, tc)
 
         tool = self.registry.get(tc.name)
         if tool is None:
-            result = f"Ошибка: инструмент '{tc.name}' не найден"
-            self._append_tool_result(tc, result)
-            await _maybe_await(self.events.on_tool_result, tc, result)
-            return None
-
-        if not self.registry.is_call_allowed(self.session.mode, tool, tc.arguments):
+            outcome = ToolExecutionResult(
+                f"Ошибка: инструмент '{tc.name}' не найден",
+                ToolStatus.ERROR,
+            )
+        elif not self.registry.is_call_allowed(self.session.mode, tool, tc.arguments):
             mode_name = self.session.mode.value
-            result = (
+            output = (
                 f"Ошибка: инструмент '{tc.name}' недоступен в {mode_name}-режиме "
                 f"с такими аргументами. "
                 f"{'В Plan/Audit разрешены только read-only команды.' if mode_name in ('plan', 'audit') else ''}"
             )
-            self._append_tool_result(tc, result)
-            await _maybe_await(self.events.on_tool_result, tc, result)
-            return None
+            outcome = ToolExecutionResult(output, ToolStatus.REJECTED)
+        elif tool.needs_approval(tc.arguments) and not self.yolo:
+            if await self.events.request_approval(tc):
+                outcome = await self._execute_tool(tc, tool)
+            else:
+                outcome = ToolExecutionResult(
+                    "Отклонено пользователем", ToolStatus.REJECTED
+                )
+        else:
+            outcome = await self._execute_tool(tc, tool)
 
-        if tool.needs_approval(tc.arguments) and not self.yolo:
-            approved = await self.events.request_approval(tc)
-            if not approved:
-                result = "Отклонено пользователем"
-                self._append_tool_result(tc, result)
-                await _maybe_await(self.events.on_tool_result, tc, result)
-                return None
+        read_file_path = None
+        if tc.name == "read_file" and outcome.status not in (
+            ToolStatus.ERROR,
+            ToolStatus.REJECTED,
+        ):
+            path = str(tc.arguments.get("path") or "").strip()
+            if path:
+                read_file_path = path
+                digest = make_read_digest(path, outcome.output)
+                if digest:
+                    self.session.read_paths[path] = digest
 
+        self._append_tool_result(tc, outcome.output)
+        await _maybe_await(self.events.on_tool_result, tc, outcome.output)
+        return outcome, read_file_path
+
+    async def _execute_tool(self, tc: ToolCall, tool: Any) -> ToolExecutionResult:
         ctx = ToolContext(
             workspace=self.session.workspace,
             audit_scopes=self.session.audit_scopes or None,
@@ -714,24 +780,15 @@ class AgentLoop:
             model=self.session.model,
             on_usage=self._report_nested_usage,
         )
-        read_file_path: str | None = None
         try:
-            result = await tool.executor(tc.arguments, ctx)
+            raw = await tool.executor(tc.arguments, ctx)
         except Exception as e:
-            result = f"Ошибка выполнения инструмента: {e}"
             logger.exception("tool %s failed", tc.name)
+            return ToolExecutionResult(
+                f"Ошибка выполнения инструмента: {e}", ToolStatus.ERROR
+            )
 
-        if tc.name == "read_file" and not result.lstrip().startswith("Ошибка"):
-            path = str(tc.arguments.get("path") or "").strip()
-            if path:
-                read_file_path = path
-                digest = make_read_digest(path, result)
-                if digest:
-                    self.session.read_paths[path] = digest
-
-        self._append_tool_result(tc, result)
-        await _maybe_await(self.events.on_tool_result, tc, result)
-        return read_file_path if tc.name == "read_file" else None
+        return normalize_tool_result(raw, tool=tool)
 
     def _append_tool_result(self, tc: ToolCall, result: str) -> None:
         """Полный результат — в архив, extracted — в messages, затем save.

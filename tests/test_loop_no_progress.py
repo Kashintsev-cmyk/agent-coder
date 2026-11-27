@@ -10,6 +10,7 @@ from agent_coder.agent.prompts import Mode
 from agent_coder.agent.session import Session
 from agent_coder.config import config
 from agent_coder.llm.types import AssistantMessage, ChatResponse, ToolCall, Usage
+from agent_coder.tools.registry import ToolExecutionResult, ToolStatus
 
 
 class _ReadFileRegistry:
@@ -556,3 +557,75 @@ async def test_identical_calls_stopped_by_detector() -> None:
     assert res.no_progress
     assert "Нет прогресса" in res.error_message
     assert client.calls == config.MAX_IDENTICAL_CALLS
+
+
+@pytest.mark.asyncio
+async def test_different_failed_shell_commands_trigger_watchdog(monkeypatch) -> None:
+    """Разные shell-команды с ненулевым exit code считаются ошибками."""
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 10)
+    monkeypatch.setattr(loop_mod.config, "MAX_IDENTICAL_CALLS", 10)
+    monkeypatch.setattr(loop_mod.config, "MAX_CONSECUTIVE_ERRORS", 3)
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_TASK", 10_000.0)
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_SESSION", 10_000.0)
+
+    commands = ["false", "python missing.py", "pytest missing_test.py"]
+
+    class _Tool:
+        read_only = False
+        requires_approval = False
+
+        def needs_approval(self, args):
+            return False
+
+        async def executor(self, args, ctx):
+            return ToolExecutionResult(
+                f"exit code: 1 — {args['command']}",
+                ToolStatus.ERROR,
+                exit_code=1,
+            )
+
+    class _Registry:
+        def openai_schemas(self, mode):
+            return []
+
+        def get(self, name):
+            return _Tool() if name == "run_command" else None
+
+        def is_call_allowed(self, mode, tool, args):
+            return True
+
+    class _Client:
+        calls = 0
+
+        async def chat(self, messages, **kwargs):
+            self.calls += 1
+            command = commands[self.calls - 1]
+            return ChatResponse(
+                message=AssistantMessage(
+                    content="",
+                    tool_calls=[
+                        ToolCall(
+                            id=f"c{self.calls}",
+                            name="run_command",
+                            arguments={"command": command},
+                        )
+                    ],
+                ),
+                usage=Usage(input_tokens=10, output_tokens=5, cost=0.0),
+            )
+
+    session = Session.new(workspace="/tmp", model="m", mode=Mode.ACT)
+    session.messages = [{"role": "system", "content": "S"}]
+    client = _Client()
+    agent_loop = AgentLoop(
+        client=client,
+        registry=_Registry(),
+        session=session,
+        events=_events(),
+    )
+
+    result = await agent_loop.run("исправь ошибку")
+
+    assert result.watchdog_triggered
+    assert result.consecutive_errors == 3
+    assert client.calls == 3

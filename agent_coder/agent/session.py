@@ -95,6 +95,9 @@ class Session:
     # Пусто = без ограничения. Заполняется из --scope / --scope-file,
     # резолвится в __main__ на старте AUDIT. Переживает resume.
     audit_scopes: list[str] = field(default_factory=list)
+    # Состояние незавершённой задачи для продолжения между процессными волнами.
+    # Пустой dict — активной задачи нет; это состояние входит в session JSON.
+    task_state: dict[str, Any] = field(default_factory=dict)
     # Результаты /verify (B9): история прогонов, append. Каждый элемент:
     # {"text": str, "status": "confirmed|rejected|uncertain|unparsed",
     #  "evidence": str, "reason": str, "model": str, "cost": float,
@@ -189,6 +192,22 @@ class Session:
     def add_usage(self, usage: Usage) -> None:
         self.total_usage = self.total_usage + usage
         self.request_count += 1
+        self.updated_at = time.time()
+
+    def begin_task(self) -> str:
+        """Start a new logical task and reset its budget/watchdog state."""
+        task_id = uuid.uuid4().hex[:16]
+        self.task_state = {
+            "id": task_id,
+            "started_cost": self.total_usage.cost,
+            "watchdog": {},
+        }
+        self.updated_at = time.time()
+        return task_id
+
+    def end_task(self) -> None:
+        """Close the active logical task; session-level usage remains intact."""
+        self.task_state = {}
         self.updated_at = time.time()
 
     def preview(self) -> str:
@@ -321,6 +340,8 @@ class Session:
             data["project"] = ""
         if "chat_id" not in data:
             data["chat_id"] = 0
+        if "task_state" not in data:
+            data["task_state"] = {}
 
         # Разовая чистка: если в истории есть DSML-мусор (старые версии
         # кода не фильтровали) — убираем при загрузке.

@@ -162,9 +162,9 @@ remote-helper'ов, с точным учётом стоимости каждой
 
 | Режим | Что разрешено | Лимит итераций |
 |---|---|---|
-| `plan` | read-only инструменты + whitelist-команды | `MAX_ITERATIONS_PLAN` (30) |
-| `act` | всё: запись, правки, любые команды, git-коммит | `MAX_ITERATIONS_ACT` (50) |
-| `audit` | как `plan`, но с промптом строгого аудитора; в Telegram — Markdown-отчёт | `MAX_ITERATIONS_AUDIT` (100) |
+| `plan` | read-only инструменты + whitelist-команды | `MAX_ITERATIONS_PLAN` (100) |
+| `act` | всё: запись, правки, любые команды, git-коммит | `MAX_ITERATIONS_ACT` (200) |
+| `audit` | как `plan`, но с промптом строгого аудитора; в Telegram — Markdown-отчёт | `MAX_ITERATIONS_AUDIT` (200) |
 
 По умолчанию — `act`. В `plan`/`audit` попытки изменить файлы
 отбиваются на уровне реестра инструментов.
@@ -364,10 +364,12 @@ Haiku как победителя и DeepSeek Flash как fallback.
 |---|---|---|
 | `DEFAULT_WORKSPACE` | `~/projects` | Workspace по умолчанию |
 | `AGENT_CODER_AGENTS_MD_MAX_BYTES` | `8192` | Лимит размера `AGENTS.md`, байт |
-| `MAX_ITERATIONS` | `50` | Fallback-лимит |
-| `MAX_ITERATIONS_PLAN` | `30` | Plan |
-| `MAX_ITERATIONS_ACT` | `50` | Act |
-| `MAX_ITERATIONS_AUDIT` | `100` | Audit |
+| `MAX_ITERATIONS` | `200` | Fallback-лимит |
+| `MAX_ITERATIONS_PLAN` | `100` | Plan |
+| `MAX_ITERATIONS_ACT` | `200` | Act |
+| `MAX_ITERATIONS_AUDIT` | `200` | Audit |
+| `MAX_COST_PER_TASK` | `200.0` | Максимальные расходы на одну задачу, ₽ |
+| `MAX_COST_PER_SESSION` | `300.0` | Максимальные расходы на сессию, ₽ |
 | `LOG_LEVEL` | `INFO` | Зарезервировано |
 
 **Telegram**

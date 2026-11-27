@@ -339,14 +339,14 @@ def session_menu_keyboard(session: Session) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def continue_keyboard(session_id: str) -> InlineKeyboardMarkup:
-    """Кнопки после достижения лимита итераций: продолжить / сменить режим."""
+def continue_keyboard(session_id: str, task_id: str) -> InlineKeyboardMarkup:
+    """Кнопки для продолжения конкретной незавершённой задачи."""
     return InlineKeyboardMarkup(
         inline_keyboard=[
             [
                 InlineKeyboardButton(
                     text="▶️ Продолжить",
-                    callback_data=f"continue_task:{session_id}",
+                    callback_data=f"continue_task:{session_id}:{task_id}",
                 )
             ],
             [
