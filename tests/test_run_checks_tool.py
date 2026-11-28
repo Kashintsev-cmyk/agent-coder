@@ -12,6 +12,16 @@ def test_tool_metadata() -> None:
     assert run_checks_tool.parameters == {"type": "object", "properties": {}}
 
 
+def test_tool_description_matches_scope_and_ci_contract() -> None:
+    description = run_checks_tool.description.lower()
+    assert "широкий набор" in description
+    assert "для узкой правки" in description
+    assert "не полный ci" in description
+    assert "ruff format" in description
+    assert "dependency audit" in description
+    assert "сборки пакета" in description
+
+
 def test_registered_and_allowed_in_plan_audit() -> None:
     from agent_coder.agent.prompts import Mode
     from agent_coder.tools import build_registry

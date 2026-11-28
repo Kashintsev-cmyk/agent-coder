@@ -43,17 +43,19 @@ class _Registry:
         command_status: ToolStatus = ToolStatus.SUCCESS_NO_CHANGE,
         command_exit_code: int = 0,
         command_mutates: bool = False,
+        commit_mutates: bool = False,
     ) -> None:
         self.check_status = check_status
         self.command_status = command_status
         self.command_exit_code = command_exit_code
         self.command_mutates = command_mutates
+        self.commit_mutates = commit_mutates
 
     def openai_schemas(self, mode):
         return []
 
     def get(self, name):
-        if name not in {"edit_file", "run_checks", "run_command"}:
+        if name not in {"edit_file", "run_checks", "run_command", "git_commit"}:
             return None
         registry = self
 
@@ -80,6 +82,16 @@ class _Registry:
                             if registry.check_status == ToolStatus.SUCCESS_NO_CHANGE
                             else 1
                         ),
+                    )
+                if name == "git_commit":
+                    if registry.commit_mutates:
+                        path = Path(ctx.workspace) / "src" / "hook_changed.py"
+                        path.parent.mkdir(parents=True, exist_ok=True)
+                        path.write_text("changed by hook", encoding="utf-8")
+                    return ToolExecutionResult(
+                        "commit done",
+                        ToolStatus.SUCCESS_CHANGED,
+                        changed_paths=("src/example.py",),
                     )
                 if registry.command_mutates:
                     path = Path(ctx.workspace) / "src" / "shell_changed.py"
@@ -143,6 +155,70 @@ async def test_changed_files_need_successful_verification() -> None:
     assert any(
         "src/example.py" in str(message.get("content", ""))
         and "ПРОВЕРКА ИЗМЕНЕНИЙ" in str(message.get("content", ""))
+        for message in session.messages
+    )
+
+
+@pytest.mark.asyncio
+async def test_commit_after_successful_check_does_not_require_reverification(
+    tmp_path,
+) -> None:
+    session = _session(str(tmp_path))
+    client = _Client(
+        [
+            ("edit_file", {}),
+            ("run_checks", {}),
+            ("git_commit", {}),
+            None,
+        ]
+    )
+    loop = AgentLoop(
+        client=client,
+        registry=_Registry(),
+        session=session,
+        events=_events(),
+    )
+
+    result = await loop.run("исправь код, проверь и закоммить")
+
+    assert not result.no_progress
+    assert session.task_state == {}
+    assert client.index == 4
+    assert any("commit done" in str(m.get("content", "")) for m in session.messages)
+    assert not any(
+        "ПРОВЕРКА ИЗМЕНЕНИЙ" in str(message.get("content", ""))
+        for message in session.messages
+    )
+
+
+@pytest.mark.asyncio
+async def test_commit_hook_workspace_mutation_requires_reverification(tmp_path) -> None:
+    session = _session(str(tmp_path))
+    client = _Client(
+        [
+            ("edit_file", {}),
+            ("run_checks", {}),
+            ("git_commit", {}),
+            None,
+            ("run_checks", {}),
+            None,
+        ]
+    )
+    loop = AgentLoop(
+        client=client,
+        registry=_Registry(commit_mutates=True),
+        session=session,
+        events=_events(),
+    )
+
+    result = await loop.run("исправь код, проверь и закоммить")
+
+    assert not result.no_progress
+    assert session.task_state == {}
+    assert client.index == 6
+    assert (tmp_path / "src" / "hook_changed.py").exists()
+    assert any(
+        "ПРОВЕРКА ИЗМЕНЕНИЙ" in str(message.get("content", ""))
         for message in session.messages
     )
 

@@ -1,4 +1,4 @@
-"""Инструмент: быстрые проверки качества проекта (ruff + pytest)."""
+"""Широкий набор проверок проекта: Ruff, pytest, mypy и Bandit."""
 
 from __future__ import annotations
 
@@ -112,10 +112,11 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
 run_checks_tool = Tool(
     name="run_checks",
     description=(
-        "Быстрые проверки качества проекта: ruff check --no-cache и pytest "
-        "(-p no:cacheprovider --noconftest, env-clean). Ничего не меняет и не "
-        "пишет кэш-файлы. Используй в PLAN/AUDIT для вердикта по коду и "
-        "после правок в ACT."
+        "Широкий набор проверок проекта: ruff check, полный pytest, mypy и "
+        "Bandit (если настроены). Ничего не меняет и не пишет кэш-файлы. Это "
+        "не полный CI: здесь нет ruff format, dependency audit и сборки пакета. "
+        "Для узкой правки предпочитай целевой тест или линтер; запускай этот "
+        "набор, когда широкая проверка уместна."
     ),
     parameters={"type": "object", "properties": {}},
     executor=_execute_result,

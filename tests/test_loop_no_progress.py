@@ -387,7 +387,7 @@ async def test_user_rejection_not_progress(monkeypatch) -> None:
 
 
 @pytest.mark.asyncio
-async def test_run_command_read_only_is_not_progress(monkeypatch) -> None:
+async def test_run_command_read_only_is_not_progress(monkeypatch, tmp_path) -> None:
     """Успешные run_command с ls не сбрасывают watchdog прогресса."""
     monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 3)
     monkeypatch.setattr(loop_mod.config, "MAX_IDENTICAL_CALLS", 10)
@@ -433,7 +433,7 @@ async def test_run_command_read_only_is_not_progress(monkeypatch) -> None:
                 usage=Usage(input_tokens=10, output_tokens=5, cost=0.0),
             )
 
-    s = Session.new(workspace="/tmp", model="m", mode=Mode.ACT)
+    s = Session.new(workspace=str(tmp_path), model="m", mode=Mode.ACT)
     s.messages = [{"role": "system", "content": "S"}]
     client = _Client()
     loop = AgentLoop(client=client, registry=_Registry(), session=s, events=_events())

@@ -803,16 +803,32 @@ class AgentLoop:
                         if path_key not in seen_paths:
                             seen_paths.add(path_key)
                             progress_made = True
-                # Изменение в ACT подтверждает прогресс выполнения и требует проверки.
+                # Коммит меняет Git-историю, но не содержимое проверенных файлов.
+                # Он является прогрессом, однако не должен сбрасывать verification.
+                is_workspace_change = (
+                    tc.name != "git_commit"
+                    or bool(tool_outcome.changed_paths)
+                    or tool_outcome.possible_mutation
+                )
                 if (
                     self.session.mode == Mode.ACT
+                    and tc.name == "git_commit"
+                    and tool_outcome.status == ToolStatus.SUCCESS_CHANGED
+                ):
+                    progress_made = True
+                # Изменение workspace в ACT требует проверки перед завершением.
+                if (
+                    self.session.mode == Mode.ACT
+                    and is_workspace_change
                     and tool_outcome.status == ToolStatus.SUCCESS_CHANGED
                 ):
                     progress_made = True
                     act_changed = True
                     files_changed_this_run = True
-                if self.session.mode == Mode.ACT and (
-                    tool_outcome.changed_paths or tool_outcome.possible_mutation
+                if (
+                    self.session.mode == Mode.ACT
+                    and is_workspace_change
+                    and (tool_outcome.changed_paths or tool_outcome.possible_mutation)
                 ):
                     progress_made = True
                     act_changed = True
@@ -1106,7 +1122,9 @@ class AgentLoop:
             model=self.session.model,
             on_usage=self._report_nested_usage,
         )
-        observe_workspace = tc.name == "run_command" and self.session.mode == Mode.ACT
+        observe_workspace = (
+            tc.name in {"run_command", "git_commit"} and self.session.mode == Mode.ACT
+        )
         before = _workspace_snapshot(ctx.workspace) if observe_workspace else None
         try:
             raw = await tool.executor(tc.arguments, ctx)
@@ -1120,19 +1138,25 @@ class AgentLoop:
         if not observe_workspace:
             return outcome
         after = _workspace_snapshot(ctx.workspace)
+
+        # git_commit.changed_paths перечисляет staged-файлы, а не изменения,
+        # сделанные самим commit. Для него учитываем только реальный snapshot diff.
+        reported_paths = () if tc.name == "git_commit" else outcome.changed_paths
         if before is None or after is None:
-            return replace(outcome, possible_mutation=True)
+            return replace(
+                outcome,
+                changed_paths=reported_paths,
+                possible_mutation=True,
+            )
 
         changed_paths = {
             path
             for path in before.keys() | after.keys()
             if before.get(path) != after.get(path)
         }
-        if changed_paths:
-            return replace(
-                outcome,
-                changed_paths=tuple(sorted(set(outcome.changed_paths) | changed_paths)),
-            )
+        actual_paths = tuple(sorted(set(reported_paths) | changed_paths))
+        if actual_paths != outcome.changed_paths:
+            return replace(outcome, changed_paths=actual_paths)
         return outcome
 
     def _append_tool_result(self, tc: ToolCall, result: str) -> None:

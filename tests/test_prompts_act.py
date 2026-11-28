@@ -5,12 +5,16 @@ def test_act_batches_independent_calls():
     assert "Независимые вызовы" in SYSTEM_ACT
 
 
-def test_act_allows_chained_shell_steps():
-    assert "через `&&`" in SYSTEM_ACT
+def test_act_keeps_dependent_actions_sequential_and_respects_approval():
+    text = " ".join(SYSTEM_ACT.split())
+    assert "Зависимые действия выполняй последовательно" in text
+    assert "Соблюдай разрешения и подтверждения каждого инструмента" in text
+    assert "не сцепляй команды, чтобы обойти их" in text
 
 
-def test_act_no_recheck_after_successful_git():
-    assert "повторная проверка не нужна" in SYSTEM_ACT
+def test_act_repeats_verification_only_after_code_changes():
+    text = " ".join(SYSTEM_ACT.split())
+    assert "после успеха повторяй только если код изменился" in text
 
 
 def test_act_groups_edits_and_runs_relevant_tests_once():
