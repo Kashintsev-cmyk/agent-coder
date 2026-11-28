@@ -87,3 +87,31 @@ def test_pytest_command_has_noconftest() -> None:
     for cmd in pytest_cmds:
         assert "--noconftest" in cmd, cmd
         assert "-p no:cacheprovider" in cmd, cmd
+
+
+async def test_failed_check_returns_error_status(monkeypatch) -> None:
+    from types import SimpleNamespace
+
+    from agent_coder.agent.prompts import Mode
+    from agent_coder.tools import run_checks
+    from agent_coder.tools.registry import ToolContext, ToolStatus
+
+    monkeypatch.setattr(run_checks, "_CHECKS", [("pytest", 10, False)])
+
+    async def failed_command(*args, **kwargs):
+        return SimpleNamespace(
+            timed_out=False,
+            error=None,
+            returncode=1,
+            stdout="1 failed",
+            stderr="",
+        )
+
+    monkeypatch.setattr(run_checks, "run_shell", failed_command)
+    result = await run_checks._execute_result(
+        {}, ToolContext(workspace="/tmp", mode=Mode.ACT)
+    )
+
+    assert result.status == ToolStatus.ERROR
+    assert result.exit_code == 1
+    assert "1 failed" in result.output

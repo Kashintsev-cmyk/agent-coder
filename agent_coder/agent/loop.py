@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import base64
+import hashlib
 import inspect
 import json
 import logging
 import mimetypes
+import os
 import re
 import shlex
+import stat
 from collections.abc import Awaitable, Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 from typing import Any
 
@@ -139,6 +142,62 @@ def _read_path_keys(tc: ToolCall) -> list[str]:
         return [f"read_file:{str(p).strip()}" for p in raw if str(p).strip()]
     key = _read_path_key(tc)
     return [key] if key is not None else []
+
+
+_WORKSPACE_SNAPSHOT_EXCLUDED = frozenset(
+    {
+        ".git",
+        ".venv",
+        "venv",
+        "node_modules",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".ruff_cache",
+    }
+)
+
+
+def _workspace_snapshot(workspace: str | Path) -> dict[str, tuple[Any, ...]] | None:
+    """Capture workspace entries; None means mutation detection was incomplete."""
+    root = Path(workspace)
+    if not root.is_dir():
+        return None
+    snapshot: dict[str, tuple[Any, ...]] = {}
+
+    def raise_walk_error(error: OSError) -> None:
+        raise error
+
+    try:
+        for current, dirnames, filenames in os.walk(
+            root, topdown=True, followlinks=False, onerror=raise_walk_error
+        ):
+            current_path = Path(current)
+            dirnames[:] = [
+                name for name in dirnames if name not in _WORKSPACE_SNAPSHOT_EXCLUDED
+            ]
+            for name in dirnames + filenames:
+                path = current_path / name
+                relative = path.relative_to(root).as_posix()
+                info = path.lstat()
+                signature: tuple[Any, ...]
+                if stat.S_ISLNK(info.st_mode):
+                    signature = ("symlink", os.readlink(path))
+                elif stat.S_ISDIR(info.st_mode):
+                    continue
+                elif stat.S_ISREG(info.st_mode):
+                    digest = hashlib.sha256()
+                    with path.open("rb") as file:
+                        for chunk in iter(lambda: file.read(64 * 1024), b""):
+                            digest.update(chunk)
+                    signature = ("file", info.st_mode, digest.hexdigest())
+                else:
+                    signature = ("other", info.st_mode, info.st_rdev)
+                snapshot[relative] = signature
+    except OSError:
+        logger.warning("Не удалось полностью снять снимок workspace %s", root)
+        return None
+    return snapshot
 
 
 def _is_verification_command(command: str) -> bool:
@@ -293,6 +352,7 @@ class AgentLoop:
                 task_cost=task_cost,
             )
         changed_paths: set[str] = set(task_state.get("changed_paths", []))
+        possible_mutation = bool(task_state.get("possible_mutation", False))
         files_changed_this_run = False
         new_work_state_facts = False
         successful_checks = 0
@@ -325,6 +385,7 @@ class AgentLoop:
             )
             task_state["watchdog"] = watchdog
             task_state["changed_paths"] = sorted(changed_paths)
+            task_state["possible_mutation"] = possible_mutation
             task_state["verification_passed"] = verification_passed
             task_state["verification_reminder_sent"] = verification_reminder_sent
 
@@ -635,10 +696,12 @@ class AgentLoop:
             if not assistant_msg.tool_calls:
                 if (
                     self.session.mode == Mode.ACT
-                    and changed_paths
+                    and (changed_paths or possible_mutation)
                     and not verification_passed
                 ):
-                    paths_text = ", ".join(sorted(changed_paths))
+                    paths_text = ", ".join(sorted(changed_paths)) or (
+                        "возможная мутация (пути определить не удалось)"
+                    )
                     if verification_reminder_sent:
                         msg = (
                             f"Изменённые файлы не проверены: {paths_text}. "
@@ -646,6 +709,7 @@ class AgentLoop:
                         )
                         await _maybe_await(self.events.on_error, msg)
                         task_state["changed_paths"] = sorted(changed_paths)
+                        task_state["possible_mutation"] = possible_mutation
                         task_state["verification_passed"] = False
                         self.session.save()
                         return LoopResult(
@@ -655,6 +719,7 @@ class AgentLoop:
                             task_cost=self.session.total_usage.cost - start_cost,
                             work_state_updates=work_state_updates,
                         )
+                    task_state["possible_mutation"] = possible_mutation
                     self.session.add_message(
                         {
                             "role": "user",
@@ -746,10 +811,19 @@ class AgentLoop:
                     progress_made = True
                     act_changed = True
                     files_changed_this_run = True
-                    if tool_outcome.changed_paths:
-                        changed_paths.update(tool_outcome.changed_paths)
-                        verification_passed = False
-                        verification_reminder_sent = False
+                if self.session.mode == Mode.ACT and (
+                    tool_outcome.changed_paths or tool_outcome.possible_mutation
+                ):
+                    progress_made = True
+                    act_changed = True
+                    files_changed_this_run = True
+                    changed_paths.update(tool_outcome.changed_paths)
+                    possible_mutation |= tool_outcome.possible_mutation or (
+                        tool_outcome.status == ToolStatus.SUCCESS_CHANGED
+                        and not tool_outcome.changed_paths
+                    )
+                    verification_passed = False
+                    verification_reminder_sent = False
                 check_succeeded = (
                     self.session.mode == Mode.ACT
                     and _is_verification_call(tc, str(task_state.get("request", task)))
@@ -765,8 +839,9 @@ class AgentLoop:
                 )
                 if check_succeeded:
                     successful_checks += 1
-                if changed_paths and check_succeeded:
+                if (changed_paths or possible_mutation) and check_succeeded:
                     verification_passed = True
+                    possible_mutation = False
 
                 # Считаем ошибки каждого вызова, а не только последний
                 # результат всего пакета tool_calls.
@@ -1031,15 +1106,34 @@ class AgentLoop:
             model=self.session.model,
             on_usage=self._report_nested_usage,
         )
+        observe_workspace = tc.name == "run_command" and self.session.mode == Mode.ACT
+        before = _workspace_snapshot(ctx.workspace) if observe_workspace else None
         try:
             raw = await tool.executor(tc.arguments, ctx)
+            outcome = normalize_tool_result(raw, tool=tool)
         except Exception as e:
             logger.exception("tool %s failed", tc.name)
-            return ToolExecutionResult(
+            outcome = ToolExecutionResult(
                 f"Ошибка выполнения инструмента: {e}", ToolStatus.ERROR
             )
 
-        return normalize_tool_result(raw, tool=tool)
+        if not observe_workspace:
+            return outcome
+        after = _workspace_snapshot(ctx.workspace)
+        if before is None or after is None:
+            return replace(outcome, possible_mutation=True)
+
+        changed_paths = {
+            path
+            for path in before.keys() | after.keys()
+            if before.get(path) != after.get(path)
+        }
+        if changed_paths:
+            return replace(
+                outcome,
+                changed_paths=tuple(sorted(set(outcome.changed_paths) | changed_paths)),
+            )
+        return outcome
 
     def _append_tool_result(self, tc: ToolCall, result: str) -> None:
         """Полный результат — в архив, extracted — в messages, затем save.

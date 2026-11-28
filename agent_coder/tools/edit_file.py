@@ -14,53 +14,63 @@ from agent_coder.tools.registry import (
 )
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResult | str:
+def _error(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.ERROR)
+
+
+def _rejected(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.REJECTED)
+
+
+async def _execute_result(
+    args: dict[str, Any], ctx: ToolContext
+) -> ToolExecutionResult:
     rel = (args.get("path") or "").strip()
     old_string = args.get("old_string", "")
     new_string = args.get("new_string", "")
     replace_all = bool(args.get("replace_all", False))
 
     if not rel:
-        return "Ошибка: не указан path"
+        return _error("Ошибка: не указан path")
     if not old_string:
-        return "Ошибка: old_string пустой"
+        return _error("Ошибка: old_string пустой")
     if old_string == new_string:
-        return "Ошибка: old_string и new_string идентичны — нечего менять"
+        return _error("Ошибка: old_string и new_string идентичны — нечего менять")
 
     base = Path(ctx.workspace).resolve()
     full = (base / rel).resolve()
     try:
         full.relative_to(base)
     except ValueError:
-        return f"Ошибка: путь вне workspace: {rel}"
+        return _rejected(f"Ошибка: путь вне workspace: {rel}")
 
     # B1b (8f0cd848): scope-gate ДО exists() — иначе «файл не найден»
     # маскирует «вне области аудита» для несуществующего scoped-пути.
     if not in_scope(rel, ctx.audit_scopes):
-        return (
+        return _rejected(
             f"Ошибка: {rel!r} вне области аудита {ctx.audit_scopes}. "
             f"Пиши только в разрешённые пути."
         )
 
     if not full.exists():
-        return f"Файл не найден: {rel}"
+        return _error(f"Файл не найден: {rel}")
     if not full.is_file():
-        return f"Не файл: {rel}"
+        return _error(f"Не файл: {rel}")
 
     try:
         with open(full, encoding="utf-8", newline="") as f:
             content = f.read()
     except Exception as e:
-        return f"Ошибка чтения: {e}"
+        return _error(f"Ошибка чтения: {e}")
 
     count = content.count(old_string)
     if count == 0:
-        return (
+        return _error(
             f"Ошибка: old_string не найден в {rel}. "
             f"Проверь точное содержимое (пробелы, табы, переводы строк)."
         )
     if count > 1 and not replace_all:
-        return (
+        return _error(
             f"Ошибка: old_string встречается {count} раз в {rel}. "
             f"Добавь больше контекста, чтобы строка была уникальной, "
             f"или укажи replace_all=true для замены всех вхождений."
@@ -79,7 +89,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResul
         with open(full, "w", encoding="utf-8", newline="") as f:
             f.write(new_content)
     except Exception as e:
-        return f"Ошибка записи: {e}"
+        return _error(f"Ошибка записи: {e}")
 
     output = (
         f"Заменено {count} вхождений в {rel}"
@@ -94,6 +104,14 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResul
         ),
         changed_paths=(rel,) if changed else (),
     )
+
+
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> str | ToolExecutionResult:
+    """Compatibility wrapper for callers expecting legacy error strings."""
+    result = await _execute_result(args, ctx)
+    if result.status in (ToolStatus.ERROR, ToolStatus.REJECTED):
+        return result.output
+    return result
 
 
 edit_file_tool = Tool(
@@ -130,7 +148,7 @@ edit_file_tool = Tool(
         },
         "required": ["path", "old_string", "new_string"],
     },
-    executor=_execute,
+    executor=_execute_result,
     requires_approval=False,
     read_only=False,
 )

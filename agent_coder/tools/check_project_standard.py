@@ -19,7 +19,12 @@ import tomllib
 from pathlib import Path
 from typing import Any
 
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -434,18 +439,22 @@ def _summarize(issues: list[dict[str, Any]]) -> dict[str, Any]:
     return {"score": score, "majors": majors, "minors": minors, "issues": issues}
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _execute_result(
+    args: dict[str, Any], ctx: ToolContext
+) -> ToolExecutionResult:
     sub = (args.get("path") or ".").strip()
     base = Path(ctx.workspace).resolve()
     target = (base / sub).resolve()
     try:
         target.relative_to(base)
     except ValueError:
-        return f"Ошибка: путь вне workspace: {sub}"
+        return ToolExecutionResult(
+            f"Ошибка: путь вне workspace: {sub}", ToolStatus.REJECTED
+        )
     if not target.is_dir():
-        return f"Не директория: {sub}"
+        return ToolExecutionResult(f"Не директория: {sub}", ToolStatus.ERROR)
     if target.name in EXCLUDED_NAMES:
-        return json.dumps(
+        output = json.dumps(
             {
                 "score": "skipped",
                 "majors": 0,
@@ -457,8 +466,15 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
             ensure_ascii=False,
             indent=2,
         )
+        return ToolExecutionResult(output, ToolStatus.SUCCESS_NO_CHANGE)
     issues = await asyncio.to_thread(_collect_issues, target)
-    return json.dumps(_summarize(issues), ensure_ascii=False, indent=2)
+    output = json.dumps(_summarize(issues), ensure_ascii=False, indent=2)
+    return ToolExecutionResult(output, ToolStatus.SUCCESS_NO_CHANGE)
+
+
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Compatibility wrapper for callers expecting plain output text."""
+    return (await _execute_result(args, ctx)).output
 
 
 check_project_standard_tool = Tool(
@@ -477,7 +493,7 @@ check_project_standard_tool = Tool(
             },
         },
     },
-    executor=_execute,
+    executor=_execute_result,
     requires_approval=False,
     read_only=True,
 )

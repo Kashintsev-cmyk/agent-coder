@@ -66,9 +66,10 @@ def _is_not_configured(result: Any) -> bool:
 async def _execute_result(
     args: dict[str, Any], ctx: ToolContext
 ) -> ToolExecutionResult:
-    # Результат — отчёт о прогоне проверок, а не статус каждой проверки:
-    # упавший ruff/pytest — это данные для модели, а не ошибка вызова инструмента.
+    # Failed checks are errors, so the ACT completion gate cannot treat a
+    # report containing failed tests/lint as successful verification.
     parts: list[str] = []
+    failed = False
     for cmd, timeout, soft in _CHECKS:
         result = await run_shell(
             cmd,
@@ -80,9 +81,11 @@ async def _execute_result(
         )
         header = f"$ {cmd}"
         if result.timed_out:
+            failed = True
             parts.append(f"{header}\nПрерван по таймауту ({timeout}с)")
             continue
         if result.error:
+            failed = True
             parts.append(f"{header}\nОшибка запуска: {result.error}")
             continue
         body = result.stdout.strip() or "(нет вывода)"
@@ -91,8 +94,14 @@ async def _execute_result(
         if soft and result.returncode != 0 and _is_not_configured(result):
             parts.append(f"{header}\nпропущено: инструмент не настроен в проекте")
             continue
+        if result.returncode != 0:
+            failed = True
         parts.append(f"{header}\nexit code: {result.returncode}\n{body}")
-    return ToolExecutionResult("\n\n".join(parts), ToolStatus.SUCCESS_NO_CHANGE)
+    return ToolExecutionResult(
+        "\n\n".join(parts),
+        ToolStatus.ERROR if failed else ToolStatus.SUCCESS_NO_CHANGE,
+        exit_code=1 if failed else 0,
+    )
 
 
 async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:

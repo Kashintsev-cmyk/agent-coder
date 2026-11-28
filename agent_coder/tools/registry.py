@@ -29,6 +29,7 @@ class ToolExecutionResult:
     status: ToolStatus
     exit_code: int | None = None
     changed_paths: tuple[str, ...] = ()
+    possible_mutation: bool = False
 
 
 def normalize_tool_result(

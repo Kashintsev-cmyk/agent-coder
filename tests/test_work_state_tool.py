@@ -6,8 +6,8 @@ import pytest
 
 from agent_coder.agent.prompts import Mode
 from agent_coder.agent.work_state import WorkStateHandle
-from agent_coder.tools.registry import ToolContext
-from agent_coder.tools.work_state import _execute
+from agent_coder.tools.registry import ToolContext, ToolStatus
+from agent_coder.tools.work_state import _execute, update_work_state_tool
 
 
 def _ctx(handle: WorkStateHandle | None = None) -> ToolContext:
@@ -60,6 +60,18 @@ async def test_remove_done() -> None:
     out = await _execute({"patch": {"done-": ["b"]}}, _ctx(h))
     assert "done: 3->2 (-1)" in out
     assert h.get()["done"] == ["a", "c"]
+
+
+@pytest.mark.asyncio
+async def test_registered_executor_returns_structured_status() -> None:
+    handle = WorkStateHandle({})
+    result = await update_work_state_tool.executor(
+        {"patch": {"findings+": ["confirmed"]}}, _ctx(handle)
+    )
+
+    assert result.status == ToolStatus.SUCCESS_CHANGED
+    assert result.output == "work_state обновлён: findings: 0->1 (+1)"
+    assert handle.get()["findings"] == ["confirmed"]
 
 
 @pytest.mark.asyncio

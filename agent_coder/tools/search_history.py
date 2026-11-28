@@ -13,7 +13,12 @@ from typing import Any
 
 from agent_coder.agent import history_archive
 from agent_coder.agent.session import content_to_text
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
 
 MAX_MATCHES = 30
 TIMEOUT_SEC = 30
@@ -36,21 +41,26 @@ def _format_match(line: str) -> str:
     return f"[{role}] {text[:600]}"
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _execute_result(
+    args: dict[str, Any], ctx: ToolContext
+) -> ToolExecutionResult:
     query = args.get("query", "").strip()
     if not query:
-        return "Ошибка: пустой query"
+        return ToolExecutionResult("Ошибка: пустой query", ToolStatus.ERROR)
 
     path = history_archive.archive_path(ctx.session_id)
     if not path.exists():
-        return (
+        return ToolExecutionResult(
             "Архив истории пуст (история ещё не сжималась). "
-            "Детали прошлых задач недоступны."
+            "Детали прошлых задач недоступны.",
+            ToolStatus.SUCCESS_NO_CHANGE,
         )
 
     rg = shutil.which("rg")
     if not rg:
-        return "Ошибка: ripgrep (rg) не найден на сервере"
+        return ToolExecutionResult(
+            "Ошибка: ripgrep (rg) не найден на сервере", ToolStatus.ERROR
+        )
 
     cmd = [
         rg,
@@ -79,21 +89,35 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
             await proc.wait()
         except Exception:  # nosec B110
             pass
-        return f"search_history: таймаут {TIMEOUT_SEC}с"
+        return ToolExecutionResult(
+            f"search_history: таймаут {TIMEOUT_SEC}с", ToolStatus.ERROR
+        )
 
     stdout = out.decode("utf-8", errors="replace").strip()
     if not stdout:
         if proc.returncode == 1:
-            return f"В архиве истории ничего не найдено по запросу: {query!r}"
-        return (
-            f"rg завершился с кодом {proc.returncode}: {err.decode(errors='replace')}"
+            return ToolExecutionResult(
+                f"В архиве истории ничего не найдено по запросу: {query!r}",
+                ToolStatus.SUCCESS_NO_CHANGE,
+            )
+        return ToolExecutionResult(
+            f"rg завершился с кодом {proc.returncode}: {err.decode(errors='replace')}",
+            ToolStatus.ERROR,
         )
 
     lines = stdout.splitlines()
     if len(lines) > MAX_MATCHES:
         lines = lines[:MAX_MATCHES] + [f"... (обрезано на {MAX_MATCHES})"]
     # Без --line-number каждая строка вывода rg — это JSONL-строка целиком
-    return "\n\n".join(_format_match(line) for line in lines)
+    return ToolExecutionResult(
+        "\n\n".join(_format_match(line) for line in lines),
+        ToolStatus.SUCCESS_NO_CHANGE,
+    )
+
+
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Compatibility wrapper for callers expecting plain output text."""
+    return (await _execute_result(args, ctx)).output
 
 
 search_history_tool = Tool(
@@ -114,6 +138,6 @@ search_history_tool = Tool(
         },
         "required": ["query"],
     },
-    executor=_execute,
+    executor=_execute_result,
     read_only=True,
 )

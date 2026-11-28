@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from agent_coder.agent.loop import (
@@ -40,10 +42,12 @@ class _Registry:
         check_status: ToolStatus = ToolStatus.SUCCESS_NO_CHANGE,
         command_status: ToolStatus = ToolStatus.SUCCESS_NO_CHANGE,
         command_exit_code: int = 0,
+        command_mutates: bool = False,
     ) -> None:
         self.check_status = check_status
         self.command_status = command_status
         self.command_exit_code = command_exit_code
+        self.command_mutates = command_mutates
 
     def openai_schemas(self, mode):
         return []
@@ -77,6 +81,10 @@ class _Registry:
                             else 1
                         ),
                     )
+                if registry.command_mutates:
+                    path = Path(ctx.workspace) / "src" / "shell_changed.py"
+                    path.parent.mkdir(parents=True, exist_ok=True)
+                    path.write_text("changed", encoding="utf-8")
                 return ToolExecutionResult(
                     "command done",
                     registry.command_status,
@@ -103,8 +111,8 @@ def _events() -> LoopEvents:
     )
 
 
-def _session() -> Session:
-    session = Session.new(workspace="/tmp", model="test", mode=Mode.ACT)
+def _session(workspace: str = "/tmp") -> Session:
+    session = Session.new(workspace=workspace, model="test", mode=Mode.ACT)
     session.messages = [{"role": "system", "content": "system"}]
     return session
 
@@ -209,8 +217,8 @@ def test_explicit_criterion_requires_exact_command() -> None:
 
 
 @pytest.mark.asyncio
-async def test_nonzero_exit_code_does_not_verify_changed_files() -> None:
-    session = _session()
+async def test_nonzero_exit_code_does_not_verify_changed_files(tmp_path) -> None:
+    session = _session(str(tmp_path))
     client = _Client(
         [
             ("edit_file", {}),
@@ -233,8 +241,10 @@ async def test_nonzero_exit_code_does_not_verify_changed_files() -> None:
 
 
 @pytest.mark.asyncio
-async def test_explicit_criterion_can_verify_when_exact_command_succeeds() -> None:
-    session = _session()
+async def test_explicit_criterion_can_verify_when_exact_command_succeeds(
+    tmp_path,
+) -> None:
+    session = _session(str(tmp_path))
     client = _Client(
         [
             ("edit_file", {}),
@@ -277,3 +287,57 @@ async def test_explicit_criterion_with_nonzero_exit_code_does_not_verify() -> No
 
     assert result.no_progress
     assert session.task_state["verification_passed"] is False
+
+
+@pytest.mark.asyncio
+async def test_run_command_workspace_mutation_requires_verification(tmp_path) -> None:
+    session = _session(str(tmp_path))
+    client = _Client(
+        [
+            ("run_command", {"command": "custom-mutate"}),
+            None,
+            None,
+        ]
+    )
+    loop = AgentLoop(
+        client=client,
+        registry=_Registry(
+            command_status=ToolStatus.SUCCESS_EFFECT_UNKNOWN,
+            command_mutates=True,
+        ),
+        session=session,
+        events=_events(),
+    )
+
+    result = await loop.run("выполни команду")
+
+    assert result.no_progress
+    assert session.task_state["changed_paths"] == ["src/shell_changed.py"]
+    assert session.task_state["possible_mutation"] is False
+    assert any(
+        "ПРОВЕРКА ИЗМЕНЕНИЙ" in str(message.get("content", ""))
+        for message in session.messages
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_command_without_workspace_mutation_needs_no_verification(
+    tmp_path,
+) -> None:
+    session = _session(str(tmp_path))
+    client = _Client([("run_command", {"command": "custom-noop"}), None])
+    loop = AgentLoop(
+        client=client,
+        registry=_Registry(command_status=ToolStatus.SUCCESS_EFFECT_UNKNOWN),
+        session=session,
+        events=_events(),
+    )
+
+    result = await loop.run("выполни команду")
+
+    assert not result.no_progress
+    assert session.task_state == {}
+    assert not any(
+        "ПРОВЕРКА ИЗМЕНЕНИЙ" in str(message.get("content", ""))
+        for message in session.messages
+    )

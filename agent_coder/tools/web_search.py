@@ -24,7 +24,12 @@ from typing import Any
 
 from agent_coder.config import config
 from agent_coder.llm.client import LLMClient
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -100,17 +105,25 @@ def _format(query: str, answer: str, sources: list[dict[str, str]]) -> str:
     return text + "\n".join(lines)
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _execute_result(
+    args: dict[str, Any], ctx: ToolContext
+) -> ToolExecutionResult:
     query = (args.get("query") or "").strip()
     if not query:
-        return "Ошибка: пустой query"
+        return ToolExecutionResult("Ошибка: пустой query", ToolStatus.ERROR)
 
     # Явная WEB_SEARCH_MODEL (обычно дешёвая) важнее активной модели сессии.
     model = config.WEB_SEARCH_MODEL or ctx.model
     if not model:
-        return "Ошибка: web_search требует модель (WEB_SEARCH_MODEL или активная модель сессии)"
+        return ToolExecutionResult(
+            "Ошибка: web_search требует модель (WEB_SEARCH_MODEL или активная модель сессии)",
+            ToolStatus.ERROR,
+        )
     if not config.ROUTERAI_API_KEY:
-        return "Ошибка: ROUTERAI_API_KEY не задан — поиск недоступен"
+        return ToolExecutionResult(
+            "Ошибка: ROUTERAI_API_KEY не задан — поиск недоступен",
+            ToolStatus.ERROR,
+        )
 
     client = LLMClient()
     await client.start()
@@ -135,7 +148,9 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
         )
     except Exception as exc:
         logger.warning("web_search: запрос не удался (%s): %s", model, exc)
-        return f"Ошибка поиска в интернете: {exc}"
+        return ToolExecutionResult(
+            f"Ошибка поиска в интернете: {exc}", ToolStatus.ERROR
+        )
     finally:
         try:
             await client.close()
@@ -146,7 +161,14 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
     sources = _extract_annotations(response)
     if ctx.on_usage is not None:
         await ctx.on_usage(response.usage)
-    return _format(query, answer, sources)
+    return ToolExecutionResult(
+        _format(query, answer, sources), ToolStatus.SUCCESS_NO_CHANGE
+    )
+
+
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Compatibility wrapper for callers expecting plain output text."""
+    return (await _execute_result(args, ctx)).output
 
 
 web_search_tool = Tool(
@@ -167,6 +189,6 @@ web_search_tool = Tool(
         },
         "required": ["query"],
     },
-    executor=_execute,
+    executor=_execute_result,
     read_only=True,
 )

@@ -9,6 +9,7 @@ import pytest
 
 from agent_coder.llm.types import Usage
 from agent_coder.tools import web_search as ws
+from agent_coder.tools.registry import ToolExecutionResult, ToolStatus
 
 
 class _FakeMessage:
@@ -118,7 +119,10 @@ def test_format_empty_answer_suggests_reformulation():
 @pytest.mark.asyncio
 async def test_execute_rejects_empty_query():
     ctx = ws.ToolContext(workspace="/tmp", mode=None)  # type: ignore[arg-type]
-    assert await ws._execute({"query": "   "}, ctx) == "Ошибка: пустой query"
+    result = await ws.web_search_tool.executor({"query": "   "}, ctx)
+    assert isinstance(result, ToolExecutionResult)
+    assert result.status == ToolStatus.ERROR
+    assert result.output == "Ошибка: пустой query"
 
 
 @pytest.mark.asyncio
@@ -168,7 +172,10 @@ async def test_execute_formats_search_result(monkeypatch):
         on_usage=on_usage,
     )  # type: ignore[arg-type]
 
-    out = await ws._execute({"query": "версия python"}, ctx)
+    result = await ws.web_search_tool.executor({"query": "версия python"}, ctx)
+    assert isinstance(result, ToolExecutionResult)
+    assert result.status == ToolStatus.SUCCESS_NO_CHANGE
+    out = result.output
 
     assert seen["started"] and seen["closed"]
     assert seen["kwargs"]["web_search"] is True

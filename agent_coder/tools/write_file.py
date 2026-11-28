@@ -14,22 +14,32 @@ from agent_coder.tools.registry import (
 )
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResult | str:
+def _error(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.ERROR)
+
+
+def _rejected(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.REJECTED)
+
+
+async def _execute_result(
+    args: dict[str, Any], ctx: ToolContext
+) -> ToolExecutionResult:
     rel = args.get("path", "").strip()
     content = args.get("content", "")
     if not rel:
-        return "Ошибка: не указан path"
+        return _error("Ошибка: не указан path")
 
     base = Path(ctx.workspace).resolve()
     full = (base / rel).resolve()
     try:
         full.relative_to(base)
     except ValueError:
-        return f"Ошибка: путь вне workspace: {rel}"
+        return _rejected(f"Ошибка: путь вне workspace: {rel}")
 
     # B1b (8f0cd848): scope-gate и для записи. `..`-bypass закрыт M2 в `in_scope`.
     if not in_scope(rel, ctx.audit_scopes):
-        return (
+        return _rejected(
             f"Ошибка: {rel!r} вне области аудита {ctx.audit_scopes}. "
             f"Пиши только в разрешённые пути."
         )
@@ -40,7 +50,7 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResul
         full.parent.mkdir(parents=True, exist_ok=True)
         full.write_text(content, encoding="utf-8")
     except Exception as e:
-        return f"Ошибка записи: {e}"
+        return _error(f"Ошибка записи: {e}")
 
     lines = content.count("\n") + (1 if content else 0)
     verb = "перезаписан" if existed else "создан"
@@ -53,6 +63,14 @@ async def _execute(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResul
         ),
         changed_paths=(rel,) if changed else (),
     )
+
+
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> str | ToolExecutionResult:
+    """Compatibility wrapper for callers expecting legacy error strings."""
+    result = await _execute_result(args, ctx)
+    if result.status in (ToolStatus.ERROR, ToolStatus.REJECTED):
+        return result.output
+    return result
 
 
 write_file_tool = Tool(
@@ -69,7 +87,7 @@ write_file_tool = Tool(
         },
         "required": ["path", "content"],
     },
-    executor=_execute,
+    executor=_execute_result,
     requires_approval=False,
     read_only=False,
 )

@@ -116,7 +116,9 @@ async def _run(
 
 
 @pytest.mark.asyncio
-async def test_distinct_read_paths_hit_act_read_only_limit(monkeypatch, tmp_path) -> None:
+async def test_distinct_read_paths_hit_act_read_only_limit(
+    monkeypatch, tmp_path
+) -> None:
     async def read_file(args: dict[str, Any], ctx: Any) -> str:
         return "file contents"
 

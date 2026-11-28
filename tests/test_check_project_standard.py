@@ -8,7 +8,7 @@ from pathlib import Path
 from agent_coder.agent.prompts import Mode
 from agent_coder.tools import build_registry
 from agent_coder.tools.check_project_standard import check_project_standard_tool
-from agent_coder.tools.registry import ToolContext
+from agent_coder.tools.registry import ToolContext, ToolExecutionResult, ToolStatus
 
 COMPLETE_PYPROJECT = """\
 [project]
@@ -62,8 +62,9 @@ def _ctx(workspace: Path) -> ToolContext:
 
 
 async def _run(workspace: Path, path: str = ".") -> dict:
-    raw = await check_project_standard_tool.executor({"path": path}, _ctx(workspace))
-    return json.loads(raw)
+    result = await check_project_standard_tool.executor({"path": path}, _ctx(workspace))
+    assert result.status == ToolStatus.SUCCESS_NO_CHANGE
+    return json.loads(result.output)
 
 
 # --- наличие файлов ---
@@ -280,15 +281,16 @@ def test_ci_quality_checks_satisfy_profile(tmp_path: Path) -> None:
 # --- path guards ---
 
 
-async def _run_raw(workspace: Path, path: str) -> str:
+async def _run_raw(workspace: Path, path: str) -> ToolExecutionResult:
     return await check_project_standard_tool.executor({"path": path}, _ctx(workspace))
 
 
 def test_path_outside_workspace_errors(tmp_path: Path) -> None:
     import asyncio
 
-    raw: str = asyncio.run(_run_raw(tmp_path, "../etc"))
-    assert raw.startswith("Ошибка: путь вне workspace")
+    result = asyncio.run(_run_raw(tmp_path, "../etc"))
+    assert result.status == ToolStatus.REJECTED
+    assert result.output.startswith("Ошибка: путь вне workspace")
 
 
 def test_non_directory_errors(tmp_path: Path) -> None:
@@ -296,8 +298,9 @@ def test_non_directory_errors(tmp_path: Path) -> None:
 
     f = tmp_path / "file.txt"
     f.write_text("x", encoding="utf-8")
-    raw: str = asyncio.run(_run_raw(tmp_path, "file.txt"))
-    assert raw.startswith("Не директория")
+    result = asyncio.run(_run_raw(tmp_path, "file.txt"))
+    assert result.status == ToolStatus.ERROR
+    assert result.output.startswith("Не директория")
 
 
 # --- регистрация и read_only ---

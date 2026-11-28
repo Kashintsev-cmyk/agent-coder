@@ -5,7 +5,21 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
+
+
+def _error(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.ERROR)
+
+
+def _success(output: str) -> ToolExecutionResult:
+    return ToolExecutionResult(output, ToolStatus.SUCCESS_NO_CHANGE)
+
 
 MAX_OUTPUT = 20_000
 GIT_TIMEOUT = 30
@@ -41,22 +55,27 @@ def _truncate(text: str, limit: int = MAX_OUTPUT) -> str:
 # ---------- git_status ----------
 
 
-async def _status(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _status_result(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResult:
     code, out, err = await _run_git(ctx, "status", "--porcelain=v1", "--branch")
     if code != 0:
         if "not a git repository" in err.lower():
-            return "Не git-репозиторий"
-        return f"git status упал (код {code}): {err.strip()}"
+            return _error("Не git-репозиторий")
+        return _error(f"git status упал (код {code}): {err.strip()}")
     if not out.strip():
-        return "Рабочее дерево чисто"
-    return _truncate(out.rstrip())
+        return _success("Рабочее дерево чисто")
+    return _success(_truncate(out.rstrip()))
+
+
+async def _status(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Compatibility wrapper for callers expecting plain output text."""
+    return (await _status_result(args, ctx)).output
 
 
 git_status_tool = Tool(
     name="git_status",
     description="Показать состояние рабочего дерева (аналог `git status --porcelain --branch`).",
     parameters={"type": "object", "properties": {}},
-    executor=_status,
+    executor=_status_result,
     read_only=True,
 )
 
@@ -64,7 +83,7 @@ git_status_tool = Tool(
 # ---------- git_diff ----------
 
 
-async def _diff(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _diff_result(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResult:
     cmd = ["diff"]
     if args.get("staged"):
         cmd.append("--staged")
@@ -73,10 +92,15 @@ async def _diff(args: dict[str, Any], ctx: ToolContext) -> str:
         cmd.append(str(args["path"]))
     code, out, err = await _run_git(ctx, *cmd)
     if code != 0:
-        return f"git diff упал (код {code}): {err.strip()}"
+        return _error(f"git diff упал (код {code}): {err.strip()}")
     if not out.strip():
-        return "Нет изменений" + (" (staged)" if args.get("staged") else "")
-    return _truncate(out)
+        return _success("Нет изменений" + (" (staged)" if args.get("staged") else ""))
+    return _success(_truncate(out))
+
+
+async def _diff(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Compatibility wrapper for callers expecting plain output text."""
+    return (await _diff_result(args, ctx)).output
 
 
 git_diff_tool = Tool(
@@ -92,7 +116,7 @@ git_diff_tool = Tool(
             "path": {"type": "string", "description": "Ограничить одним файлом"},
         },
     },
-    executor=_diff,
+    executor=_diff_result,
     read_only=True,
 )
 
@@ -100,7 +124,7 @@ git_diff_tool = Tool(
 # ---------- git_log ----------
 
 
-async def _log(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _log_result(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResult:
     n = int(args.get("count") or 10)
     n = max(1, min(n, 50))
     code, out, err = await _run_git(
@@ -111,9 +135,14 @@ async def _log(args: dict[str, Any], ctx: ToolContext) -> str:
             "does not have any commits" in err.lower()
             or "not a git repository" in err.lower()
         ):
-            return "Нет коммитов или это не git-репозиторий"
-        return f"git log упал (код {code}): {err.strip()}"
-    return _truncate(out)
+            return _error("Нет коммитов или это не git-репозиторий")
+        return _error(f"git log упал (код {code}): {err.strip()}")
+    return _success(_truncate(out))
+
+
+async def _log(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Compatibility wrapper for callers expecting plain output text."""
+    return (await _log_result(args, ctx)).output
 
 
 git_log_tool = Tool(
@@ -125,7 +154,7 @@ git_log_tool = Tool(
             "count": {"type": "integer", "description": "Сколько коммитов (1-50)"},
         },
     },
-    executor=_log,
+    executor=_log_result,
     read_only=True,
 )
 
@@ -133,21 +162,21 @@ git_log_tool = Tool(
 # ---------- git_commit ----------
 
 
-async def _commit(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _commit_result(args: dict[str, Any], ctx: ToolContext) -> ToolExecutionResult:
     message = (args.get("message") or "").strip()
     if not message:
-        return "Ошибка: пустое сообщение коммита"
+        return _error("Ошибка: пустое сообщение коммита")
 
     if message.startswith("-"):
-        return "Ошибка: сообщение не должно начинаться с дефиса"
+        return _error("Ошибка: сообщение не должно начинаться с дефиса")
 
     # 1. Проверяем, что есть что коммитить (staged)
     code, out, err = await _run_git(ctx, "diff", "--staged", "--name-only")
     if code != 0:
-        return f"Не git-репозиторий: {err.strip()}"
+        return _error(f"Не git-репозиторий: {err.strip()}")
     staged = out.strip().splitlines()
     if not staged:
-        return (
+        return _error(
             "Нечего коммитить: индекс пуст. Сначала добавь файлы "
             "(например, через run_command: `git add <файлы>`)."
         )
@@ -161,7 +190,7 @@ async def _commit(args: dict[str, Any], ctx: ToolContext) -> str:
         timeout=60,
     )
     if code != 0:
-        return f"git commit упал (код {code}): {err.strip()}"
+        return _error(f"git commit упал (код {code}): {err.strip()}")
 
     # 3. Возвращаем свежий хеш
     code2, hash_out, _ = await _run_git(ctx, "rev-parse", "--short", "HEAD")
@@ -171,7 +200,17 @@ async def _commit(args: dict[str, Any], ctx: ToolContext) -> str:
     if len(staged) > 5:
         files_summary += f" и ещё {len(staged) - 5}"
 
-    return f"Коммит {short_hash}: {message}\nФайлов: {len(staged)} ({files_summary})"
+    output = f"Коммит {short_hash}: {message}\nФайлов: {len(staged)} ({files_summary})"
+    return ToolExecutionResult(
+        output,
+        ToolStatus.SUCCESS_CHANGED,
+        changed_paths=tuple(staged),
+    )
+
+
+async def _commit(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Compatibility wrapper for callers expecting plain output text."""
+    return (await _commit_result(args, ctx)).output
 
 
 git_commit_tool = Tool(
@@ -191,7 +230,7 @@ git_commit_tool = Tool(
         },
         "required": ["message"],
     },
-    executor=_commit,
+    executor=_commit_result,
     requires_approval=True,
     read_only=False,
 )

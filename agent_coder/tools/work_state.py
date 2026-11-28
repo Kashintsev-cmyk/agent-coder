@@ -13,7 +13,12 @@ from __future__ import annotations
 
 from typing import Any
 
-from agent_coder.tools.registry import Tool, ToolContext
+from agent_coder.tools.registry import (
+    Tool,
+    ToolContext,
+    ToolExecutionResult,
+    ToolStatus,
+)
 
 
 def _report(before: dict[str, list[str]], after: dict[str, list[str]]) -> str:
@@ -30,20 +35,32 @@ def _report(before: dict[str, list[str]], after: dict[str, list[str]]) -> str:
     return "work_state обновлён: " + ", ".join(parts)
 
 
-async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+async def _execute_result(
+    args: dict[str, Any], ctx: ToolContext
+) -> ToolExecutionResult:
     if ctx.work_state is None:
-        return (
-            "Ошибка: work_state недоступен в этом контексте (tool вызван вне AgentLoop)"
+        return ToolExecutionResult(
+            "Ошибка: work_state недоступен в этом контексте (tool вызван вне AgentLoop)",
+            ToolStatus.ERROR,
         )
     patch = args.get("patch")
     if not isinstance(patch, dict) or not patch:
-        return (
+        return ToolExecutionResult(
             "Ошибка: patch должен быть непустым объектом вида "
-            '{"findings+": ["..."], "todo": ["..."]}'
+            '{"findings+": ["..."], "todo": ["..."]}',
+            ToolStatus.ERROR,
         )
     before = ctx.work_state.get()
     after = ctx.work_state.update(patch)
-    return _report(before, after)
+    status = (
+        ToolStatus.SUCCESS_CHANGED if after != before else ToolStatus.SUCCESS_NO_CHANGE
+    )
+    return ToolExecutionResult(_report(before, after), status)
+
+
+async def _execute(args: dict[str, Any], ctx: ToolContext) -> str:
+    """Compatibility wrapper for callers expecting plain output text."""
+    return (await _execute_result(args, ctx)).output
 
 
 update_work_state_tool = Tool(
@@ -75,7 +92,7 @@ update_work_state_tool = Tool(
         },
         "required": ["patch"],
     },
-    executor=_execute,
+    executor=_execute_result,
     requires_approval=False,
     # read_only=True по конвенции проекта: tool не трогает workspace
     # (меняет только память сессии, обратимо через 'field-'), поэтому

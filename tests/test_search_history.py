@@ -6,7 +6,7 @@ import pytest
 
 from agent_coder.agent import history_archive
 from agent_coder.agent.prompts import Mode
-from agent_coder.tools.registry import ToolContext
+from agent_coder.tools.registry import ToolContext, ToolStatus
 from agent_coder.tools.search_history import search_history_tool
 
 
@@ -23,7 +23,8 @@ def _seed(session_id: str, msgs: list[dict]) -> None:
 @pytest.mark.asyncio
 async def test_empty_archive_message(ctx):
     out = await search_history_tool.executor({"query": "foo"}, ctx)
-    assert "не сжималась" in out
+    assert "не сжималась" in out.output
+    assert out.status == ToolStatus.SUCCESS_NO_CHANGE
 
 
 @pytest.mark.asyncio
@@ -36,22 +37,25 @@ async def test_finds_in_archive(ctx):
         ],
     )
     out = await search_history_tool.executor({"query": "calculate_total"}, ctx)
-    assert "billing.py" in out
-    assert "[user]" in out
-    assert "[assistant]" in out
+    assert "billing.py" in out.output
+    assert "[user]" in out.output
+    assert "[assistant]" in out.output
+    assert out.status == ToolStatus.SUCCESS_NO_CHANGE
 
 
 @pytest.mark.asyncio
 async def test_no_match(ctx):
     _seed("s1", [{"role": "user", "content": "что-то другое"}])
     out = await search_history_tool.executor({"query": "несуществующее"}, ctx)
-    assert "не найдено" in out
+    assert "не найдено" in out.output
+    assert out.status == ToolStatus.SUCCESS_NO_CHANGE
 
 
 @pytest.mark.asyncio
 async def test_empty_query(ctx):
     out = await search_history_tool.executor({"query": "  "}, ctx)
-    assert "Ошибка" in out
+    assert "Ошибка" in out.output
+    assert out.status == ToolStatus.ERROR
 
 
 @pytest.mark.asyncio
@@ -67,7 +71,8 @@ async def test_tool_call_rendered(ctx):
         ],
     )
     out = await search_history_tool.executor({"query": "read_file"}, ctx)
-    assert "вызвал: read_file" in out
+    assert "вызвал: read_file" in out.output
+    assert out.status == ToolStatus.SUCCESS_NO_CHANGE
 
 
 @pytest.mark.asyncio
@@ -85,7 +90,8 @@ async def test_multimodal_content(ctx):
         ],
     )
     out = await search_history_tool.executor({"query": "секретный_маркер"}, ctx)
-    assert "секретный_маркер" in out
+    assert "секретный_маркер" in out.output
+    assert out.status == ToolStatus.SUCCESS_NO_CHANGE
 
 
 def test_registered_and_read_only():
