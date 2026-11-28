@@ -226,6 +226,44 @@ async def test_work_state_change_counts_as_progress(monkeypatch, tmp_path) -> No
 
 
 @pytest.mark.asyncio
+async def test_limit_result_reports_progress_from_current_wave(monkeypatch, tmp_path) -> None:
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_ACT", 3)
+
+    async def write_file(args: dict[str, Any], ctx: Any) -> ToolExecutionResult:
+        return ToolExecutionResult(
+            "changed", ToolStatus.SUCCESS_CHANGED, changed_paths=("src/a.py",)
+        )
+
+    async def update_work_state(args: dict[str, Any], ctx: Any) -> str:
+        ctx.work_state.update({"findings+": ["new fact"]})
+        return "updated"
+
+    async def run_checks(args: dict[str, Any], ctx: Any) -> ToolExecutionResult:
+        return ToolExecutionResult("checks passed", ToolStatus.SUCCESS_NO_CHANGE)
+
+    result, _, _ = await _run(
+        monkeypatch,
+        tmp_path,
+        [
+            _tool_call("write_file", {}, "write"),
+            _tool_call("update_work_state", {}, "state"),
+            _tool_call("run_checks", {}, "checks"),
+        ],
+        _Registry(
+            _Tool("write_file", write_file, read_only=False),
+            _Tool("update_work_state", update_work_state, read_only=True),
+            _Tool("run_checks", run_checks, read_only=True),
+        ),
+        no_progress_limit=10,
+    )
+
+    assert result.limit_reached
+    assert result.files_changed
+    assert result.new_work_state_facts
+    assert result.successful_checks == 1
+
+
+@pytest.mark.asyncio
 async def test_read_only_limit_resets_after_change_and_work_state_update(
     monkeypatch, tmp_path
 ) -> None:

@@ -512,6 +512,29 @@ async def _run_task(
                     await _generate_and_send_audit(bot, chat_id, session)
                 return
 
+            # В ACT продолжаем автоматически только если эта волна дала
+            # наблюдаемый результат; лимит сам по себе прогрессом не является.
+            has_progress = (
+                bool(getattr(result, "files_changed", False))
+                or bool(getattr(result, "new_work_state_facts", False))
+                or bool(getattr(result, "successful_checks", 0))
+            )
+            if session.mode == Mode.ACT and not has_progress:
+                try:
+                    await bot.send_message(
+                        chat_id,
+                        "⏸ Лимит итераций достигнут, но в последней волне "
+                        "не обнаружено изменений файлов, новых фактов или "
+                        "успешных проверок. Автопродолжение остановлено; "
+                        "при необходимости продолжи вручную.",
+                        reply_markup=keyboards.continue_keyboard(
+                            session.id, str(session.task_state.get("id", ""))
+                        ),
+                    )
+                except Exception as e:
+                    logger.warning("no-progress continue message failed: %s", e)
+                return
+
             # Лимит достигнут, но автопродолжений ещё есть
             if auto_continue < config.MAX_AUTO_CONTINUE:
                 auto_continue += 1

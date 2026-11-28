@@ -64,6 +64,9 @@ class LoopResult:
     no_progress: bool = False  # вышли по MAX_ITERATIONS_NO_PROGRESS
     provider_error: bool = False  # LLM-провайдер недоступен (не ротируем)
     work_state_updates: int = 0  # B9.1: сколько раз state реально менялся
+    files_changed: bool = False  # было ли изменение файлов за этот запуск
+    new_work_state_facts: bool = False  # появились ли новые факты за этот запуск
+    successful_checks: int = 0  # успешные проверки за этот запуск
     error_message: str = ""  # текст для UI (cost/provider/no_progress)
     task_cost: float = 0.0  # потрачено на задачу (₽), для UI
 
@@ -247,6 +250,9 @@ class AgentLoop:
                 task_cost=task_cost,
             )
         changed_paths: set[str] = set(task_state.get("changed_paths", []))
+        files_changed_this_run = False
+        new_work_state_facts = False
+        successful_checks = 0
         verification_passed = bool(task_state.get("verification_passed", False))
         verification_reminder_sent = bool(
             task_state.get("verification_reminder_sent", False)
@@ -632,6 +638,11 @@ class AgentLoop:
             ws_snapshot = json.dumps(
                 self.session.work_state, sort_keys=True, ensure_ascii=False
             )
+            ws_items_before = {
+                field: set(items)
+                for field, items in self.session.work_state.items()
+                if isinstance(items, list)
+            }
             progress_made = False
             tool_results: list[str] = []
             last_error_content = ""
@@ -689,18 +700,21 @@ class AgentLoop:
                 ):
                     progress_made = True
                     act_changed = True
+                    files_changed_this_run = True
                     if tool_outcome.changed_paths:
                         changed_paths.update(tool_outcome.changed_paths)
                         verification_passed = False
                         verification_reminder_sent = False
-                if (
+                check_succeeded = (
                     self.session.mode == Mode.ACT
-                    and changed_paths
                     and _is_verification_call(tc, str(task_state.get("request", task)))
                     and tool_outcome.status
                     in (ToolStatus.SUCCESS_NO_CHANGE, ToolStatus.SUCCESS_EFFECT_UNKNOWN)
                     and (tc.name != "run_command" or tool_outcome.exit_code == 0)
-                ):
+                )
+                if check_succeeded:
+                    successful_checks += 1
+                if changed_paths and check_succeeded:
                     verification_passed = True
 
                 # Считаем ошибки каждого вызова, а не только последний
@@ -716,6 +730,15 @@ class AgentLoop:
                 != ws_snapshot
             )
             if ws_changed:
+                current_work_state = {
+                    field: set(items)
+                    for field, items in self.session.work_state.items()
+                    if isinstance(items, list)
+                }
+                new_work_state_facts |= any(
+                    items - ws_items_before.get(field, set())
+                    for field, items in current_work_state.items()
+                )
                 # Новые факты в памяти — прогресс. Зацикливание на одинаковых
                 # вызовах ловит детектор повторов (MAX_IDENTICAL_CALLS).
                 progress_made = True
@@ -838,6 +861,9 @@ class AgentLoop:
                 limit_reached=True,
                 consecutive_errors=consecutive_errors,
                 work_state_updates=work_state_updates,
+                files_changed=files_changed_this_run,
+                new_work_state_facts=new_work_state_facts,
+                successful_checks=successful_checks,
             )
 
         # B9.1: post-audit guard — только AUDIT, только если findings пуст,
