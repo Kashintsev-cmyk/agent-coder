@@ -507,8 +507,8 @@ async def test_identical_calls_with_different_results_not_stopped(monkeypatch) -
 
 
 @pytest.mark.asyncio
-async def test_act_reads_of_distinct_files_count_as_progress(monkeypatch) -> None:
-    """A run of successful reads across distinct files must not hit ACT watchdogs."""
+async def test_act_reads_of_distinct_files_hit_read_only_limit(monkeypatch) -> None:
+    """Distinct paths do not reset the ACT read-only iteration limit."""
     monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 1)
     monkeypatch.setattr(loop_mod.config, "MAX_READ_ONLY_ITERATIONS_ACT", 2)
     monkeypatch.setattr(loop_mod.config, "MAX_IDENTICAL_CALLS", 3)
@@ -568,8 +568,8 @@ async def test_act_reads_of_distinct_files_count_as_progress(monkeypatch) -> Non
 
     result = await agent_loop.run("посмотри исходники")
 
-    assert not result.no_progress
-    assert client.calls == len(paths) + 1
+    assert result.no_progress
+    assert client.calls == 3
 
 
 @pytest.mark.asyncio

@@ -116,7 +116,7 @@ async def _run(
 
 
 @pytest.mark.asyncio
-async def test_distinct_read_paths_count_as_act_progress(monkeypatch, tmp_path) -> None:
+async def test_distinct_read_paths_hit_act_read_only_limit(monkeypatch, tmp_path) -> None:
     async def read_file(args: dict[str, Any], ctx: Any) -> str:
         return "file contents"
 
@@ -133,8 +133,8 @@ async def test_distinct_read_paths_count_as_act_progress(monkeypatch, tmp_path) 
         no_progress_limit=2,
     )
 
-    assert not result.no_progress
-    assert client.chat_calls == 4
+    assert result.no_progress
+    assert client.chat_calls == 3
 
 
 @pytest.mark.asyncio
@@ -300,6 +300,38 @@ async def test_read_only_limit_resets_after_change_and_work_state_update(
     assert result.no_progress
     assert client.chat_calls == 7
     assert session.work_state["findings"] == ["new fact"]
+
+
+@pytest.mark.asyncio
+async def test_actual_file_change_resets_act_read_only_limit(
+    monkeypatch, tmp_path
+) -> None:
+    async def read_file(args: dict[str, Any], ctx: Any) -> str:
+        return "file contents"
+
+    async def write_file(args: dict[str, Any], ctx: Any) -> ToolExecutionResult:
+        return ToolExecutionResult("changed", ToolStatus.SUCCESS_CHANGED)
+
+    result, client, _ = await _run(
+        monkeypatch,
+        tmp_path,
+        [
+            _tool_call("read_file", {"path": "src/one.py"}, "read-1"),
+            _tool_call("read_file", {"path": "src/two.py"}, "read-2"),
+            _tool_call("write_file", {"path": "src/change.py"}, "write"),
+            _tool_call("read_file", {"path": "src/three.py"}, "read-3"),
+            _tool_call("read_file", {"path": "src/four.py"}, "read-4"),
+            _tool_call("read_file", {"path": "src/five.py"}, "read-5"),
+        ],
+        _Registry(
+            _Tool("read_file", read_file, read_only=True),
+            _Tool("write_file", write_file, read_only=False),
+        ),
+        no_progress_limit=2,
+    )
+
+    assert result.no_progress
+    assert client.chat_calls == 6
 
 
 @pytest.mark.asyncio

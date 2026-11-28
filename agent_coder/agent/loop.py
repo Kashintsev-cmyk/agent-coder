@@ -644,13 +644,13 @@ class AgentLoop:
                 if isinstance(items, list)
             }
             progress_made = False
+            new_facts_this_iteration = False
             tool_results: list[str] = []
             last_error_content = ""
             act_read_only_iteration = self.session.mode == Mode.ACT and bool(
                 assistant_msg.tool_calls
             )
             act_changed = False
-            act_read_progress = False
             tool_statuses: list[ToolStatus] = []
             for tc in assistant_msg.tool_calls:
                 tool = self.registry.get(tc.name)
@@ -695,8 +695,6 @@ class AgentLoop:
                         if path_key not in seen_paths:
                             seen_paths.add(path_key)
                             progress_made = True
-                            if self.session.mode == Mode.ACT:
-                                act_read_progress = True
                 # Изменение в ACT подтверждает прогресс выполнения и требует проверки.
                 if (
                     self.session.mode == Mode.ACT
@@ -739,16 +737,17 @@ class AgentLoop:
                     for field, items in self.session.work_state.items()
                     if isinstance(items, list)
                 }
-                new_work_state_facts |= any(
+                new_facts_this_iteration = any(
                     items - ws_items_before.get(field, set())
                     for field, items in current_work_state.items()
                 )
+                new_work_state_facts |= new_facts_this_iteration
                 # Новые факты в памяти — прогресс. Зацикливание на одинаковых
                 # вызовах ловит детектор повторов (MAX_IDENTICAL_CALLS).
                 progress_made = True
                 work_state_updates += 1
             if self.session.mode == Mode.ACT:
-                if act_changed or act_read_progress or ws_changed:
+                if act_changed or new_facts_this_iteration:
                     consecutive_read_only_iterations = 0
                 elif act_read_only_iteration:
                     consecutive_read_only_iterations += 1
@@ -835,7 +834,7 @@ class AgentLoop:
             if (
                 self.session.mode == Mode.ACT
                 and consecutive_read_only_iterations
-                >= config.MAX_READ_ONLY_ITERATIONS_ACT
+                > config.MAX_READ_ONLY_ITERATIONS_ACT
             ):
                 msg = (
                     f"Нет подтверждённого прогресса: {consecutive_read_only_iterations} "
