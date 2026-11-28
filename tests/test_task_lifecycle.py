@@ -114,6 +114,9 @@ async def test_no_progress_watchdog_survives_continuation(
 ) -> None:
     monkeypatch.setattr(config, "MAX_ITERATIONS_ACT", 1)
     monkeypatch.setattr(config, "MAX_ITERATIONS_NO_PROGRESS", 1)
+    # Первый запуск (1 чтение) должен пройти до лимита итераций; продолжение
+    # доводит read-only счётчик до 2 и останавливает цикл по no_progress.
+    monkeypatch.setattr(config, "MAX_READ_ONLY_ITERATIONS_ACT", 2)
     monkeypatch.setattr(config, "MAX_IDENTICAL_CALLS", 100)
     monkeypatch.setattr(config, "MAX_COST_PER_TASK", 100.0)
     monkeypatch.setattr(config, "MAX_COST_PER_SESSION", 1000.0)

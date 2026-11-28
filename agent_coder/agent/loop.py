@@ -136,6 +136,38 @@ def _read_path_keys(tc: ToolCall) -> list[str]:
     return [key] if key is not None else []
 
 
+def _is_verification_call(tc: ToolCall, request: str) -> bool:
+    """Recognize successful test/lint commands or a user-specified criterion."""
+    if tc.name == "run_checks":
+        return True
+    if tc.name != "run_command":
+        return False
+    command = str(tc.arguments.get("command") or "").strip()
+    normalized = " ".join(command.lower().split())
+    known_checks = (
+        "pytest",
+        "python -m unittest",
+        "python -m pytest",
+        "ruff ",
+        "mypy ",
+        "bandit ",
+        "tox",
+        "nox",
+        "cargo test",
+        "go test",
+        "npm test",
+        "pnpm test",
+        "yarn test",
+        "make test",
+        "make lint",
+        "compileall",
+        "py_compile",
+    )
+    if any(marker in normalized for marker in known_checks):
+        return True
+    return bool(normalized and normalized in " ".join(request.lower().split()))
+
+
 class AgentLoop:
     def __init__(
         self,
@@ -195,6 +227,8 @@ class AgentLoop:
         else:
             self.session.begin_task()
             task_state = self.session.task_state
+            task_state["request"] = task
+        task_state.setdefault("request", task)
         self.session.save()
         start_cost = float(
             task_state.get("started_cost", self.session.total_usage.cost)
@@ -212,6 +246,11 @@ class AgentLoop:
                 error_message=msg,
                 task_cost=task_cost,
             )
+        changed_paths: set[str] = set(task_state.get("changed_paths", []))
+        verification_passed = bool(task_state.get("verification_passed", False))
+        verification_reminder_sent = bool(
+            task_state.get("verification_reminder_sent", False)
+        )
         watchdog = task_state.setdefault("watchdog", {})
         iterations_since_progress = int(watchdog.get("iterations_since_progress", 0))
         consecutive_read_only_iterations = int(
@@ -236,6 +275,9 @@ class AgentLoop:
                 }
             )
             task_state["watchdog"] = watchdog
+            task_state["changed_paths"] = sorted(changed_paths)
+            task_state["verification_passed"] = verification_passed
+            task_state["verification_reminder_sent"] = verification_reminder_sent
 
         # Длина messages ПЕРЕД прошлым client.chat (без ответа и tool-результатов).
         # Нужна для pre-check: после запроса добавились assistant + tool-результаты,
@@ -542,6 +584,46 @@ class AgentLoop:
             self.session.add_message(assistant_history)
 
             if not assistant_msg.tool_calls:
+                if (
+                    self.session.mode == Mode.ACT
+                    and changed_paths
+                    and not verification_passed
+                ):
+                    paths_text = ", ".join(sorted(changed_paths))
+                    if verification_reminder_sent:
+                        msg = (
+                            f"Изменённые файлы не проверены: {paths_text}. "
+                            "Задача оставлена активной — запусти проверку и продолжи."
+                        )
+                        await _maybe_await(self.events.on_error, msg)
+                        task_state["changed_paths"] = sorted(changed_paths)
+                        task_state["verification_passed"] = False
+                        self.session.save()
+                        return LoopResult(
+                            iterations_used=iteration,
+                            no_progress=True,
+                            error_message=msg,
+                            task_cost=self.session.total_usage.cost - start_cost,
+                            work_state_updates=work_state_updates,
+                        )
+                    self.session.add_message(
+                        {
+                            "role": "user",
+                            "content": (
+                                "[ПРОВЕРКА ИЗМЕНЕНИЙ] Ты изменил файлы: "
+                                f"{paths_text}. Перед завершением запусти тесты/линтер "
+                                "(например, run_checks) или явно указанный пользователем "
+                                "критерий проверки. Если проверка не проходит — исправь "
+                                "проблему и проверь повторно."
+                            ),
+                        }
+                    )
+                    verification_reminder_sent = True
+                    task_state["changed_paths"] = sorted(changed_paths)
+                    task_state["verification_passed"] = False
+                    task_state["verification_reminder_sent"] = True
+                    self.session.save()
+                    continue
                 self.session.save()
                 break  # B9.1: post-audit guard проверяется после for
 
@@ -553,8 +635,8 @@ class AgentLoop:
             progress_made = False
             tool_results: list[str] = []
             last_error_content = ""
-            act_read_only_iteration = (
-                self.session.mode == Mode.ACT and bool(assistant_msg.tool_calls)
+            act_read_only_iteration = self.session.mode == Mode.ACT and bool(
+                assistant_msg.tool_calls
             )
             act_changed = False
             for tc in assistant_msg.tool_calls:
@@ -607,6 +689,19 @@ class AgentLoop:
                 ):
                     progress_made = True
                     act_changed = True
+                    if tool_outcome.changed_paths:
+                        changed_paths.update(tool_outcome.changed_paths)
+                        verification_passed = False
+                        verification_reminder_sent = False
+                if (
+                    self.session.mode == Mode.ACT
+                    and changed_paths
+                    and _is_verification_call(tc, str(task_state.get("request", task)))
+                    and tool_outcome.status
+                    in (ToolStatus.SUCCESS_NO_CHANGE, ToolStatus.SUCCESS_EFFECT_UNKNOWN)
+                    and (tc.name != "run_command" or tool_outcome.exit_code == 0)
+                ):
+                    verification_passed = True
 
                 # Считаем ошибки каждого вызова, а не только последний
                 # результат всего пакета tool_calls.

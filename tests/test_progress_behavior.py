@@ -116,7 +116,9 @@ async def _run(
 
 
 @pytest.mark.asyncio
-async def test_distinct_read_paths_hit_act_read_only_limit(monkeypatch, tmp_path) -> None:
+async def test_distinct_read_paths_hit_act_read_only_limit(
+    monkeypatch, tmp_path
+) -> None:
     async def read_file(args: dict[str, Any], ctx: Any) -> str:
         return "file contents"
 
@@ -290,7 +292,7 @@ async def test_actual_file_change_is_progress(monkeypatch, tmp_path) -> None:
     """Фактическое изменение файла считается прогрессом."""
     path = tmp_path / "changed.py"
 
-    async def write_file(args: dict[str, Any], ctx: Any) -> str:
+    async def write_file(args: dict[str, Any], ctx: Any) -> ToolExecutionResult:
         path.write_text("changed\n", encoding="utf-8")
         return ToolExecutionResult(
             "Файл успешно записан",
@@ -298,15 +300,29 @@ async def test_actual_file_change_is_progress(monkeypatch, tmp_path) -> None:
             changed_paths=(str(path),),
         )
 
+    async def run_checks(args: dict[str, Any], ctx: Any) -> ToolExecutionResult:
+        return ToolExecutionResult("checks ok", ToolStatus.SUCCESS_NO_CHANGE)
+
+    # Изменённый файл нужно проверить до завершения (ACT): run_checks
+    # подтверждает проверку, иначе loop запросит ещё один ход модели.
     result, client, _ = await _run(
         monkeypatch,
         tmp_path,
-        [_tool_call("write_file", {"path": str(path)}), None],
-        _Registry(_Tool("write_file", write_file, read_only=False)),
+        [
+            _tool_call("write_file", {"path": str(path)}, "write"),
+            _tool_call("run_checks", {}, "checks"),
+            None,
+        ],
+        _Registry(
+            _Tool("write_file", write_file, read_only=False),
+            _Tool("run_checks", run_checks, read_only=True),
+        ),
+        # run_checks — чтение в ACT; лимит 3, чтобы одна проверка не остановила цикл.
+        no_progress_limit=3,
     )
 
     assert not result.no_progress
-    assert client.chat_calls == 2
+    assert client.chat_calls == 3
     assert path.read_text(encoding="utf-8") == "changed\n"
 
 
