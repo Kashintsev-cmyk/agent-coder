@@ -7,6 +7,8 @@ import inspect
 import json
 import logging
 import mimetypes
+import re
+import shlex
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -139,36 +141,77 @@ def _read_path_keys(tc: ToolCall) -> list[str]:
     return [key] if key is not None else []
 
 
+def _is_verification_command(command: str) -> bool:
+    """Classify a complete test/lint command, never text inside another command."""
+    if re.search(r"[;&|`$<>(){}\n]", command):
+        return False
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    if not tokens:
+        return False
+
+    executable = Path(tokens[0]).name.lower()
+    args = [token.lower() for token in tokens[1:]]
+    if executable in {"pytest", "py.test", "tox", "nox"}:
+        return not args or args[0] not in {"--help", "-h", "--version", "-V"}
+    if executable == "ruff":
+        if args[:1] == ["check"]:
+            return True
+        return args[:2] == ["format", "--check"] or (
+            args[:1] == ["format"] and "--check" in args[1:]
+        )
+    if executable in {"mypy", "bandit"}:
+        return bool(args) and args[0] not in {"--version", "-V", "--help", "-h"}
+    if re.fullmatch(r"python(?:\d+(?:\.\d+)*)?", executable):
+        return (
+            len(args) >= 2
+            and args[0] == "-m"
+            and args[1] in {"pytest", "unittest", "compileall", "py_compile"}
+        )
+    if executable in {"make", "gmake"}:
+        return any(arg in {"test", "lint"} for arg in args)
+    if executable == "cargo":
+        return bool(args and args[0] == "test")
+    if executable == "go":
+        return bool(args and args[0] == "test")
+    if executable in {"npm", "pnpm", "yarn"}:
+        return bool(args and (args[0] == "test" or args[:2] == ["run", "test"]))
+    return False
+
+
+def _explicit_verification_criterion(request: str) -> str | None:
+    """Return a command explicitly declared as the task's verification criterion."""
+    match = re.search(
+        r"(?:критерий(?:\s+проверки)?|verification\s+criterion)\s*[:—-]\s*([^\n]+)",
+        request,
+        re.IGNORECASE,
+    )
+    if not match:
+        return None
+    return match.group(1).strip().strip("`'\"")
+
+
 def _is_verification_call(tc: ToolCall, request: str) -> bool:
-    """Recognize successful test/lint commands or a user-specified criterion."""
+    """Recognize run_checks, known check commands, or an exact user criterion."""
     if tc.name == "run_checks":
         return True
     if tc.name != "run_command":
         return False
     command = str(tc.arguments.get("command") or "").strip()
-    normalized = " ".join(command.lower().split())
-    known_checks = (
-        "pytest",
-        "python -m unittest",
-        "python -m pytest",
-        "ruff ",
-        "mypy ",
-        "bandit ",
-        "tox",
-        "nox",
-        "cargo test",
-        "go test",
-        "npm test",
-        "pnpm test",
-        "yarn test",
-        "make test",
-        "make lint",
-        "compileall",
-        "py_compile",
-    )
-    if any(marker in normalized for marker in known_checks):
+    if _is_verification_command(command):
         return True
-    return bool(normalized and normalized in " ".join(request.lower().split()))
+    criterion = _explicit_verification_criterion(request)
+    if not criterion or command != criterion:
+        return False
+    if re.search(r"[;&|`$<>(){}\n]", command):
+        return False
+    try:
+        tokens = shlex.split(command)
+    except ValueError:
+        return False
+    return bool(tokens and Path(tokens[0]).name.lower() != "echo")
 
 
 class AgentLoop:
@@ -712,7 +755,13 @@ class AgentLoop:
                     and _is_verification_call(tc, str(task_state.get("request", task)))
                     and tool_outcome.status
                     in (ToolStatus.SUCCESS_NO_CHANGE, ToolStatus.SUCCESS_EFFECT_UNKNOWN)
-                    and (tc.name != "run_command" or tool_outcome.exit_code == 0)
+                    and (
+                        (tc.name == "run_command" and tool_outcome.exit_code == 0)
+                        or (
+                            tc.name == "run_checks"
+                            and tool_outcome.exit_code in (None, 0)
+                        )
+                    )
                 )
                 if check_succeeded:
                     successful_checks += 1
