@@ -379,9 +379,13 @@ class Config:
     MAX_COST_PER_SESSION: float = _env_float("MAX_COST_PER_SESSION", "300.0")
 
     # Watchdog прогресса: сколько итераций подряд без изменения work_state
-    # и без успешной мутации (write_file/edit_file/git_commit) считать
-    # «залип». 10 — эмпирически: read_file-loop упирался за 9 перечитываний.
+    # и без успешной мутации (write_file/edit_file/git_commit) считать «залип».
     MAX_ITERATIONS_NO_PROGRESS: int = int(os.getenv("MAX_ITERATIONS_NO_PROGRESS", "10"))
+    # ACT разрешает исследование проекта, но ограничивает последовательные
+    # read-only итерации, чтобы новые пути не маскировали отсутствие выполнения.
+    MAX_READ_ONLY_ITERATIONS_ACT: int = int(
+        os.getenv("MAX_READ_ONLY_ITERATIONS_ACT", "20")
+    )
     # Детектор повторов: столько одинаковых подряд ответов tool_calls останавливают цикл.
     MAX_IDENTICAL_CALLS: int = int(os.getenv("MAX_IDENTICAL_CALLS", "3"))
 

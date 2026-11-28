@@ -214,6 +214,9 @@ class AgentLoop:
             )
         watchdog = task_state.setdefault("watchdog", {})
         iterations_since_progress = int(watchdog.get("iterations_since_progress", 0))
+        consecutive_read_only_iterations = int(
+            watchdog.get("consecutive_read_only_iterations", 0)
+        )
         consecutive_errors = int(watchdog.get("consecutive_errors", 0))
         prev_call_sig: str | None = watchdog.get("prev_call_sig")
         identical_streak = int(watchdog.get("identical_streak", 0))
@@ -225,6 +228,7 @@ class AgentLoop:
             watchdog.update(
                 {
                     "iterations_since_progress": iterations_since_progress,
+                    "consecutive_read_only_iterations": consecutive_read_only_iterations,
                     "consecutive_errors": consecutive_errors,
                     "prev_call_sig": prev_call_sig,
                     "identical_streak": identical_streak,
@@ -549,7 +553,14 @@ class AgentLoop:
             progress_made = False
             tool_results: list[str] = []
             last_error_content = ""
+            act_read_only_iteration = (
+                self.session.mode == Mode.ACT and bool(assistant_msg.tool_calls)
+            )
+            act_changed = False
             for tc in assistant_msg.tool_calls:
+                tool = self.registry.get(tc.name)
+                if tool is None or not getattr(tool, "read_only", False):
+                    act_read_only_iteration = False
                 ws_before_tool = json.dumps(
                     self.session.work_state, sort_keys=True, ensure_ascii=False
                 )
@@ -570,6 +581,8 @@ class AgentLoop:
                     ToolStatus.ERROR,
                     ToolStatus.REJECTED,
                 )
+                if not read_succeeded:
+                    act_read_only_iteration = False
                 if (
                     read_succeeded
                     and self.session.mode == Mode.AUDIT
@@ -579,18 +592,21 @@ class AgentLoop:
                         audit_files_since_ws_update.add(
                             Path(key.removeprefix("read_file:")).as_posix()
                         )
-                # Неуспешное чтение не добавляет путь и не считается прогрессом.
+                # Новые пути учитываем как прогресс вне ACT; в ACT чтение
+                # ограничено отдельным watchdog и не подтверждает выполнение.
                 if read_succeeded:
                     for path_key in _read_path_keys(tc):
                         if path_key not in seen_paths:
                             seen_paths.add(path_key)
-                            progress_made = True
+                            if self.session.mode != Mode.ACT:
+                                progress_made = True
                 # В ACT прогресс — только подтверждённое изменение.
                 if (
                     self.session.mode == Mode.ACT
                     and tool_outcome.status == ToolStatus.SUCCESS_CHANGED
                 ):
                     progress_made = True
+                    act_changed = True
 
                 # Считаем ошибки каждого вызова, а не только последний
                 # результат всего пакета tool_calls.
@@ -609,6 +625,11 @@ class AgentLoop:
                 # вызовах ловит детектор повторов (MAX_IDENTICAL_CALLS).
                 progress_made = True
                 work_state_updates += 1
+            if self.session.mode == Mode.ACT:
+                if act_changed or ws_changed:
+                    consecutive_read_only_iterations = 0
+                elif act_read_only_iteration:
+                    consecutive_read_only_iterations += 1
 
             # Детектор повторов: одинаковые tool_calls (имя + аргументы) и
             # результаты подряд N раз — цикл, независимо от изменения work_state.
@@ -658,8 +679,34 @@ class AgentLoop:
                     work_state_updates=work_state_updates,
                 )
 
+            if (
+                self.session.mode == Mode.ACT
+                and consecutive_read_only_iterations
+                >= config.MAX_READ_ONLY_ITERATIONS_ACT
+            ):
+                msg = (
+                    f"Нет подтверждённого прогресса: {consecutive_read_only_iterations} "
+                    f"итераций только с чтением подряд — останавливаюсь. "
+                    f"Сессия сохранена — уточни задачу или продолжи."
+                )
+                await _maybe_await(self.events.on_error, msg)
+                persist_watchdog()
+                self.session.save()
+                return LoopResult(
+                    iterations_used=iteration,
+                    consecutive_errors=consecutive_errors,
+                    no_progress=True,
+                    error_message=msg,
+                    task_cost=self.session.total_usage.cost - start_cost,
+                    work_state_updates=work_state_updates,
+                )
+
             if progress_made:
                 iterations_since_progress = 0
+            elif self.session.mode == Mode.ACT and act_read_only_iteration:
+                # Чтение в ACT не продвигает общие часы прогресса; его
+                # последовательность ограничивается отдельным watchdog ниже.
+                pass
             else:
                 iterations_since_progress += 1
                 if iterations_since_progress >= config.MAX_ITERATIONS_NO_PROGRESS:

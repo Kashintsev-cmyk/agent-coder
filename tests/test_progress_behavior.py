@@ -95,6 +95,9 @@ async def _run(
     monkeypatch.setattr(
         loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", no_progress_limit
     )
+    monkeypatch.setattr(
+        loop_mod.config, "MAX_READ_ONLY_ITERATIONS_ACT", no_progress_limit
+    )
     monkeypatch.setattr(loop_mod.config, "MAX_IDENTICAL_CALLS", 10)
     monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_TASK", 10_000.0)
     monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_SESSION", 10_000.0)
@@ -113,7 +116,7 @@ async def _run(
 
 
 @pytest.mark.asyncio
-async def test_new_read_path_counts_as_progress(monkeypatch, tmp_path) -> None:
+async def test_distinct_read_paths_hit_act_read_only_limit(monkeypatch, tmp_path) -> None:
     async def read_file(args: dict[str, Any], ctx: Any) -> str:
         return "file contents"
 
@@ -121,13 +124,16 @@ async def test_new_read_path_counts_as_progress(monkeypatch, tmp_path) -> None:
         monkeypatch,
         tmp_path,
         [
-            _tool_call("read_file", {"path": "src/new.py"}),
-            None,
+            _tool_call("read_file", {"path": "src/one.py"}, "first"),
+            _tool_call("read_file", {"path": "src/two.py"}, "second"),
+            _tool_call("read_file", {"path": "src/three.py"}, "third"),
         ],
         _Registry(_Tool("read_file", read_file, read_only=True)),
+        no_progress_limit=2,
     )
 
-    assert not result.no_progress
+    assert result.no_progress
+    assert "только с чтением" in result.error_message
     assert client.chat_calls == 2
 
 
@@ -147,6 +153,7 @@ async def test_repeated_read_path_does_not_count_as_progress(
             None,
         ],
         _Registry(_Tool("read_file", read_file, read_only=True)),
+        no_progress_limit=2,
     )
 
     assert result.no_progress
@@ -213,6 +220,44 @@ async def test_work_state_change_counts_as_progress(monkeypatch, tmp_path) -> No
 
     assert not result.no_progress
     assert client.chat_calls == 2
+    assert session.work_state["findings"] == ["new fact"]
+
+
+@pytest.mark.asyncio
+async def test_read_only_limit_resets_after_change_and_work_state_update(
+    monkeypatch, tmp_path
+) -> None:
+    async def read_file(args: dict[str, Any], ctx: Any) -> str:
+        return "file contents"
+
+    async def write_file(args: dict[str, Any], ctx: Any) -> ToolExecutionResult:
+        return ToolExecutionResult("changed", ToolStatus.SUCCESS_CHANGED)
+
+    async def update_work_state(args: dict[str, Any], ctx: Any) -> str:
+        ctx.work_state.update({"findings+": ["new fact"]})
+        return "updated"
+
+    result, client, session = await _run(
+        monkeypatch,
+        tmp_path,
+        [
+            _tool_call("read_file", {"path": "src/one.py"}, "read-1"),
+            _tool_call("write_file", {"path": "src/change.py"}, "write"),
+            _tool_call("read_file", {"path": "src/two.py"}, "read-2"),
+            _tool_call("update_work_state", {"patch": {"findings+": ["new fact"]}}),
+            _tool_call("read_file", {"path": "src/three.py"}, "read-3"),
+            _tool_call("read_file", {"path": "src/four.py"}, "read-4"),
+        ],
+        _Registry(
+            _Tool("read_file", read_file, read_only=True),
+            _Tool("write_file", write_file, read_only=False),
+            _Tool("update_work_state", update_work_state, read_only=True),
+        ),
+        no_progress_limit=2,
+    )
+
+    assert result.no_progress
+    assert client.chat_calls == 6
     assert session.work_state["findings"] == ["new fact"]
 
 
@@ -285,7 +330,7 @@ async def test_failed_read_does_not_mark_path_as_seen(monkeypatch, tmp_path) -> 
             None,
         ],
         _Registry(_Tool("read_file", read_file, read_only=True)),
-        no_progress_limit=2,
+        no_progress_limit=3,
     )
 
     assert not result.no_progress
