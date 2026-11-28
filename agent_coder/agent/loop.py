@@ -650,6 +650,8 @@ class AgentLoop:
                 assistant_msg.tool_calls
             )
             act_changed = False
+            act_read_progress = False
+            tool_statuses: list[ToolStatus] = []
             for tc in assistant_msg.tool_calls:
                 tool = self.registry.get(tc.name)
                 if tool is None or not getattr(tool, "read_only", False):
@@ -658,6 +660,7 @@ class AgentLoop:
                     self.session.work_state, sort_keys=True, ensure_ascii=False
                 )
                 tool_outcome, read_file_path = await self._handle_tool_call(tc)
+                tool_statuses.append(tool_outcome.status)
                 tool_results.append(str(self.session.messages[-1].get("content") or ""))
                 ws_changed_by_tool = (
                     json.dumps(
@@ -685,15 +688,16 @@ class AgentLoop:
                         audit_files_since_ws_update.add(
                             Path(key.removeprefix("read_file:")).as_posix()
                         )
-                # Новые пути учитываем как прогресс вне ACT; в ACT чтение
-                # ограничено отдельным watchdog и не подтверждает выполнение.
+                # Новый путь означает новый охват и в ACT тоже; повторное чтение
+                # того же пути не продвигает цикл.
                 if read_succeeded:
                     for path_key in _read_path_keys(tc):
                         if path_key not in seen_paths:
                             seen_paths.add(path_key)
-                            if self.session.mode != Mode.ACT:
-                                progress_made = True
-                # В ACT прогресс — только подтверждённое изменение.
+                            progress_made = True
+                            if self.session.mode == Mode.ACT:
+                                act_read_progress = True
+                # Изменение в ACT подтверждает прогресс выполнения и требует проверки.
                 if (
                     self.session.mode == Mode.ACT
                     and tool_outcome.status == ToolStatus.SUCCESS_CHANGED
@@ -744,7 +748,7 @@ class AgentLoop:
                 progress_made = True
                 work_state_updates += 1
             if self.session.mode == Mode.ACT:
-                if act_changed or ws_changed:
+                if act_changed or act_read_progress or ws_changed:
                     consecutive_read_only_iterations = 0
                 elif act_read_only_iteration:
                     consecutive_read_only_iterations += 1
@@ -765,10 +769,41 @@ class AgentLoop:
             prev_call_sig = signature
             persist_watchdog()
             if identical_streak >= config.MAX_IDENTICAL_CALLS:
+                tool_names = ", ".join(
+                    dict.fromkeys(tc.name for tc in assistant_msg.tool_calls)
+                )
+                if ToolStatus.REJECTED in tool_statuses:
+                    result_summary = "отказ"
+                    next_step = "подтверди действие или выбери разрешённую альтернативу"
+                elif ToolStatus.ERROR in tool_statuses:
+                    result_summary = (
+                        "ошибка команды"
+                        if any(
+                            tc.name == "run_command" for tc in assistant_msg.tool_calls
+                        )
+                        else "ошибка инструмента"
+                    )
+                    next_step = (
+                        "исправь вызов по тексту ошибки или уточни недостающие данные"
+                    )
+                elif any(
+                    tc.name in {*_READ_PATH_TOOLS, "read_files"}
+                    for tc in assistant_msg.tool_calls
+                ):
+                    result_summary = "повторное чтение без новых изменений"
+                    next_step = "укажи конкретный участок или требуемое изменение, не повторяя те же чтения"
+                elif all(
+                    status == ToolStatus.SUCCESS_NO_CHANGE for status in tool_statuses
+                ):
+                    result_summary = "успешное выполнение без изменений"
+                    next_step = "уточни ожидаемое изменение или критерий результата"
+                else:
+                    result_summary = "результат не подтвердил прогресс"
+                    next_step = "уточни вводные или выбери другой способ действий"
                 msg = (
-                    f"Нет прогресса: модель {identical_streak} раза подряд повторяет "
-                    f"одинаковые вызовы инструментов — останавливаюсь, чтобы не зациклиться. "
-                    f"Сессия сохранена — уточни задачу или продолжи."
+                    f"Нет прогресса: {identical_streak} раза подряд повторяются инструменты "
+                    f"{tool_names} (результат: {result_summary}) — останавливаюсь, "
+                    f"чтобы не зациклиться. Следующий шаг: {next_step}. Сессия сохранена."
                 )
                 await _maybe_await(self.events.on_error, msg)
                 self.session.save()

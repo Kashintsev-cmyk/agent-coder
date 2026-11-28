@@ -507,6 +507,72 @@ async def test_identical_calls_with_different_results_not_stopped(monkeypatch) -
 
 
 @pytest.mark.asyncio
+async def test_act_reads_of_distinct_files_count_as_progress(monkeypatch) -> None:
+    """A run of successful reads across distinct files must not hit ACT watchdogs."""
+    monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_NO_PROGRESS", 1)
+    monkeypatch.setattr(loop_mod.config, "MAX_READ_ONLY_ITERATIONS_ACT", 2)
+    monkeypatch.setattr(loop_mod.config, "MAX_IDENTICAL_CALLS", 3)
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_TASK", 10_000.0)
+    monkeypatch.setattr(loop_mod.config, "MAX_COST_PER_SESSION", 10_000.0)
+    paths = [f"src/file{i}.py" for i in range(5)]
+
+    class _Tool:
+        read_only = True
+        requires_approval = False
+
+        def needs_approval(self, args):
+            return False
+
+        async def executor(self, args, ctx):
+            return f"contents of {args['path']}"
+
+    class _Registry:
+        def openai_schemas(self, mode):
+            return []
+
+        def get(self, name):
+            return _Tool() if name == "read_file" else None
+
+        def is_call_allowed(self, mode, tool, args):
+            return True
+
+    class _Client:
+        calls = 0
+
+        async def chat(self, messages, **kwargs):
+            self.calls += 1
+            tool_calls = (
+                [
+                    ToolCall(
+                        id=f"c{self.calls}",
+                        name="read_file",
+                        arguments={"path": paths[self.calls - 1]},
+                    )
+                ]
+                if self.calls <= len(paths)
+                else []
+            )
+            return ChatResponse(
+                message=AssistantMessage(
+                    content="готово" if not tool_calls else "", tool_calls=tool_calls
+                ),
+                usage=Usage(input_tokens=10, output_tokens=5, cost=0.0),
+            )
+
+    session = Session.new(workspace="/tmp", model="m", mode=Mode.ACT)
+    session.messages = [{"role": "system", "content": "S"}]
+    client = _Client()
+    agent_loop = AgentLoop(
+        client=client, registry=_Registry(), session=session, events=_events()
+    )
+
+    result = await agent_loop.run("посмотри исходники")
+
+    assert not result.no_progress
+    assert client.calls == len(paths) + 1
+
+
+@pytest.mark.asyncio
 async def test_identical_calls_stopped_by_detector() -> None:
     """Одинаковые tool_calls подряд — детектор повторов останавливает цикл."""
 
@@ -556,6 +622,9 @@ async def test_identical_calls_stopped_by_detector() -> None:
     res = await loop.run("задача")
     assert res.no_progress
     assert "Нет прогресса" in res.error_message
+    assert "update_work_state" in res.error_message
+    assert "без изменений" in res.error_message
+    assert "Следующий шаг" in res.error_message
     assert client.calls == config.MAX_IDENTICAL_CALLS
 
 

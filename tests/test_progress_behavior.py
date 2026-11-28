@@ -116,9 +116,7 @@ async def _run(
 
 
 @pytest.mark.asyncio
-async def test_distinct_read_paths_hit_act_read_only_limit(
-    monkeypatch, tmp_path
-) -> None:
+async def test_distinct_read_paths_count_as_act_progress(monkeypatch, tmp_path) -> None:
     async def read_file(args: dict[str, Any], ctx: Any) -> str:
         return "file contents"
 
@@ -129,14 +127,14 @@ async def test_distinct_read_paths_hit_act_read_only_limit(
             _tool_call("read_file", {"path": "src/one.py"}, "first"),
             _tool_call("read_file", {"path": "src/two.py"}, "second"),
             _tool_call("read_file", {"path": "src/three.py"}, "third"),
+            None,
         ],
         _Registry(_Tool("read_file", read_file, read_only=True)),
         no_progress_limit=2,
     )
 
-    assert result.no_progress
-    assert "только с чтением" in result.error_message
-    assert client.chat_calls == 2
+    assert not result.no_progress
+    assert client.chat_calls == 4
 
 
 @pytest.mark.asyncio
@@ -152,14 +150,14 @@ async def test_repeated_read_path_does_not_count_as_progress(
         [
             _tool_call("read_file", {"path": "src/same.py"}, "first"),
             _tool_call("read_file", {"path": "src/same.py"}, "second"),
-            None,
+            _tool_call("read_file", {"path": "src/same.py"}, "third"),
         ],
         _Registry(_Tool("read_file", read_file, read_only=True)),
         no_progress_limit=2,
     )
 
     assert result.no_progress
-    assert client.chat_calls == 2
+    assert client.chat_calls == 3
 
 
 @pytest.mark.asyncio
@@ -226,7 +224,9 @@ async def test_work_state_change_counts_as_progress(monkeypatch, tmp_path) -> No
 
 
 @pytest.mark.asyncio
-async def test_limit_result_reports_progress_from_current_wave(monkeypatch, tmp_path) -> None:
+async def test_limit_result_reports_progress_from_current_wave(
+    monkeypatch, tmp_path
+) -> None:
     monkeypatch.setattr(loop_mod.config, "MAX_ITERATIONS_ACT", 3)
 
     async def write_file(args: dict[str, Any], ctx: Any) -> ToolExecutionResult:
@@ -286,7 +286,8 @@ async def test_read_only_limit_resets_after_change_and_work_state_update(
             _tool_call("read_file", {"path": "src/two.py"}, "read-2"),
             _tool_call("update_work_state", {"patch": {"findings+": ["new fact"]}}),
             _tool_call("read_file", {"path": "src/three.py"}, "read-3"),
-            _tool_call("read_file", {"path": "src/four.py"}, "read-4"),
+            _tool_call("read_file", {"path": "src/three.py"}, "read-4"),
+            _tool_call("read_file", {"path": "src/three.py"}, "read-5"),
         ],
         _Registry(
             _Tool("read_file", read_file, read_only=True),
@@ -297,7 +298,7 @@ async def test_read_only_limit_resets_after_change_and_work_state_update(
     )
 
     assert result.no_progress
-    assert client.chat_calls == 6
+    assert client.chat_calls == 7
     assert session.work_state["findings"] == ["new fact"]
 
 
